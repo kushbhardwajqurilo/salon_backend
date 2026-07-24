@@ -4,3 +4,23 @@
 [2026-07-24 16:49:14:4914] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
 [2026-07-24 16:49:26:4926] [[32minfo[39m]: [32m🚀 Queue initialized: email[39m
 [2026-07-24 16:49:30:4930] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-07-24 16:58:13:5813] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-24 16:58:13:5813] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-24 17:04:05:45] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-24 17:04:05:45] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-24 17:04:10:410] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-24 17:04:10:410] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-24 17:04:15:415] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-24 17:04:15:415] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-24 17:05:01:51] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-24 17:05:01:51] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-24 17:05:30:530] [[32minfo[39m]: [32m🚀 Queue initialized: email[39m
+[2026-07-24 17:06:26:626] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-07-24 17:06:37:637] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-07-24 17:06:44:644] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-24 17:06:44:644] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-24 17:07:40:740] [[32minfo[39m]: [32m🚀 Queue initialized: email[39m
+[2026-07-24 17:07:47:747] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-07-24 17:09:10:910] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-24 17:09:10:910] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-24 17:09:21:921] [[32minfo[39m]: [32m🚀 Queue initialized: email[39m

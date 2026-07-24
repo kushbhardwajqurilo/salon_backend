@@ -4,11 +4,33 @@ import { logger } from "./logger.js";
 
 let redisClient;
 
-if (env.NODE_ENV !== "test") {
-  redisClient = new Redis({
+const getRedisConnection = () => {
+  let connectionUrl = env.REDIS_URL || env.REDIS_HOST;
+  
+  if (connectionUrl && (connectionUrl.startsWith("redis://") || connectionUrl.startsWith("rediss://") || connectionUrl.includes("://"))) {
+    // Normalize user's potential command line typos
+    if (connectionUrl.includes("redis-cli-uredis://")) {
+      connectionUrl = connectionUrl.replace("redis-cli-uredis://", "redis://");
+    } else if (connectionUrl.includes("redis-cli -u ")) {
+      connectionUrl = connectionUrl.replace("redis-cli -u ", "");
+    }
+    return connectionUrl;
+  }
+  
+  return {
     host: env.REDIS_HOST,
     port: env.REDIS_PORT,
-  });
+  };
+};
+
+if (env.NODE_ENV !== "test") {
+  const connection = getRedisConnection();
+  
+  if (typeof connection === "string") {
+    redisClient = new Redis(connection);
+  } else {
+    redisClient = new Redis(connection);
+  }
 
   redisClient.on("connect", () => {
     logger.info("🔌 Connected to Redis successfully");
