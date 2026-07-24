@@ -1,0 +1,47 @@
+import jwt from "jsonwebtoken";
+import { env } from "../config/env.js";
+import { AppError } from "../utils/errors.js";
+import { UserRepository } from "../repositories/users/user.repository.js";
+import { asyncHandler } from "../utils/errors.js";
+
+const userRepo = new UserRepository();
+
+export const authenticate = asyncHandler(async (req, res, next) => {
+  let token;
+
+  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
+    token = req.headers.authorization.split(" ")[1];
+  } else if (req.cookies?.accessToken) {
+    token = req.cookies.accessToken;
+  }
+
+  if (!token) {
+    throw new AppError("Access denied. No token provided.", 401);
+  }
+
+  try {
+    const decoded = jwt.verify(token, env.JWT_SECRET);
+    
+    // Double check if user exists and is active
+    const user = await userRepo.findById(decoded.id);
+    if (!user) {
+      throw new AppError("The user belonging to this token no longer exists.", 401);
+    }
+
+    if (user.status !== "active") {
+      throw new AppError("Your account has been deactivated or locked.", 403);
+    }
+
+    // Attach user context to request
+    req.user = {
+      id: user._id,
+      email: user.email,
+      role: decoded.role,
+      branches: user.branches || [],
+    };
+
+    next();
+  } catch (error) {
+    throw new AppError("Invalid or expired token.", 401);
+  }
+});

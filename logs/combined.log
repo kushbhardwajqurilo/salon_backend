@@ -1,0 +1,6 @@
+[2026-07-24 16:48:34:4834] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-24 16:48:34:4834] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-24 16:49:14:4914] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-24 16:49:14:4914] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-24 16:49:26:4926] [[32minfo[39m]: [32m🚀 Queue initialized: email[39m
+[2026-07-24 16:49:30:4930] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
