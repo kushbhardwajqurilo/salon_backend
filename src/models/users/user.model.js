@@ -35,6 +35,10 @@ const userSchema = new mongoose.Schema(
       ref: "Organization",
       required: true,
     },
+    hasOrgWideAccess: {
+      type: Boolean,
+      default: false,
+    },
     branchAccess: [
       {
         branchId: {

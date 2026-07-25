@@ -17,25 +17,30 @@ const mapBranchObj = (b) => ({
 });
 
 export const getBranches = asyncHandler(async (req, res) => {
-  const { role, organizationId, branchAccess } = req.user;
+  const { organizationId, branchAccess, hasOrgWideAccess } = req.user;
 
-  const org = await Organization.findById(organizationId);
+  const org = await Organization.findOne({ _id: organizationId, isActive: true });
   if (!org) {
     throw new AppError("Organization not found", 404);
   }
 
   let branches = [];
-  if (role?.toLowerCase() === "owner") {
-    // Owner sees all branches of organization (active & inactive)
-    branches = await Branch.find({ organizationId });
+  if (hasOrgWideAccess === true) {
+    // Return all active branches belonging to organization
+    branches = await Branch.find({ organizationId, isActive: true });
   } else {
-    // Other roles see only active & assigned branches
-    const assignedIds = branchAccess.filter(b => b.isActive).map(b => b.branchId.toString());
-    branches = await Branch.find({
-      _id: { $in: assignedIds },
-      organizationId,
-      isActive: true,
-    });
+    // Return only active branches explicitly present in user's branchAccess
+    const assignedIds = (branchAccess || [])
+      .filter((b) => b.isActive)
+      .map((b) => b.branchId.toString());
+
+    if (assignedIds.length > 0) {
+      branches = await Branch.find({
+        _id: { $in: assignedIds },
+        organizationId,
+        isActive: true,
+      });
+    }
   }
 
   return sendResponse(res, 200, "Branches retrieved successfully", {

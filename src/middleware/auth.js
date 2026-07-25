@@ -34,7 +34,9 @@ export const authenticate = asyncHandler(async (req, res, next) => {
     }
 
     let branchAccess = user.branchAccess || [];
-    if (decoded.role?.toLowerCase() === "owner") {
+    const hasOrgWideAccess = user.hasOrgWideAccess || false;
+
+    if (hasOrgWideAccess) {
       const dbBranches = await mongoose.model("Branch").find({ organizationId: user.organizationId });
       branchAccess = dbBranches.map(b => ({
         branchId: b._id,
@@ -50,6 +52,7 @@ export const authenticate = asyncHandler(async (req, res, next) => {
       role: decoded.role,
       organizationId: user.organizationId,
       branchAccess,
+      hasOrgWideAccess,
     };
 
     next();

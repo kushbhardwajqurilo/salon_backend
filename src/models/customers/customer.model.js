@@ -16,8 +16,13 @@ const customerSchema = new mongoose.Schema(
     phone: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
+    },
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      required: true,
+      index: true,
     },
     branchId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -90,7 +95,7 @@ const customerSchema = new mongoose.Schema(
   }
 );
 
-customerSchema.index({ phone: 1 }, { unique: true });
+customerSchema.index({ organizationId: 1, phone: 1 }, { unique: true });
 customerSchema.index({ branchId: 1, phone: 1 });
 
 export const Customer = mongoose.model("Customer", customerSchema);

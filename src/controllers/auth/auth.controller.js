@@ -56,15 +56,16 @@ export const me = asyncHandler(async (req, res) => {
   }
 
   let permissions = [];
-  if (user.role?.name?.toLowerCase() !== "owner") {
-    const roleObj = await mongoose.model("Role").findById(user.role?._id).populate("permissions");
-    if (roleObj) {
+  if (user.role) {
+    const roleObj = await mongoose.model("Role").findById(user.role._id).populate("permissions");
+    if (roleObj && roleObj.permissions) {
       permissions = roleObj.permissions.map((p) => p.name);
     }
   }
 
   let branchAccess = user.branchAccess || [];
-  if (user.role?.name?.toLowerCase() === "owner") {
+  const hasOrgWideAccess = user.hasOrgWideAccess || false;
+  if (hasOrgWideAccess) {
     const dbBranches = await mongoose.model("Branch").find({ organizationId: user.organizationId });
     branchAccess = dbBranches.map(b => ({
       branchId: b._id,
@@ -85,6 +86,7 @@ export const me = asyncHandler(async (req, res) => {
     permissions,
     organizationId: user.organizationId,
     branchAccess,
+    hasOrgWideAccess,
   });
 });
 

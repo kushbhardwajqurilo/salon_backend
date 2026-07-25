@@ -14,7 +14,7 @@ const roleRepo = new RoleRepository();
  */
 export const authorize = (requiredPermission, checkBranchScope = false) => {
   return asyncHandler(async (req, res, next) => {
-    const { role: roleName, branches } = req.user;
+    const { role: roleName, branchAccess } = req.user;
 
     // Super Admin bypasses all permissions checks
     if (roleName === "admin" || roleName === "superadmin") {
@@ -61,7 +61,9 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
     if (checkBranchScope) {
       const branchId = req.params.branchId || req.query.branchId || req.body.branchId;
       if (branchId) {
-        const isBranchAuthorized = branches.some((b) => b.toString() === branchId.toString());
+        const isBranchAuthorized = (branchAccess || []).some(
+          (b) => b.branchId.toString() === branchId.toString() && b.isActive
+        );
         if (!isBranchAuthorized) {
           throw new AppError("Access denied. You do not have access to this branch.", 403);
         }
