@@ -51,11 +51,18 @@ describe("RBAC Authorization Middleware", () => {
     res = {};
   });
 
-  it("should bypass permission checks if user is an admin", async () => {
+  it("should not bypass permission checks for admin based on role name alone", async () => {
     req.user.role = "admin";
     const middleware = authorize("customer:create");
 
-    await expect(runMiddleware(middleware, req, res)).resolves.toBeUndefined();
+    RoleRepository.prototype.findOne.mockResolvedValue({
+      name: "admin",
+      permissions: [],
+    });
+
+    await expect(runMiddleware(middleware, req, res)).rejects.toThrow(
+      new AppError("Access denied. You do not have the required permissions.", 403)
+    );
   });
 
   it("should authorize request and cache permissions on cache miss", async () => {

@@ -16,12 +16,8 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
   return asyncHandler(async (req, res, next) => {
     const { role: roleName, branchAccess } = req.user;
 
-    // Super Admin bypasses all permissions checks
-    if (roleName === "admin" || roleName === "superadmin") {
-      return next();
-    }
-
-    const cacheKey = `rbac:role:${roleName}:permissions`;
+    const normalizedRole = roleName ? roleName.toLowerCase() : "";
+    const cacheKey = `rbac:role:${normalizedRole}:permissions`;
     let permissions = [];
 
     try {
@@ -30,7 +26,7 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
         permissions = JSON.parse(cachedPermissions);
       } else {
         // Cache miss: fetch role permissions from MongoDB
-        const roleObj = await roleRepo.findOne({ name: roleName }, ["permissions"]);
+        const roleObj = await roleRepo.findOne({ name: normalizedRole }, ["permissions"]);
         if (!roleObj) {
           throw new AppError("Access denied. Role not found.", 403);
         }
@@ -44,7 +40,7 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
     } catch (err) {
       logger.error(`Error resolving permissions from cache/db: ${err.message}`);
       // Fallback directly to DB if Redis fails
-      const roleObj = await roleRepo.findOne({ name: roleName }, ["permissions"]);
+      const roleObj = await roleRepo.findOne({ name: normalizedRole }, ["permissions"]);
       if (!roleObj) {
         throw new AppError("Access denied. Role not found.", 403);
       }
@@ -78,16 +74,8 @@ export const requirePermission = (requiredPermission) => {
   return asyncHandler(async (req, res, next) => {
     const { role: roleName } = req.user;
 
-    // Owner / Admin / Superadmin bypasses permission checks
-    if (
-      roleName?.toLowerCase() === "owner" ||
-      roleName?.toLowerCase() === "admin" ||
-      roleName?.toLowerCase() === "superadmin"
-    ) {
-      return next();
-    }
-
-    const cacheKey = `rbac:role:${roleName}:permissions`;
+    const normalizedRole = roleName ? roleName.toLowerCase() : "";
+    const cacheKey = `rbac:role:${normalizedRole}:permissions`;
     let permissions = [];
 
     try {
@@ -95,7 +83,7 @@ export const requirePermission = (requiredPermission) => {
       if (cachedPermissions) {
         permissions = JSON.parse(cachedPermissions);
       } else {
-        const roleObj = await roleRepo.findOne({ name: roleName.toLowerCase() }, ["permissions"]);
+        const roleObj = await roleRepo.findOne({ name: normalizedRole }, ["permissions"]);
         if (!roleObj) {
           throw new AppError("Access denied. Role not found.", 403);
         }
@@ -104,7 +92,7 @@ export const requirePermission = (requiredPermission) => {
       }
     } catch (err) {
       logger.error(`Error resolving permissions from cache/db: ${err.message}`);
-      const roleObj = await roleRepo.findOne({ name: roleName.toLowerCase() }, ["permissions"]);
+      const roleObj = await roleRepo.findOne({ name: normalizedRole }, ["permissions"]);
       if (!roleObj) {
         throw new AppError("Access denied. Role not found.", 403);
       }

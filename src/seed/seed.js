@@ -90,7 +90,7 @@ const seed = async () => {
     const ownerRole = await Role.create({
       name: "owner",
       description: "Full access to all branches and all permissions",
-      permissions: []
+      permissions: permissionDocs.map((p) => p._id)
     });
 
     const managerPermNames = [

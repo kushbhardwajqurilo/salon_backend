@@ -10,6 +10,7 @@ import { CustomerService } from "../services/customers/customer.service.js";
 import { getBranchById } from "../controllers/branches/branch.controller.js";
 import { authorize } from "../middleware/rbac.js";
 import { RoleRepository } from "../repositories/roles/role.repository.js";
+import { me } from "../controllers/auth/auth.controller.js";
 
 
 // Mock the Branch model's findOne method
@@ -435,15 +436,35 @@ describe("Security Scoping Middleware & Validation tests", () => {
         expect(next.mock.calls[0][0].statusCode).toBe(403);
       });
 
-      it("should allow access for 'admin' or 'superadmin' in authorize middleware even if they lack required permission", async () => {
+      it("should deny access for 'admin' or 'superadmin' in authorize middleware if they lack the required permission (no role-name bypass)", async () => {
         const middleware = authorize("branches.manage");
         branchReq.user.role = "admin";
         branchReq.user.hasOrgWideAccess = true;
 
+        RoleRepository.prototype.findOne.mockResolvedValue({
+          name: "admin",
+          permissions: [{ name: "customer:view" }],
+        });
+
+        await expect(runMiddleware(middleware, branchReq, branchRes)).rejects.toThrow(
+          new AppError("Access denied. You do not have the required permissions.", 403)
+        );
+      });
+
+      it("should allow access for 'admin' or 'superadmin' if they are assigned the required permission", async () => {
+        const middleware = authorize("branches.manage");
+        branchReq.user.role = "admin";
+        branchReq.user.hasOrgWideAccess = true;
+
+        RoleRepository.prototype.findOne.mockResolvedValue({
+          name: "admin",
+          permissions: [{ name: "branches.manage" }],
+        });
+
         await expect(runMiddleware(middleware, branchReq, branchRes)).resolves.toBeUndefined();
       });
 
-      it("should deny access for non-admin/non-superadmin role (e.g. owner) if they lack required permission in authorize middleware", async () => {
+      it("should deny access for Owner if they lack the required permission (no role-name bypass)", async () => {
         const middleware = authorize("branches.manage");
         branchReq.user.role = "owner";
         branchReq.user.hasOrgWideAccess = false;
@@ -456,6 +477,137 @@ describe("Security Scoping Middleware & Validation tests", () => {
         await expect(runMiddleware(middleware, branchReq, branchRes)).rejects.toThrow(
           new AppError("Access denied. You do not have the required permissions.", 403)
         );
+      });
+
+      it("should allow access for Owner if they have the required permission", async () => {
+        const middleware = authorize("branches.manage");
+        branchReq.user.role = "owner";
+        branchReq.user.hasOrgWideAccess = false;
+
+        RoleRepository.prototype.findOne.mockResolvedValue({
+          name: "owner",
+          permissions: [{ name: "branches.manage" }],
+        });
+
+        await expect(runMiddleware(middleware, branchReq, branchRes)).resolves.toBeUndefined();
+      });
+
+      it("should allow access for a non-owner with the same permission if scope permits", async () => {
+        const middleware = authorize("branches.manage");
+        branchReq.user.role = "manager";
+        branchReq.user.hasOrgWideAccess = false;
+
+        RoleRepository.prototype.findOne.mockResolvedValue({
+          name: "manager",
+          permissions: [{ name: "branches.manage" }],
+        });
+
+        await expect(runMiddleware(middleware, branchReq, branchRes)).resolves.toBeUndefined();
+      });
+
+      it("should allow Owner with hasOrgWideAccess: true to operate organization-wide (e.g., skip branch access checks)", async () => {
+        // Here we test that hasOrgWideAccess operates independently of functional permissions
+        // We run requireBranchScope middleware to verify it accepts organization wide access
+        const targetBranchId = new mongoose.Types.ObjectId().toString();
+        const testReq = {
+          headers: { "x-branch-id": targetBranchId },
+          user: {
+            id: "owner-123",
+            role: "owner",
+            hasOrgWideAccess: true,
+            branchAccess: []
+          }
+        };
+        const testRes = {};
+
+        Branch.findOne.mockResolvedValue({
+          _id: targetBranchId,
+          organizationId: new mongoose.Types.ObjectId().toString(),
+          isActive: true,
+        });
+
+        await expect(runMiddleware(requireBranchScope, testReq, testRes)).resolves.toBeUndefined();
+        expect(testReq.branchId).toBe(targetBranchId);
+      });
+
+      describe("/api/v1/auth/me response structure", () => {
+        let originalModel;
+        let mockUserFindById;
+        let mockRoleFindById;
+        let mockBranchFind;
+
+        beforeAll(() => {
+          originalModel = mongoose.model;
+        });
+
+        afterAll(() => {
+          mongoose.model = originalModel;
+        });
+
+        it("should return the expected resolved permissions and role for Owner in me response", async () => {
+          mockUserFindById = jest.fn().mockReturnValue({
+            populate: jest.fn().mockResolvedValue({
+              _id: "owner-user-id",
+              name: "John Owner",
+              email: "owner@example.com",
+              phone: "+12345",
+              role: { _id: "role-owner-id", name: "owner" },
+              organizationId: "org-id",
+              hasOrgWideAccess: true,
+              branchAccess: []
+            })
+          });
+
+          mockRoleFindById = jest.fn().mockReturnValue({
+            populate: jest.fn().mockResolvedValue({
+              _id: "role-owner-id",
+              name: "owner",
+              permissions: [
+                { name: "branches.manage" },
+                { name: "customer:view" }
+              ]
+            })
+          });
+
+          mockBranchFind = jest.fn().mockResolvedValue([]);
+
+          mongoose.model = jest.fn().mockImplementation((modelName) => {
+            if (modelName === "User") return { findById: mockUserFindById };
+            if (modelName === "Role") return { findById: mockRoleFindById };
+            if (modelName === "Branch") return { find: mockBranchFind };
+            return originalModel(modelName);
+          });
+
+          const testReq = {
+            user: { id: "owner-user-id" }
+          };
+          const testRes = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn()
+          };
+
+          await new Promise((resolve, reject) => {
+            const next = (err) => {
+              if (err) reject(err);
+              else resolve();
+            };
+            testRes.json = jest.fn().mockImplementation((data) => {
+              testRes._json = data;
+              resolve();
+            });
+            me(testReq, testRes, next);
+          });
+
+          expect(testRes.status).toHaveBeenCalledWith(200);
+          expect(testRes.json).toHaveBeenCalledWith(expect.objectContaining({
+            success: true,
+            data: expect.objectContaining({
+              role: "Owner",
+              permissions: expect.arrayContaining(["branches.manage", "customer:view"]),
+              hasOrgWideAccess: true
+            })
+          }));
+        });
       });
     });
   });
