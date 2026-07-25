@@ -27,6 +27,15 @@ export const requireBranchScope = asyncHandler(async (req, res, next) => {
     throw new AppError("User authentication required", 401);
   }
 
+  const { organizationId, hasOrgWideAccess, branchAccess } = req.user;
+
+  // If X-Branch-Id is omitted and user has organization-wide access, proceed organization-wide
+  if (!branchId && hasOrgWideAccess === true) {
+    req.organizationId = organizationId;
+    req.branchId = undefined;
+    return next();
+  }
+
   if (!branchId) {
     throw new AppError("X-Branch-Id header is required for this request.", 400);
   }
@@ -35,8 +44,6 @@ export const requireBranchScope = asyncHandler(async (req, res, next) => {
   if (!mongoose.Types.ObjectId.isValid(branchId)) {
     throw new AppError("Invalid branch ID format.", 400);
   }
-
-  const { organizationId, hasOrgWideAccess, branchAccess } = req.user;
 
   // Never query globally first. Always use a tenant-scoped lookup filtering active branches.
   const branch = await Branch.findOne({

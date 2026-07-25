@@ -8,37 +8,37 @@ import * as rbacValidation from "../../validation/rbac/rbac.validation.js";
 const router = Router();
 
 // All RBAC routes require authentication and admin permissions
-// router.use(authenticate);
+router.use(authenticate);
 
 router.post(
   "/permissions",
-  authorize("rbac:manage"),
+  authorize("roles.manage"),
   validate(rbacValidation.createPermissionSchema),
   rbacController.createPermission
 );
 
 router.get(
   "/permissions",
-  authorize("rbac:manage"),
+  authorize("roles.manage"),
   rbacController.listPermissions
 );
 
 router.post(
   "/roles",
-  // authorize("rbac:manage"),
+  authorize("roles.manage"),
   validate(rbacValidation.createRoleSchema),
   rbacController.createRole
 );
 
 router.get(
   "/roles",
-  authorize("rbac:manage"),
+  authorize("roles.manage"),
   rbacController.listRoles
 );
 
 router.post(
   "/roles/:roleId/permissions",
-  authorize("rbac:manage"),
+  authorize("roles.manage"),
   validate(rbacValidation.assignPermissionsSchema),
   rbacController.assignPermissionsToRole
 );

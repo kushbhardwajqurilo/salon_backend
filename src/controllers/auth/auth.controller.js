@@ -9,11 +9,12 @@ const authService = new AuthService();
 const setRefreshTokenCookie = (res, token) => {
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    secure: true,
+    sameSite: "none",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
   res.cookie("refreshToken", token, cookieOptions);
+  // res.header("Access-Control-Allow-Credentials", "true");
 };
 
 export const register = asyncHandler(async (req, res) => {
@@ -82,6 +83,7 @@ export const me = asyncHandler(async (req, res) => {
     id: user._id,
     name: user.name,
     email: user.email,
+    phone: user.phone,
     role: capitalizedRole,
     permissions,
     organizationId: user.organizationId,

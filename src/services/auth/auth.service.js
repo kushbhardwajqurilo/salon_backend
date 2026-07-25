@@ -121,6 +121,7 @@ export class AuthService {
   }
 
   async refresh(token, ipAddress, deviceInfo) {
+    console.log("token", token);
     if (!token) {
       throw new AppError("Session not found or invalid", 401);
     }
@@ -128,12 +129,14 @@ export class AuthService {
     try {
       const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET);
       const user = await this.userRepo.findById(decoded.id);
-
+      console.log("decode", decoded)
+      console.log("user", user)
       if (!user || user.status !== "active" || !user.refreshToken) {
         throw new AppError("Session not found or invalid", 401);
       }
 
       const isMatch = await bcrypt.compare(token, user.refreshToken);
+      console.log("isMatch", isMatch);
       if (!isMatch) {
         user.refreshToken = null;
         await user.save();

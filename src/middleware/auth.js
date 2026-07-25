@@ -57,6 +57,12 @@ export const authenticate = asyncHandler(async (req, res, next) => {
 
     next();
   } catch (error) {
+    if (error.name === "TokenExpiredError") {
+      throw new AppError("Your token has expired! Please log in again.", 401);
+    }
+    if (error instanceof AppError) {
+      throw error;
+    }
     throw new AppError("Invalid or expired token.", 401);
   }
 });

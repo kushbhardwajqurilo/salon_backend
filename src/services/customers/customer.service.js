@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { CustomerRepository } from "../../repositories/customers/customer.repository.js";
 import { AppError } from "../../utils/errors.js";
 
@@ -33,7 +34,7 @@ export class CustomerService {
     return customer;
   }
 
-  async updateCustomer(id, data, organizationId, userId) {
+  async updateCustomer(id, data, organizationId, userId, userContext = null) {
     const customer = await this.customerRepo.findById(id, organizationId);
     if (!customer) {
       throw new AppError("Resource not found", 404);
@@ -43,6 +44,32 @@ export class CustomerService {
       const existing = await this.customerRepo.findOne({ phone: data.phone }, organizationId);
       if (existing) {
         throw new AppError("Phone number is already in use by another customer", 400);
+      }
+    }
+
+    if (data.branchId && data.branchId !== customer.branchId?.toString()) {
+      const branch = await mongoose.model("Branch").findOne({
+        _id: data.branchId,
+        organizationId,
+        isActive: true,
+      });
+      if (!branch) {
+        throw new AppError("Target branch not found or inactive", 404);
+      }
+
+      if (userContext) {
+        const { hasOrgWideAccess, branchAccess } = userContext;
+        let isAuthorized = false;
+        if (hasOrgWideAccess === true) {
+          isAuthorized = true;
+        } else {
+          isAuthorized = (branchAccess || []).some(
+            (b) => b.branchId.toString() === data.branchId.toString() && b.isActive
+          );
+        }
+        if (!isAuthorized) {
+          throw new AppError("Access denied. You do not have access to the target branch.", 403);
+        }
       }
     }
 

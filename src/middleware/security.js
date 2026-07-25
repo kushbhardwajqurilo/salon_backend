@@ -19,7 +19,7 @@ export const apiLimiter = rateLimit({
 // Auth Limiter: Stricter limit for login/OTP attempts
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 15,
+  max: 100,
   message: "Too many authentication attempts, please try again after 15 minutes",
   handler: (req, res, next, options) => {
     next(new AppError(options.message, 429));

@@ -1,12 +1,24 @@
 import { CustomerService } from "../../services/customers/customer.service.js";
 import { sendResponse } from "../../utils/response.js";
-import { asyncHandler } from "../../utils/errors.js";
+import { asyncHandler, AppError } from "../../utils/errors.js";
 
 const customerService = new CustomerService();
 
 export const createCustomer = asyncHandler(async (req, res) => {
-  // Use organizationId from middleware context
   const organizationId = req.organizationId;
+  const branchId = req.branchId;
+
+  if (!branchId) {
+    throw new AppError("X-Branch-Id header is required to create a customer.", 400);
+  }
+
+  if (req.body.branchId && req.body.branchId !== branchId) {
+    throw new AppError("Branch ID in request body does not match X-Branch-Id header.", 400);
+  }
+
+  // Derive branchId server-side from header context
+  req.body.branchId = branchId;
+
   const customer = await customerService.createCustomer(
     { ...req.body, organizationId },
     organizationId,
@@ -27,7 +39,8 @@ export const updateCustomer = asyncHandler(async (req, res) => {
     req.params.id,
     req.body,
     organizationId,
-    req.user.id
+    req.user.id,
+    req.user
   );
   return sendResponse(res, 200, "Customer updated successfully", customer);
 });
@@ -42,12 +55,27 @@ export const listCustomers = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
   const branchId = req.branchId;
 
+  // Enforce header and query parameter branch alignment
+  if (req.query.branchId && branchId && req.query.branchId !== branchId) {
+    throw new AppError("Branch ID in query parameters does not match X-Branch-Id header.", 400);
+  }
+
+  // Enforce access authorization if query parameter specifies a branch but header was omitted
+  if (req.query.branchId && !branchId && !req.user.hasOrgWideAccess) {
+    throw new AppError("Access denied. You do not have access to this branch.", 403);
+  }
+
+  if (!branchId && !req.user.hasOrgWideAccess) {
+    throw new AppError("X-Branch-Id header is required for this request.", 400);
+  }
+
   const { page, limit, sort, search } = req.query;
 
   // Filter building
   const filter = {};
-  if (branchId) {
-    filter.branchId = branchId;
+  const finalBranchId = branchId || req.query.branchId;
+  if (finalBranchId) {
+    filter.branchId = finalBranchId;
   }
 
   const result = await customerService.listCustomers(
