@@ -13,13 +13,14 @@ import compression from "compression";
 import authRouter from "./src/routers/auth/auth.routes.js";
 import customerRouter from "./src/routers/customers/customer.routes.js";
 import rbacRouter from "./src/routers/rbac/rbac.routes.js";
+import branchRouter from "./src/routers/branches/branch.routes.js";
 import { apiLimiter, speedLimiter, sanitizeData } from "./src/middleware/security.js";
 import { globalErrorHandler } from "./src/utils/errors.js";
 //
 const app = express();
 
-// // for vps + nginx (1 means trust first proxy, e.g. Nginx)
-// app.set("trust proxy", process.env.NODE_ENV === "production" ? 1 : false);
+// for vps + nginx (1 means trust first proxy, e.g. Nginx, dev tunnels)
+app.set("trust proxy", 1);
 
 // // disable express fingerprint x-powered-by
 // app.disable("x-powered-by");
@@ -43,12 +44,13 @@ app.use((req, res, next) => {
 // CORS
 const allowOrigins = [
     process.env.NODE_ENV === "production" ? "https://theglamup.in" : "http://localhost:3000",
-    process.env.NODE_ENV === "production" ? "https://theglamup.in" : "https://l3zz8htl-3011.inc1.devtunnels.ms"
+    process.env.NODE_ENV === "production" ? "https://theglamup.in" : "https://l3zz8htl-3000.inc1.devtunnels.ms"
 ];
 
 const corsOptions = {
     origin: function (origin, callback) {
         if (!origin || allowOrigins.includes(origin)) {
+            console.log(origin, "allowed")
             callback(null, true);
         } else {
             console.warn(`Cors Blocked: ${origin}`);
@@ -57,7 +59,7 @@ const corsOptions = {
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
+    allowedHeaders: ["Content-Type", "Authorization", "X-Branch-Id", "x-branch-id"]
 };
 
 app.use(cors(corsOptions));
@@ -78,6 +80,7 @@ if (process.env.NODE_ENV !== "production") {
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/customers", customerRouter);
 app.use("/api/v1/rbac", rbacRouter);
+app.use("/api/v1/branches", branchRouter);
 
 // health check endpoint for server
 app.get("/health", (req, res) => {

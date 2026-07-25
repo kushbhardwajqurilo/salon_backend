@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+import { AppError } from "../../utils/errors.js";
 import { AuthService } from "../../services/auth/auth.service.js";
 import { sendResponse } from "../../utils/response.js";
 import { asyncHandler } from "../../utils/errors.js";
@@ -23,7 +25,7 @@ export const login = asyncHandler(async (req, res) => {
   const ipAddress = req.ip || req.headers["x-forwarded-for"] || "Unknown";
   const deviceInfo = req.headers["user-agent"] || "Unknown";
 
-  const { user, accessToken, refreshToken } = await authService.login(
+  const { accessToken, refreshToken } = await authService.login(
     req.body.email,
     req.body.password,
     ipAddress,
@@ -32,7 +34,7 @@ export const login = asyncHandler(async (req, res) => {
 
   setRefreshTokenCookie(res, refreshToken);
 
-  return sendResponse(res, 200, "Login successful", { user, accessToken });
+  return sendResponse(res, 200, "Login successful", { accessToken, refreshToken });
 });
 
 export const refresh = asyncHandler(async (req, res) => {
@@ -44,11 +46,51 @@ export const refresh = asyncHandler(async (req, res) => {
 
   setRefreshTokenCookie(res, refreshToken);
 
-  return sendResponse(res, 200, "Token refreshed successfully", { accessToken });
+  return sendResponse(res, 200, "Token refreshed successfully", { accessToken, refreshToken });
+});
+
+export const me = asyncHandler(async (req, res) => {
+  const user = await mongoose.model("User").findById(req.user.id).populate("role");
+  if (!user) {
+    throw new AppError("User not found", 404);
+  }
+
+  let permissions = [];
+  if (user.role?.name?.toLowerCase() !== "owner") {
+    const roleObj = await mongoose.model("Role").findById(user.role?._id).populate("permissions");
+    if (roleObj) {
+      permissions = roleObj.permissions.map((p) => p.name);
+    }
+  }
+
+  let branchAccess = user.branchAccess || [];
+  if (user.role?.name?.toLowerCase() === "owner") {
+    const dbBranches = await mongoose.model("Branch").find({ organizationId: user.organizationId });
+    branchAccess = dbBranches.map(b => ({
+      branchId: b._id,
+      branchName: b.name,
+      isActive: b.isActive
+    }));
+  } else {
+    branchAccess = branchAccess.filter(b => b.isActive);
+  }
+
+  const roleName = user.role?.name;
+  const capitalizedRole = roleName ? roleName.charAt(0).toUpperCase() + roleName.slice(1).toLowerCase() : "";
+  return sendResponse(res, 200, "Session details retrieved", {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: capitalizedRole,
+    permissions,
+    organizationId: user.organizationId,
+    branchAccess,
+  });
 });
 
 export const logout = asyncHandler(async (req, res) => {
   const token = req.cookies?.refreshToken || req.body.refreshToken;
+  console.log("token", token)
   if (token) {
     await authService.logout(token);
   }
@@ -88,7 +130,6 @@ export const verifyOTP = asyncHandler(async (req, res) => {
   );
 
   setRefreshTokenCookie(res, refreshToken);
-
   return sendResponse(res, 200, "OTP verified and logged in", { user, accessToken });
 });
 

@@ -7,9 +7,10 @@
  * @param {Object|null} meta - Pagination metadata or additional stats
  */
 export const sendResponse = (res, statusCode, message, data = null, meta = null) => {
-  const status = `${statusCode}`.startsWith("2") ? "success" : "fail";
+  const success = `${statusCode}`.startsWith("2");
   return res.status(statusCode).json({
-    status,
+    success,
+    status: success ? "success" : "fail",
     message,
     data,
     meta,

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "nodemon index.mjs",
+    "seed": "node src/seed/seed.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand"
   },
   "keywords": [],

@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import { UserRepository } from "../../repositories/users/user.repository.js";
 import { RoleRepository } from "../../repositories/roles/role.repository.js";
 import { SessionRepository } from "../../repositories/auth/session.repository.js";
@@ -20,15 +21,20 @@ export class AuthService {
         id: user._id,
         email: user.email,
         role: user.role?.name || "",
-        branches: user.branches || [],
       },
       env.JWT_SECRET,
       { expiresIn: env.JWT_ACCESS_EXPIRATION }
     );
   }
 
-  generateRefreshToken() {
-    return crypto.randomBytes(40).toString("hex");
+  generateRefreshToken(user) {
+    return jwt.sign(
+      {
+        id: user._id,
+      },
+      env.JWT_REFRESH_SECRET,
+      { expiresIn: env.JWT_REFRESH_EXPIRATION }
+    );
   }
 
   async register(data) {
@@ -100,77 +106,76 @@ export class AuthService {
 
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
-    await user.save();
 
     const accessToken = this.generateAccessToken(user);
-    const refreshToken = this.generateRefreshToken();
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const refreshToken = this.generateRefreshToken(user);
 
-    await this.sessionRepo.create({
-      user: user._id,
-      refreshToken,
-      ipAddress,
-      deviceInfo,
-      expiresAt,
-    });
+    const salt = await bcrypt.genSalt(10);
+    user.refreshToken = await bcrypt.hash(refreshToken, salt);
+    await user.save();
 
     return {
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role?.name,
-        isVerified: user.isVerified,
-      },
       accessToken,
       refreshToken,
     };
   }
 
   async refresh(token, ipAddress, deviceInfo) {
-    const session = await this.sessionRepo.findByToken(token);
-
-    if (!session) {
-      const compromisedSession = await this.sessionRepo.model.findOne({ refreshToken: token });
-      if (compromisedSession) {
-        await this.sessionRepo.invalidateAllUserSessions(compromisedSession.user);
-        throw new AppError("Compromised session detected. All sessions revoked.", 401);
-      }
+    if (!token) {
       throw new AppError("Session not found or invalid", 401);
     }
 
-    const user = session.user;
-    if (user.status !== "active") {
-      throw new AppError("User account is inactive", 403);
+    try {
+      const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET);
+      const user = await this.userRepo.findById(decoded.id);
+
+      if (!user || user.status !== "active" || !user.refreshToken) {
+        throw new AppError("Session not found or invalid", 401);
+      }
+
+      const isMatch = await bcrypt.compare(token, user.refreshToken);
+      if (!isMatch) {
+        user.refreshToken = null;
+        await user.save();
+        throw new AppError("Session not found or invalid", 401);
+      }
+
+      const newAccessToken = this.generateAccessToken(user);
+      const newRefreshToken = this.generateRefreshToken(user);
+
+      const salt = await bcrypt.genSalt(10);
+      user.refreshToken = await bcrypt.hash(newRefreshToken, salt);
+      await user.save();
+
+      return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      };
+    } catch (err) {
+      throw new AppError("Session not found or invalid", 401);
     }
-
-    const newAccessToken = this.generateAccessToken(user);
-    const newRefreshToken = this.generateRefreshToken();
-
-    session.isValid = false;
-    await session.save();
-
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    await this.sessionRepo.create({
-      user: user._id,
-      refreshToken: newRefreshToken,
-      ipAddress,
-      deviceInfo,
-      expiresAt,
-    });
-
-    return {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-    };
   }
 
   async logout(token) {
-    return this.sessionRepo.invalidateSession(token);
+    if (!token) return;
+    try {
+      const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET);
+      const user = await this.userRepo.findById(decoded.id);
+      if (user) {
+        user.refreshToken = null;
+        await user.save();
+      }
+    } catch (err) {
+      // Ignore errors on logout
+    }
   }
 
   async logoutAllDevices(userId) {
-    return this.sessionRepo.invalidateAllUserSessions(userId);
+    const user = await this.userRepo.findById(userId);
+    if (user) {
+      user.refreshToken = null;
+      await user.save();
+    }
   }
 
   async verifyEmail(token) {

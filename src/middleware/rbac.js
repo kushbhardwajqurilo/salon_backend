@@ -71,3 +71,49 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
     next();
   });
 };
+
+export const requirePermission = (requiredPermission) => {
+  return asyncHandler(async (req, res, next) => {
+    const { role: roleName } = req.user;
+
+    // Owner / Admin / Superadmin bypasses permission checks
+    if (
+      roleName?.toLowerCase() === "owner" ||
+      roleName?.toLowerCase() === "admin" ||
+      roleName?.toLowerCase() === "superadmin"
+    ) {
+      return next();
+    }
+
+    const cacheKey = `rbac:role:${roleName}:permissions`;
+    let permissions = [];
+
+    try {
+      const cachedPermissions = await redis.get(cacheKey);
+      if (cachedPermissions) {
+        permissions = JSON.parse(cachedPermissions);
+      } else {
+        const roleObj = await roleRepo.findOne({ name: roleName.toLowerCase() }, ["permissions"]);
+        if (!roleObj) {
+          throw new AppError("Access denied. Role not found.", 403);
+        }
+        permissions = roleObj.permissions.map((p) => p.name);
+        await redis.setex(cacheKey, 86400, JSON.stringify(permissions));
+      }
+    } catch (err) {
+      logger.error(`Error resolving permissions from cache/db: ${err.message}`);
+      const roleObj = await roleRepo.findOne({ name: roleName.toLowerCase() }, ["permissions"]);
+      if (!roleObj) {
+        throw new AppError("Access denied. Role not found.", 403);
+      }
+      permissions = roleObj.permissions.map((p) => p.name);
+    }
+
+    const hasPermission = permissions.includes(requiredPermission);
+    if (!hasPermission) {
+      throw new AppError("Access denied. You do not have the required permissions.", 403);
+    }
+
+    next();
+  });
+};

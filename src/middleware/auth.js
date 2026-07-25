@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import { env } from "../config/env.js";
 import { AppError } from "../utils/errors.js";
 import { UserRepository } from "../repositories/users/user.repository.js";
@@ -32,12 +33,23 @@ export const authenticate = asyncHandler(async (req, res, next) => {
       throw new AppError("Your account has been deactivated or locked.", 403);
     }
 
+    let branchAccess = user.branchAccess || [];
+    if (decoded.role?.toLowerCase() === "owner") {
+      const dbBranches = await mongoose.model("Branch").find({ organizationId: user.organizationId });
+      branchAccess = dbBranches.map(b => ({
+        branchId: b._id,
+        branchName: b.name,
+        isActive: b.isActive
+      }));
+    }
+
     // Attach user context to request
     req.user = {
       id: user._id,
       email: user.email,
       role: decoded.role,
-      branches: user.branches || [],
+      organizationId: user.organizationId,
+      branchAccess,
     };
 
     next();

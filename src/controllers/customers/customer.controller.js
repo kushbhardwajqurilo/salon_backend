@@ -5,8 +5,8 @@ import { asyncHandler } from "../../utils/errors.js";
 const customerService = new CustomerService();
 
 const getBypassStatus = (req) => {
-  const role = req.user?.role;
-  return role === "admin" || role === "superadmin";
+  const role = req.user?.role?.toLowerCase();
+  return role === "owner" || role === "admin" || role === "superadmin";
 };
 
 export const createCustomer = asyncHandler(async (req, res) => {
@@ -15,7 +15,7 @@ export const createCustomer = asyncHandler(async (req, res) => {
 });
 
 export const getCustomerById = asyncHandler(async (req, res) => {
-  const allowedBranches = req.user?.branches || [];
+  const allowedBranches = req.user?.branchAccess?.map((b) => b.branchId.toString()) || [];
   const bypass = getBypassStatus(req);
 
   const customer = await customerService.getCustomerById(req.params.id, allowedBranches, bypass);
@@ -23,7 +23,7 @@ export const getCustomerById = asyncHandler(async (req, res) => {
 });
 
 export const updateCustomer = asyncHandler(async (req, res) => {
-  const allowedBranches = req.user?.branches || [];
+  const allowedBranches = req.user?.branchAccess?.map((b) => b.branchId.toString()) || [];
   const bypass = getBypassStatus(req);
 
   const customer = await customerService.updateCustomer(
@@ -37,7 +37,7 @@ export const updateCustomer = asyncHandler(async (req, res) => {
 });
 
 export const deleteCustomer = asyncHandler(async (req, res) => {
-  const allowedBranches = req.user?.branches || [];
+  const allowedBranches = req.user?.branchAccess?.map((b) => b.branchId.toString()) || [];
   const bypass = getBypassStatus(req);
 
   await customerService.deleteCustomer(req.params.id, allowedBranches, bypass, req.user.id);
@@ -45,15 +45,16 @@ export const deleteCustomer = asyncHandler(async (req, res) => {
 });
 
 export const listCustomers = asyncHandler(async (req, res) => {
-  const allowedBranches = req.user?.branches || [];
+  const allowedBranches = req.user?.branchAccess?.map((b) => b.branchId.toString()) || [];
   const bypass = getBypassStatus(req);
 
   const { page, limit, sort, search, branchId } = req.query;
 
   // Filter building
   const filter = {};
-  if (branchId) {
-    filter.branchId = branchId;
+  const actualBranchId = req.branchId || branchId;
+  if (actualBranchId) {
+    filter.branchId = actualBranchId;
   }
 
   const result = await customerService.listCustomers(
@@ -73,7 +74,7 @@ export const listCustomers = asyncHandler(async (req, res) => {
 });
 
 export const addNote = asyncHandler(async (req, res) => {
-  const allowedBranches = req.user?.branches || [];
+  const allowedBranches = req.user?.branchAccess?.map((b) => b.branchId.toString()) || [];
   const bypass = getBypassStatus(req);
 
   const customer = await customerService.addNote(
@@ -87,7 +88,7 @@ export const addNote = asyncHandler(async (req, res) => {
 });
 
 export const updatePreferences = asyncHandler(async (req, res) => {
-  const allowedBranches = req.user?.branches || [];
+  const allowedBranches = req.user?.branchAccess?.map((b) => b.branchId.toString()) || [];
   const bypass = getBypassStatus(req);
 
   const customer = await customerService.updatePreferences(
@@ -101,7 +102,7 @@ export const updatePreferences = asyncHandler(async (req, res) => {
 });
 
 export const addVisit = asyncHandler(async (req, res) => {
-  const allowedBranches = req.user?.branches || [];
+  const allowedBranches = req.user?.branchAccess?.map((b) => b.branchId.toString()) || [];
   const bypass = getBypassStatus(req);
 
   const customer = await customerService.addVisit(
@@ -115,7 +116,7 @@ export const addVisit = asyncHandler(async (req, res) => {
 });
 
 export const addService = asyncHandler(async (req, res) => {
-  const allowedBranches = req.user?.branches || [];
+  const allowedBranches = req.user?.branchAccess?.map((b) => b.branchId.toString()) || [];
   const bypass = getBypassStatus(req);
 
   const customer = await customerService.addServiceHistory(
@@ -129,7 +130,7 @@ export const addService = asyncHandler(async (req, res) => {
 });
 
 export const addMembership = asyncHandler(async (req, res) => {
-  const allowedBranches = req.user?.branches || [];
+  const allowedBranches = req.user?.branchAccess?.map((b) => b.branchId.toString()) || [];
   const bypass = getBypassStatus(req);
 
   const customer = await customerService.addMembershipHistory(
@@ -143,7 +144,7 @@ export const addMembership = asyncHandler(async (req, res) => {
 });
 
 export const adjustLoyaltyPoints = asyncHandler(async (req, res) => {
-  const allowedBranches = req.user?.branches || [];
+  const allowedBranches = req.user?.branchAccess?.map((b) => b.branchId.toString()) || [];
   const bypass = getBypassStatus(req);
 
   const customer = await customerService.adjustLoyaltyPoints(

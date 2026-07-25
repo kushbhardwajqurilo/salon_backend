@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.js";
+import { resolveBranchScope } from "../../middleware/branchScope.js";
 import { authorize } from "../../middleware/rbac.js";
 import { validate } from "../../middleware/validate.js";
 import * as customerController from "../../controllers/customers/customer.controller.js";
@@ -9,6 +10,7 @@ const router = Router();
 
 // Enforce authentication across all customer operations
 router.use(authenticate);
+router.use(resolveBranchScope);
 
 router.post(
   "/",

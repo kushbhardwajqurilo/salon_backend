@@ -30,10 +30,26 @@ const userSchema = new mongoose.Schema(
       ref: "Role",
       required: true,
     },
-    branches: [
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      required: true,
+    },
+    branchAccess: [
       {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Branch",
+        branchId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Branch",
+          required: true,
+        },
+        branchName: {
+          type: String,
+          required: true,
+        },
+        isActive: {
+          type: Boolean,
+          default: true,
+        },
       },
     ],
     isVerified: {
@@ -76,6 +92,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["active", "suspended", "locked"],
       default: "active",
+    },
+    refreshToken: {
+      type: String,
+      default: null,
     },
   },
   {

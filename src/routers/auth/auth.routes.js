@@ -13,6 +13,7 @@ router.post("/register", validate(authValidation.registerSchema), authController
 router.post("/login", validate(authValidation.loginSchema), authController.login);
 router.post("/refresh", authController.refresh);
 router.post("/logout", authController.logout);
+router.get("/me", authenticate, authController.me);
 router.get("/verify-email", validate(authValidation.verifyEmailSchema), authController.verifyEmail);
 router.post("/forgot-password", validate(authValidation.forgotPasswordSchema), authController.forgotPassword);
 router.post("/reset-password/:token", validate(authValidation.resetPasswordSchema), authController.resetPassword);
