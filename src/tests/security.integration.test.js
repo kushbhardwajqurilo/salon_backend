@@ -7,6 +7,9 @@ import { AppError } from "../utils/errors.js";
 import mongoose from "mongoose";
 import { createCustomer, listCustomers } from "../controllers/customers/customer.controller.js";
 import { CustomerService } from "../services/customers/customer.service.js";
+import { getBranchById } from "../controllers/branches/branch.controller.js";
+import { authorize } from "../middleware/rbac.js";
+import { RoleRepository } from "../repositories/roles/role.repository.js";
 
 
 // Mock the Branch model's findOne method
@@ -344,6 +347,115 @@ describe("Security Scoping Middleware & Validation tests", () => {
         await expect(
           customerService.updateCustomer("cust-1", { branchId: targetBranchId }, organizationId, "user-1", userContext)
         ).rejects.toThrow(new AppError("Access denied. You do not have access to the target branch.", 403));
+      });
+    });
+
+    describe("Branch Resource Role-Agnostic Scoping & Middleware Tests", () => {
+      let branchReq;
+      let branchRes;
+
+      beforeEach(() => {
+        branchReq = {
+          params: {},
+          user: {
+            id: "user-123",
+            organizationId: new mongoose.Types.ObjectId().toString(),
+            branchAccess: [],
+            hasOrgWideAccess: false,
+            role: "stylist",
+          },
+        };
+        branchRes = {
+          status: jest.fn().mockReturnThis(),
+          json: jest.fn(),
+        };
+        RoleRepository.prototype.findOne = jest.fn();
+      });
+
+      it("should allow getBranchById for a user with hasOrgWideAccess: true", async () => {
+        const branchId = new mongoose.Types.ObjectId().toString();
+        branchReq.params.id = branchId;
+        branchReq.user.hasOrgWideAccess = true;
+
+        Branch.findOne.mockResolvedValue({
+          _id: branchId,
+          organizationId: branchReq.user.organizationId,
+          isActive: true,
+        });
+
+        const next = jest.fn();
+        await getBranchById(branchReq, branchRes, next);
+        expect(next).not.toHaveBeenCalled();
+        expect(branchRes.status).toHaveBeenCalledWith(200);
+        expect(branchRes.json).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: "Branch retrieved successfully",
+          })
+        );
+      });
+
+      it("should allow getBranchById for a non-org-wide user with the branch in branchAccess", async () => {
+        const branchId = new mongoose.Types.ObjectId().toString();
+        branchReq.params.id = branchId;
+        branchReq.user.hasOrgWideAccess = false;
+        branchReq.user.branchAccess = [
+          { branchId: branchId, branchName: "Active Branch", isActive: true },
+        ];
+
+        Branch.findOne.mockResolvedValue({
+          _id: branchId,
+          organizationId: branchReq.user.organizationId,
+          isActive: true,
+        });
+
+        const next = jest.fn();
+        await getBranchById(branchReq, branchRes, next);
+        expect(next).not.toHaveBeenCalled();
+        expect(branchRes.status).toHaveBeenCalledWith(200);
+      });
+
+      it("should deny getBranchById for a user whose role is 'owner' but hasOrgWideAccess is false and branch is not in branchAccess", async () => {
+        const branchId = new mongoose.Types.ObjectId().toString();
+        branchReq.params.id = branchId;
+        branchReq.user.role = "owner";
+        branchReq.user.hasOrgWideAccess = false;
+        branchReq.user.branchAccess = [];
+
+        Branch.findOne.mockResolvedValue({
+          _id: branchId,
+          organizationId: branchReq.user.organizationId,
+          isActive: true,
+        });
+
+        const next = jest.fn();
+        getBranchById(branchReq, branchRes, next);
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(next).toHaveBeenCalledWith(expect.any(AppError));
+        expect(next.mock.calls[0][0].message).toBe("Access denied. You do not have access to this branch.");
+        expect(next.mock.calls[0][0].statusCode).toBe(403);
+      });
+
+      it("should allow access for 'admin' or 'superadmin' in authorize middleware even if they lack required permission", async () => {
+        const middleware = authorize("branches.manage");
+        branchReq.user.role = "admin";
+        branchReq.user.hasOrgWideAccess = true;
+
+        await expect(runMiddleware(middleware, branchReq, branchRes)).resolves.toBeUndefined();
+      });
+
+      it("should deny access for non-admin/non-superadmin role (e.g. owner) if they lack required permission in authorize middleware", async () => {
+        const middleware = authorize("branches.manage");
+        branchReq.user.role = "owner";
+        branchReq.user.hasOrgWideAccess = false;
+
+        RoleRepository.prototype.findOne.mockResolvedValue({
+          name: "owner",
+          permissions: [{ name: "customer:view" }],
+        });
+
+        await expect(runMiddleware(middleware, branchReq, branchRes)).rejects.toThrow(
+          new AppError("Access denied. You do not have the required permissions.", 403)
+        );
       });
     });
   });

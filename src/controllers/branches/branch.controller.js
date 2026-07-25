@@ -55,7 +55,7 @@ export const getBranches = asyncHandler(async (req, res) => {
 
 export const getBranchById = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { role, organizationId, branchAccess } = req.user;
+  const { organizationId, branchAccess, hasOrgWideAccess } = req.user;
 
   const branch = await Branch.findOne({ _id: id, organizationId });
   if (!branch) {
@@ -64,7 +64,7 @@ export const getBranchById = asyncHandler(async (req, res) => {
 
   // Check access
   let hasAccess = false;
-  if (role?.toLowerCase() === "owner") {
+  if (hasOrgWideAccess === true) {
     hasAccess = true;
   } else {
     hasAccess = branchAccess.some(
