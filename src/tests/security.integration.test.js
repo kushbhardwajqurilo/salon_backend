@@ -209,14 +209,12 @@ describe("Security Scoping Middleware & Validation tests", () => {
     });
 
     describe("createCustomer branchId Verification", () => {
-      it("should reject with 400 if branchId in body does not match X-Branch-Id header", async () => {
-        const headerBranchId = new mongoose.Types.ObjectId().toString();
-        const bodyBranchId = new mongoose.Types.ObjectId().toString();
+      it("should reject with 400 if X-Branch-Id context is missing", async () => {
         const req = {
           organizationId: "org-123",
-          branchId: headerBranchId,
-          body: { branchId: bodyBranchId },
-          user: { id: "user-123" }
+          branchId: undefined, // missing header context
+          body: { name: "Test Customer" },
+          user: { id: "user-123", hasOrgWideAccess: false, branchAccess: [] }
         };
         const res = {};
         const next = jest.fn();
@@ -224,17 +222,17 @@ describe("Security Scoping Middleware & Validation tests", () => {
         await createCustomer(req, res, next);
         
         expect(next).toHaveBeenCalledWith(expect.any(AppError));
-        expect(next.mock.calls[0][0].message).toBe("Branch ID in request body does not match X-Branch-Id header.");
+        expect(next.mock.calls[0][0].message).toBe("X-Branch-Id header is required for this request.");
         expect(next.mock.calls[0][0].statusCode).toBe(400);
       });
 
-      it("should derive branchId server-side from header if not provided in body", async () => {
+      it("should derive homeBranchId server-side from header context", async () => {
         const headerBranchId = new mongoose.Types.ObjectId().toString();
         const req = {
           organizationId: "org-123",
-          branchId: headerBranchId,
-          body: { name: "Test Customer" },
-          user: { id: "user-123" }
+          headers: { "x-branch-id": headerBranchId },
+          body: { name: "Test Customer", phone: "+919999988888" },
+          user: { id: "user-123", hasOrgWideAccess: false, branchAccess: [{ branchId: headerBranchId, isActive: true }] }
         };
         const res = {
           status: jest.fn().mockReturnThis(),
@@ -242,58 +240,25 @@ describe("Security Scoping Middleware & Validation tests", () => {
         };
         const next = jest.fn();
         
-        CustomerService.prototype.createCustomer = jest.fn().mockResolvedValue({ _id: "cust-123" });
+        Branch.findOne.mockResolvedValue({ _id: headerBranchId, organizationId: "org-123", isActive: true });
+        CustomerService.prototype.createCustomer = jest.fn().mockResolvedValue({ _id: "cust-123", homeBranchId: headerBranchId });
 
         await createCustomer(req, res, next);
-        expect(req.body.branchId).toBe(headerBranchId);
-        expect(CustomerService.prototype.createCustomer).toHaveBeenCalled();
+        expect(CustomerService.prototype.createCustomer).toHaveBeenCalledWith(
+          expect.objectContaining({ homeBranchId: headerBranchId }),
+          "org-123",
+          "user-123"
+        );
       });
     });
 
     describe("listCustomers branchId Scoping & Validation", () => {
-      it("should reject with 400 if branchId in query does not match X-Branch-Id header", async () => {
-        const headerBranchId = new mongoose.Types.ObjectId().toString();
-        const queryBranchId = new mongoose.Types.ObjectId().toString();
+      it("should reject with 400 if X-Branch-Id is missing and user is branch-limited", async () => {
         const req = {
           organizationId: "org-123",
-          branchId: headerBranchId,
-          query: { branchId: queryBranchId },
-          user: { hasOrgWideAccess: false }
-        };
-        const res = {};
-        const next = jest.fn();
-
-        await listCustomers(req, res, next);
-
-        expect(next).toHaveBeenCalledWith(expect.any(AppError));
-        expect(next.mock.calls[0][0].message).toBe("Branch ID in query parameters does not match X-Branch-Id header.");
-        expect(next.mock.calls[0][0].statusCode).toBe(400);
-      });
-
-      it("should reject with 403 if user lacks org-wide access and branchId is omitted from header but specified in query", async () => {
-        const queryBranchId = new mongoose.Types.ObjectId().toString();
-        const req = {
-          organizationId: "org-123",
-          branchId: undefined,
-          query: { branchId: queryBranchId },
-          user: { hasOrgWideAccess: false }
-        };
-        const res = {};
-        const next = jest.fn();
-
-        await listCustomers(req, res, next);
-
-        expect(next).toHaveBeenCalledWith(expect.any(AppError));
-        expect(next.mock.calls[0][0].message).toBe("Access denied. You do not have access to this branch.");
-        expect(next.mock.calls[0][0].statusCode).toBe(403);
-      });
-
-      it("should reject with 400 if X-Branch-Id is omitted and user lacks hasOrgWideAccess", async () => {
-        const req = {
-          organizationId: "org-123",
-          branchId: undefined,
+          headers: {},
           query: {},
-          user: { hasOrgWideAccess: false }
+          user: { hasOrgWideAccess: false, branchAccess: [] }
         };
         const res = {};
         const next = jest.fn();
@@ -306,48 +271,49 @@ describe("Security Scoping Middleware & Validation tests", () => {
       });
     });
 
-    describe("Customer Update branchId Target Validation", () => {
-      it("should reject if target branch does not exist or is inactive", async () => {
+    describe("Customer Update Immutability Verification", () => {
+      it("should ignore organizationId, homeBranchId, and visitedBranchIds in updateCustomer payload", async () => {
         const customerService = new CustomerService();
         const organizationId = new mongoose.Types.ObjectId().toString();
-        const targetBranchId = new mongoose.Types.ObjectId().toString();
+        const homeBranchId = new mongoose.Types.ObjectId().toString();
+        const customerId = new mongoose.Types.ObjectId().toString();
+        const userId = new mongoose.Types.ObjectId().toString();
         
         customerService.customerRepo.findById = jest.fn().mockResolvedValue({
-          _id: "cust-1",
-          branchId: new mongoose.Types.ObjectId().toString()
-        });
-
-        Branch.findOne = jest.fn().mockResolvedValue(null);
-
-        await expect(
-          customerService.updateCustomer("cust-1", { branchId: targetBranchId }, organizationId, "user-1", { hasOrgWideAccess: true })
-        ).rejects.toThrow(new AppError("Target branch not found or inactive", 404));
-      });
-
-      it("should reject if user lacks access to the target branch during update", async () => {
-        const customerService = new CustomerService();
-        const organizationId = new mongoose.Types.ObjectId().toString();
-        const targetBranchId = new mongoose.Types.ObjectId().toString();
-        
-        customerService.customerRepo.findById = jest.fn().mockResolvedValue({
-          _id: "cust-1",
-          branchId: new mongoose.Types.ObjectId().toString()
-        });
-
-        Branch.findOne = jest.fn().mockResolvedValue({
-          _id: targetBranchId,
+          _id: customerId,
           organizationId,
-          isActive: true
+          homeBranchId,
+          visitedBranchIds: []
         });
 
-        const userContext = {
-          hasOrgWideAccess: false,
-          branchAccess: []
+        customerService.customerRepo.updateById = jest.fn().mockImplementation((id, data) => {
+          return Promise.resolve({ _id: id, ...data });
+        });
+
+        customerService.customerRepo.addActivity = jest.fn().mockResolvedValue(null);
+
+        const updates = {
+          name: "Updated Name",
+          homeBranchId: "malicious-change-attempt",
+          organizationId: "other-org",
+          visitedBranchIds: ["some-other-branch"]
         };
 
-        await expect(
-          customerService.updateCustomer("cust-1", { branchId: targetBranchId }, organizationId, "user-1", userContext)
-        ).rejects.toThrow(new AppError("Access denied. You do not have access to the target branch.", 403));
+        const result = await customerService.updateCustomer(
+          customerId,
+          updates,
+          organizationId,
+          userId,
+          { hasOrgWideAccess: true }
+        );
+
+        expect(result.name).toBe("Updated Name");
+        expect(customerService.customerRepo.updateById).toHaveBeenCalledWith(
+          customerId,
+          { name: "Updated Name" }, // strictly updates only mutable properties
+          organizationId,
+          userId
+        );
       });
     });
 

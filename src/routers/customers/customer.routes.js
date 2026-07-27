@@ -11,96 +11,56 @@ const router = Router();
 // Enforce authentication across all customer operations
 router.use(authenticate);
 
+// Create Customer Profile
 router.post(
   "/",
   requireBranchScope,
-  authorize("customer:create"),
+  authorize("customers.create"),
   validate(customerValidation.createCustomerSchema),
   customerController.createCustomer
 );
 
+// List Customers
 router.get(
   "/",
   requireBranchScope,
-  authorize("customer:view"),
+  authorize("customers.view"),
   validate(customerValidation.queryCustomerSchema),
   customerController.listCustomers
 );
 
+// Get Customer by ID
 router.get(
   "/:id",
   requireOrganizationScope,
-  authorize("customer:view"),
+  authorize("customers.view"),
   customerController.getCustomerById
 );
 
+// Update Customer Profile
 router.put(
   "/:id",
   requireOrganizationScope,
-  authorize("customer:update"),
+  authorize("customers.update"),
   validate(customerValidation.updateCustomerSchema),
   customerController.updateCustomer
 );
 
+// Soft Delete Customer Profile
 router.delete(
   "/:id",
   requireOrganizationScope,
-  authorize("customer:delete"),
+  authorize("customers.delete"),
   customerController.deleteCustomer
 );
 
-// Notes
+// Append Customer Note
 router.post(
   "/:id/notes",
   requireOrganizationScope,
-  authorize("customer:update"),
+  authorize("customers.update"),
   validate(customerValidation.addNoteSchema),
   customerController.addNote
-);
-
-// Preferences
-router.put(
-  "/:id/preferences",
-  requireOrganizationScope,
-  authorize("customer:update"),
-  validate(customerValidation.updatePreferencesSchema),
-  customerController.updatePreferences
-);
-
-// Visit log
-router.post(
-  "/:id/visits",
-  requireBranchScope,
-  authorize("customer:update"),
-  validate(customerValidation.addVisitSchema),
-  customerController.addVisit
-);
-
-// Service log
-router.post(
-  "/:id/services",
-  requireBranchScope,
-  authorize("customer:update"),
-  validate(customerValidation.addServiceSchema),
-  customerController.addService
-);
-
-// Membership log
-router.post(
-  "/:id/memberships",
-  requireBranchScope,
-  authorize("customer:update"),
-  validate(customerValidation.addMembershipSchema),
-  customerController.addMembership
-);
-
-// Loyalty log
-router.post(
-  "/:id/loyalty",
-  requireOrganizationScope,
-  authorize("customer:update"),
-  validate(customerValidation.adjustLoyaltySchema),
-  customerController.adjustLoyaltyPoints
 );
 
 export default router;

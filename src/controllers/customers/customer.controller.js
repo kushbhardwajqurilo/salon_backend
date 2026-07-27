@@ -1,26 +1,76 @@
+import mongoose from "mongoose";
 import { CustomerService } from "../../services/customers/customer.service.js";
 import { sendResponse } from "../../utils/response.js";
 import { asyncHandler, AppError } from "../../utils/errors.js";
 
 const customerService = new CustomerService();
 
+/**
+ * Helper to retrieve and validate active branch context from request headers.
+ */
+const getActiveBranchContext = async (req) => {
+  const activeBranchId = req.headers
+    ? (req.headers["x-branch-id"] || req.headers["X-Branch-Id"] || req.branchId)
+    : req.branchId;
+  const { hasOrgWideAccess, branchAccess, organizationId } = req.user || {};
+
+  // Reject the frontend-only UI sentinel "all"
+  if (activeBranchId === "all") {
+    throw new AppError("Invalid branch ID format.", 400);
+  }
+
+  // Handle case where header is omitted
+  if (!activeBranchId) {
+    if (!hasOrgWideAccess) {
+      throw new AppError("X-Branch-Id header is required for this request.", 400);
+    }
+    return null; // Organization-wide scope
+  }
+
+  // Validate format
+  if (!mongoose.Types.ObjectId.isValid(activeBranchId)) {
+    throw new AppError("Invalid branch ID format.", 400);
+  }
+
+  // Validate active status and tenant ownership
+  const branch = await mongoose.model("Branch").findOne({
+    _id: activeBranchId,
+    organizationId,
+    isActive: true,
+  });
+
+  if (!branch) {
+    throw new AppError("Resource not found", 404);
+  }
+
+  // Validate user branch authorization
+  if (!hasOrgWideAccess) {
+    const isAuthorized = (branchAccess || []).some(
+      (b) => b.branchId.toString() === activeBranchId.toString() && b.isActive
+    );
+    if (!isAuthorized) {
+      throw new AppError("Access denied. You do not have access to this branch.", 403);
+    }
+  }
+
+  return activeBranchId;
+};
+
 export const createCustomer = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
-  const branchId = req.branchId;
+  const activeBranchId = await getActiveBranchContext(req);
 
-  if (!branchId) {
+  // Creation must always operate in a specific branch context
+  if (!activeBranchId) {
     throw new AppError("X-Branch-Id header is required to create a customer.", 400);
   }
 
-  if (req.body.branchId && req.body.branchId !== branchId) {
-    throw new AppError("Branch ID in request body does not match X-Branch-Id header.", 400);
-  }
-
-  // Derive branchId server-side from header context
-  req.body.branchId = branchId;
+  // homeBranchId is derived strictly server-side, ignore/reject client body input
+  delete req.body.homeBranchId;
+  delete req.body.branchId;
 
   const customer = await customerService.createCustomer(
-    { ...req.body, organizationId },
+    { ...req.body, homeBranchId: activeBranchId, organizationId },
     organizationId,
     req.user.id
   );
@@ -29,53 +79,56 @@ export const createCustomer = asyncHandler(async (req, res) => {
 
 export const getCustomerById = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
-  const customer = await customerService.getCustomerById(req.params.id, organizationId);
+  const activeBranchId = await getActiveBranchContext(req);
+
+  const customer = await customerService.getCustomerById(
+    req.params.id,
+    organizationId,
+    req.user,
+    activeBranchId
+  );
   return sendResponse(res, 200, "Customer retrieved successfully", customer);
 });
 
 export const updateCustomer = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
+  const activeBranchId = await getActiveBranchContext(req);
+
   const customer = await customerService.updateCustomer(
     req.params.id,
     req.body,
     organizationId,
     req.user.id,
-    req.user
+    req.user,
+    activeBranchId
   );
   return sendResponse(res, 200, "Customer updated successfully", customer);
 });
 
 export const deleteCustomer = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
+  const activeBranchId = await getActiveBranchContext(req);
+
+  // Validate visibility before soft-deleting
+  await customerService.getCustomerById(req.params.id, organizationId, req.user, activeBranchId);
+
   await customerService.deleteCustomer(req.params.id, organizationId, req.user.id);
   return sendResponse(res, 200, "Customer profile deleted successfully");
 });
 
 export const listCustomers = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
-  const branchId = req.branchId;
-
-  // Enforce header and query parameter branch alignment
-  if (req.query.branchId && branchId && req.query.branchId !== branchId) {
-    throw new AppError("Branch ID in query parameters does not match X-Branch-Id header.", 400);
-  }
-
-  // Enforce access authorization if query parameter specifies a branch but header was omitted
-  if (req.query.branchId && !branchId && !req.user.hasOrgWideAccess) {
-    throw new AppError("Access denied. You do not have access to this branch.", 403);
-  }
-
-  if (!branchId && !req.user.hasOrgWideAccess) {
-    throw new AppError("X-Branch-Id header is required for this request.", 400);
-  }
+  const activeBranchId = await getActiveBranchContext(req);
 
   const { page, limit, sort, search } = req.query;
 
-  // Filter building
   const filter = {};
-  const finalBranchId = branchId || req.query.branchId;
-  if (finalBranchId) {
-    filter.branchId = finalBranchId;
+  if (activeBranchId) {
+    // Branch-limited visibility rule
+    filter.$or = [
+      { homeBranchId: activeBranchId },
+      { visitedBranchIds: activeBranchId }
+    ];
   }
 
   const result = await customerService.listCustomers(
@@ -95,66 +148,15 @@ export const listCustomers = asyncHandler(async (req, res) => {
 
 export const addNote = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
+  const activeBranchId = await getActiveBranchContext(req);
+
   const customer = await customerService.addNote(
     req.params.id,
     req.body.text,
     organizationId,
-    req.user.id
+    req.user.id,
+    req.user,
+    activeBranchId
   );
   return sendResponse(res, 200, "Note added successfully", customer);
-});
-
-export const updatePreferences = asyncHandler(async (req, res) => {
-  const organizationId = req.organizationId;
-  const customer = await customerService.updatePreferences(
-    req.params.id,
-    req.body,
-    organizationId,
-    req.user.id
-  );
-  return sendResponse(res, 200, "Preferences updated successfully", customer);
-});
-
-export const addVisit = asyncHandler(async (req, res) => {
-  const organizationId = req.organizationId;
-  const customer = await customerService.addVisit(
-    req.params.id,
-    req.body,
-    organizationId,
-    req.user.id
-  );
-  return sendResponse(res, 200, "Visit history recorded successfully", customer);
-});
-
-export const addService = asyncHandler(async (req, res) => {
-  const organizationId = req.organizationId;
-  const customer = await customerService.addServiceHistory(
-    req.params.id,
-    req.body,
-    organizationId,
-    req.user.id
-  );
-  return sendResponse(res, 200, "Service history recorded successfully", customer);
-});
-
-export const addMembership = asyncHandler(async (req, res) => {
-  const organizationId = req.organizationId;
-  const customer = await customerService.addMembershipHistory(
-    req.params.id,
-    req.body,
-    organizationId,
-    req.user.id
-  );
-  return sendResponse(res, 200, "Membership history recorded successfully", customer);
-});
-
-export const adjustLoyaltyPoints = asyncHandler(async (req, res) => {
-  const organizationId = req.organizationId;
-  const customer = await customerService.adjustLoyaltyPoints(
-    req.params.id,
-    req.body.points,
-    organizationId,
-    req.user.id
-  );
-  return sendResponse(res, 200, "Loyalty points adjusted successfully", customer);
 });

@@ -1,0 +1,301 @@
+import { jest } from "@jest/globals";
+import mongoose from "mongoose";
+import { AppError } from "../../utils/errors.js";
+import { Branch } from "../../models/branches/branch.model.js";
+import { Customer } from "../../models/customers/customer.model.js";
+import {
+  createCustomer,
+  listCustomers,
+  getCustomerById,
+  updateCustomer,
+  deleteCustomer,
+  addNote,
+} from "../../controllers/customers/customer.controller.js";
+
+// Mock the models and DB queries
+Branch.findOne = jest.fn();
+Customer.findOne = jest.fn();
+Customer.findById = jest.fn();
+
+// Robust mongoose query mock creator
+const createQueryMock = (resolvedValue) => {
+  return {
+    populate: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    session: jest.fn().mockReturnThis(),
+    exec: jest.fn().mockResolvedValue(resolvedValue),
+    then: function (onResolve, onReject) {
+      return Promise.resolve(resolvedValue).then(onResolve, onReject);
+    },
+  };
+};
+
+describe("Customer Core Integration & Scoping Tests", () => {
+  let req;
+  let res;
+  let next;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    req = {
+      headers: {},
+      query: {},
+      params: {},
+      body: {},
+      organizationId: new mongoose.Types.ObjectId().toString(),
+      user: {
+        id: "user-123",
+        organizationId: new mongoose.Types.ObjectId().toString(),
+        branchAccess: [],
+        hasOrgWideAccess: false,
+      },
+    };
+    res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+    next = jest.fn();
+  });
+
+  describe("Organization Isolation", () => {
+    it("should throw 403 or 404 if a user from Org A tries to access a customer in Org B", async () => {
+      req.user.organizationId = "org-A";
+      req.organizationId = "org-A";
+      req.params.id = new mongoose.Types.ObjectId().toString();
+      req.headers["x-branch-id"] = new mongoose.Types.ObjectId().toString();
+
+      // Mock Branch check success
+      Branch.findOne.mockResolvedValue({ _id: req.headers["x-branch-id"], organizationId: "org-A", isActive: true });
+      req.user.branchAccess = [{ branchId: req.headers["x-branch-id"], isActive: true }];
+
+      // Customer is in Org B
+      Customer.findOne.mockReturnValue(createQueryMock(null)); 
+
+      await getCustomerById(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(AppError));
+      expect(next.mock.calls[0][0].statusCode).toBe(404);
+      expect(next.mock.calls[0][0].message).toBe("Resource not found");
+    });
+  });
+
+  describe("Branch-Limited Visibility", () => {
+    it("should allow access if X-Branch-Id matches customer's homeBranchId", async () => {
+      const activeBranchId = new mongoose.Types.ObjectId().toString();
+      req.headers["x-branch-id"] = activeBranchId;
+      req.params.id = new mongoose.Types.ObjectId().toString();
+      req.user.branchAccess = [{ branchId: activeBranchId, isActive: true }];
+
+      Branch.findOne.mockResolvedValue({ _id: activeBranchId, organizationId: req.user.organizationId, isActive: true });
+
+      const mockCustomer = {
+        _id: req.params.id,
+        organizationId: req.user.organizationId,
+        homeBranchId: activeBranchId,
+        visitedBranchIds: [],
+      };
+      Customer.findOne.mockReturnValue(createQueryMock(mockCustomer));
+
+      await getCustomerById(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          message: "Customer retrieved successfully",
+        })
+      );
+    });
+
+    it("should allow access if activeBranchId is in visitedBranchIds", async () => {
+      const activeBranchId = new mongoose.Types.ObjectId().toString();
+      const otherBranchId = new mongoose.Types.ObjectId().toString();
+      req.headers["x-branch-id"] = activeBranchId;
+      req.params.id = new mongoose.Types.ObjectId().toString();
+      req.user.branchAccess = [{ branchId: activeBranchId, isActive: true }];
+
+      Branch.findOne.mockResolvedValue({ _id: activeBranchId, organizationId: req.user.organizationId, isActive: true });
+
+      const mockCustomer = {
+        _id: req.params.id,
+        organizationId: req.user.organizationId,
+        homeBranchId: otherBranchId,
+        visitedBranchIds: [activeBranchId],
+      };
+      Customer.findOne.mockReturnValue(createQueryMock(mockCustomer));
+
+      await getCustomerById(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("should deny access (403) if activeBranchId is neither homeBranchId nor in visitedBranchIds", async () => {
+      const activeBranchId = new mongoose.Types.ObjectId().toString();
+      const otherBranchId = new mongoose.Types.ObjectId().toString();
+      req.headers["x-branch-id"] = activeBranchId;
+      req.params.id = new mongoose.Types.ObjectId().toString();
+      req.user.branchAccess = [{ branchId: activeBranchId, isActive: true }];
+
+      Branch.findOne.mockResolvedValue({ _id: activeBranchId, organizationId: req.user.organizationId, isActive: true });
+
+      const mockCustomer = {
+        _id: req.params.id,
+        organizationId: req.user.organizationId,
+        homeBranchId: otherBranchId,
+        visitedBranchIds: [],
+      };
+      Customer.findOne.mockReturnValue(createQueryMock(mockCustomer));
+
+      await getCustomerById(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(AppError));
+      expect(next.mock.calls[0][0].statusCode).toBe(403);
+      expect(next.mock.calls[0][0].message).toContain("Customer is not visible within your active branch scope");
+    });
+  });
+
+  describe("Org-Wide Scope", () => {
+    it("should permit org-wide access when hasOrgWideAccess is true and X-Branch-Id is omitted", async () => {
+      req.user.hasOrgWideAccess = true;
+      req.params.id = new mongoose.Types.ObjectId().toString();
+
+      const mockCustomer = {
+        _id: req.params.id,
+        organizationId: req.user.organizationId,
+        homeBranchId: new mongoose.Types.ObjectId().toString(),
+        visitedBranchIds: [],
+      };
+      Customer.findOne.mockReturnValue(createQueryMock(mockCustomer));
+
+      await getCustomerById(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("should restrict to active branch when hasOrgWideAccess is true but X-Branch-Id is explicitly passed", async () => {
+      req.user.hasOrgWideAccess = true;
+      const activeBranchId = new mongoose.Types.ObjectId().toString();
+      const otherBranchId = new mongoose.Types.ObjectId().toString();
+      req.headers["x-branch-id"] = activeBranchId;
+      req.params.id = new mongoose.Types.ObjectId().toString();
+
+      Branch.findOne.mockResolvedValue({ _id: activeBranchId, organizationId: req.user.organizationId, isActive: true });
+
+      // Customer belongs strictly to otherBranch
+      const mockCustomer = {
+        _id: req.params.id,
+        organizationId: req.user.organizationId,
+        homeBranchId: otherBranchId,
+        visitedBranchIds: [],
+      };
+      Customer.findOne.mockReturnValue(createQueryMock(mockCustomer));
+
+      await getCustomerById(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(AppError));
+      expect(next.mock.calls[0][0].statusCode).toBe(403);
+    });
+
+    it("should reject X-Branch-Id belonging to another organization", async () => {
+      req.user.hasOrgWideAccess = true;
+      const foreignBranchId = new mongoose.Types.ObjectId().toString();
+      req.headers["x-branch-id"] = foreignBranchId;
+
+      Branch.findOne.mockResolvedValue(null); // Not found under user's org
+
+      await getCustomerById(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(AppError));
+      expect(next.mock.calls[0][0].statusCode).toBe(404);
+    });
+  });
+
+  describe("all Sentinel Rejection", () => {
+    it("should fail validation with 400 when X-Branch-Id is 'all'", async () => {
+      req.headers["x-branch-id"] = "all";
+
+      await getCustomerById(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(AppError));
+      expect(next.mock.calls[0][0].statusCode).toBe(400);
+      expect(next.mock.calls[0][0].message).toBe("Invalid branch ID format.");
+    });
+  });
+
+  describe("Customer Creation", () => {
+    it("should reject creation if X-Branch-Id is omitted for org-wide user", async () => {
+      req.user.hasOrgWideAccess = true;
+      req.body = { name: "New Client", phone: "+919999988888" };
+
+      await createCustomer(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(AppError));
+      expect(next.mock.calls[0][0].statusCode).toBe(400);
+      expect(next.mock.calls[0][0].message).toBe("X-Branch-Id header is required to create a customer.");
+    });
+
+    it("should ignore homeBranchId passed manually in body", async () => {
+      const activeBranchId = new mongoose.Types.ObjectId().toString();
+      const userSuppliedHomeBranch = new mongoose.Types.ObjectId().toString();
+      req.headers["x-branch-id"] = activeBranchId;
+      req.body = { name: "New Client", phone: "+919999988888", homeBranchId: userSuppliedHomeBranch };
+      req.user.branchAccess = [{ branchId: activeBranchId, isActive: true }];
+
+      Branch.findOne.mockResolvedValue({ _id: activeBranchId, organizationId: req.user.organizationId, isActive: true });
+
+      const saveMock = jest.fn().mockImplementation(function () {
+        return Promise.resolve(this);
+      });
+      // Mock Customer constructor behavior
+      jest.spyOn(Customer.prototype, "save").mockImplementation(saveMock);
+
+      await createCustomer(req, res, next);
+
+      // Verify it was saved with header branch ID and not body-supplied branch ID
+      const savedInstance = saveMock.mock.instances[0];
+      expect(savedInstance.homeBranchId.toString()).toBe(activeBranchId);
+      expect(savedInstance.homeBranchId.toString()).not.toBe(userSuppliedHomeBranch);
+    });
+  });
+
+  describe("homeBranchId Immutability", () => {
+    it("should ignore homeBranchId, organizationId, visitedBranchIds in PUT payload", async () => {
+      const activeBranchId = new mongoose.Types.ObjectId().toString();
+      req.headers["x-branch-id"] = activeBranchId;
+      req.params.id = new mongoose.Types.ObjectId().toString();
+      req.body = {
+        name: "Updated Name",
+        homeBranchId: new mongoose.Types.ObjectId().toString(),
+        organizationId: "new-org-id",
+        visitedBranchIds: [new mongoose.Types.ObjectId().toString()],
+      };
+      req.user.branchAccess = [{ branchId: activeBranchId, isActive: true }];
+
+      Branch.findOne.mockResolvedValue({ _id: activeBranchId, organizationId: req.user.organizationId, isActive: true });
+
+      const mockCustomer = {
+        _id: req.params.id,
+        organizationId: req.user.organizationId,
+        homeBranchId: activeBranchId,
+        visitedBranchIds: [],
+        name: "Old Name",
+        save: jest.fn().mockImplementation(function () {
+          return Promise.resolve(this);
+        }),
+      };
+
+      // Mock Customer.findOne to return the mockCustomer when querying
+      Customer.findOne.mockReturnValue(createQueryMock(mockCustomer));
+
+      await updateCustomer(req, res, next);
+
+      expect(mockCustomer.name).toBe("Updated Name");
+      expect(mockCustomer.homeBranchId.toString()).toBe(activeBranchId);
+      expect(mockCustomer.organizationId).toBe(req.user.organizationId);
+      expect(mockCustomer.visitedBranchIds).toEqual([]);
+    });
+  });
+});

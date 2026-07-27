@@ -8,12 +8,27 @@ export class CustomerService {
   }
 
   async createCustomer(data, organizationId, userId) {
-    const existing = await this.customerRepo.findOne({ phone: data.phone }, organizationId);
-    if (existing) {
-      throw new AppError("Customer with this phone number already exists", 400);
+    // Phone uniqueness check is deferred per business decision: DO NOT reject duplicate phone numbers.
+    // Ensure homeBranchId is set and is valid
+    if (!data.homeBranchId) {
+      throw new AppError("homeBranchId is required to create a customer.", 400);
     }
 
-    const customer = await this.customerRepo.create(data, organizationId, userId);
+    const customer = await this.customerRepo.create(
+      {
+        name: data.name,
+        email: data.email || null,
+        phone: data.phone,
+        homeBranchId: data.homeBranchId,
+        visitedBranchIds: [],
+        gender: data.gender,
+        dateOfBirth: data.dateOfBirth,
+        address: data.address,
+        preferences: data.preferences || {},
+      },
+      organizationId,
+      userId
+    );
 
     await this.customerRepo.addActivity(
       customer._id,
@@ -26,54 +41,35 @@ export class CustomerService {
     return customer;
   }
 
-  async getCustomerById(id, organizationId) {
+  async getCustomerById(id, organizationId, userContext = null, activeBranchId = null) {
     const customer = await this.customerRepo.findById(id, organizationId);
     if (!customer) {
       throw new AppError("Resource not found", 404);
     }
+
+    // Strict visibility check for branch-scoped requests
+    if (activeBranchId) {
+      const isHomeBranch = customer.homeBranchId?.toString() === activeBranchId.toString();
+      const hasVisited = (customer.visitedBranchIds || []).some(
+        (bId) => bId.toString() === activeBranchId.toString()
+      );
+
+      if (!isHomeBranch && !hasVisited) {
+        throw new AppError("Access denied. Customer is not visible within your active branch scope.", 403);
+      }
+    }
+
     return customer;
   }
 
-  async updateCustomer(id, data, organizationId, userId, userContext = null) {
-    const customer = await this.customerRepo.findById(id, organizationId);
-    if (!customer) {
-      throw new AppError("Resource not found", 404);
-    }
+  async updateCustomer(id, data, organizationId, userId, userContext = null, activeBranchId = null) {
+    // Fetch and check visibility first
+    const customer = await this.getCustomerById(id, organizationId, userContext, activeBranchId);
 
-    if (data.phone && data.phone !== customer.phone) {
-      const existing = await this.customerRepo.findOne({ phone: data.phone }, organizationId);
-      if (existing) {
-        throw new AppError("Phone number is already in use by another customer", 400);
-      }
-    }
+    // Filter out immutable fields
+    const { organizationId: _, homeBranchId: __, visitedBranchIds: ___, isDeleted: ____, deletedAt: _____, ...updateData } = data;
 
-    if (data.branchId && data.branchId !== customer.branchId?.toString()) {
-      const branch = await mongoose.model("Branch").findOne({
-        _id: data.branchId,
-        organizationId,
-        isActive: true,
-      });
-      if (!branch) {
-        throw new AppError("Target branch not found or inactive", 404);
-      }
-
-      if (userContext) {
-        const { hasOrgWideAccess, branchAccess } = userContext;
-        let isAuthorized = false;
-        if (hasOrgWideAccess === true) {
-          isAuthorized = true;
-        } else {
-          isAuthorized = (branchAccess || []).some(
-            (b) => b.branchId.toString() === data.branchId.toString() && b.isActive
-          );
-        }
-        if (!isAuthorized) {
-          throw new AppError("Access denied. You do not have access to the target branch.", 403);
-        }
-      }
-    }
-
-    const updated = await this.customerRepo.updateById(id, data, organizationId, userId);
+    const updated = await this.customerRepo.updateById(id, updateData, organizationId, userId);
 
     await this.customerRepo.addActivity(
       id,
@@ -100,6 +96,7 @@ export class CustomerService {
       userId
     );
 
+    // Soft delete via global plugin
     return this.customerRepo.deleteById(id, organizationId, userId);
   }
 
@@ -107,93 +104,12 @@ export class CustomerService {
     return this.customerRepo.find(filter, options, organizationId);
   }
 
-  async addNote(id, noteText, organizationId, userId) {
-    const customer = await this.customerRepo.findById(id, organizationId);
-    if (!customer) {
-      throw new AppError("Resource not found", 404);
-    }
+  async addNote(id, noteText, organizationId, userId, userContext = null, activeBranchId = null) {
+    // Check visibility first
+    await this.getCustomerById(id, organizationId, userContext, activeBranchId);
 
     const updated = await this.customerRepo.addNote(id, noteText, organizationId, userId);
     await this.customerRepo.addActivity(id, "ADD_NOTE", `Added note: "${noteText}"`, organizationId, userId);
-    return updated;
-  }
-
-  async updatePreferences(id, preferences, organizationId, userId) {
-    const customer = await this.customerRepo.findById(id, organizationId);
-    if (!customer) {
-      throw new AppError("Resource not found", 404);
-    }
-
-    const updated = await this.customerRepo.updatePreferences(id, preferences, organizationId);
-    await this.customerRepo.addActivity(id, "UPDATE_PREFERENCES", "Updated customer preferences", organizationId, userId);
-    return updated;
-  }
-
-  async addVisit(id, visitDetails, organizationId, userId) {
-    const customer = await this.customerRepo.findById(id, organizationId);
-    if (!customer) {
-      throw new AppError("Resource not found", 404);
-    }
-
-    const updated = await this.customerRepo.addVisit(id, visitDetails, organizationId);
-    await this.customerRepo.addActivity(
-      id,
-      "VISIT_RECORDED",
-      `Visit recorded for appointment ID: ${visitDetails.appointmentId || "N/A"}`,
-      organizationId,
-      userId
-    );
-    return updated;
-  }
-
-  async addServiceHistory(id, serviceDetails, organizationId, userId) {
-    const customer = await this.customerRepo.findById(id, organizationId);
-    if (!customer) {
-      throw new AppError("Resource not found", 404);
-    }
-
-    const updated = await this.customerRepo.addServiceHistory(id, serviceDetails, organizationId);
-    await this.customerRepo.addActivity(
-      id,
-      "SERVICE_COMPLETED",
-      `Service completed: ${serviceDetails.serviceName}`,
-      organizationId,
-      userId
-    );
-    return updated;
-  }
-
-  async addMembershipHistory(id, membershipDetails, organizationId, userId) {
-    const customer = await this.customerRepo.findById(id, organizationId);
-    if (!customer) {
-      throw new AppError("Resource not found", 404);
-    }
-
-    const updated = await this.customerRepo.addMembershipHistory(id, membershipDetails, organizationId);
-    await this.customerRepo.addActivity(
-      id,
-      "MEMBERSHIP_ADDED",
-      `Subscribed to membership: ${membershipDetails.membershipName}`,
-      organizationId,
-      userId
-    );
-    return updated;
-  }
-
-  async adjustLoyaltyPoints(id, points, organizationId, userId) {
-    const customer = await this.customerRepo.findById(id, organizationId);
-    if (!customer) {
-      throw new AppError("Resource not found", 404);
-    }
-
-    const updated = await this.customerRepo.adjustLoyaltyPoints(id, points, organizationId);
-    await this.customerRepo.addActivity(
-      id,
-      "LOYALTY_ADJUSTED",
-      `Adjusted loyalty points by ${points > 0 ? "+" : ""}${points} (Current: ${updated.loyaltyPoints})`,
-      organizationId,
-      userId
-    );
     return updated;
   }
 }

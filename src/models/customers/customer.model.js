@@ -24,12 +24,18 @@ const customerSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    branchId: {
+    homeBranchId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Branch",
       required: true,
       index: true,
     },
+    visitedBranchIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Branch",
+      },
+    ],
     loyaltyPoints: {
       type: Number,
       default: 0,
@@ -58,29 +64,6 @@ const customerSchema = new mongoose.Schema(
         createdAt: { type: Date, default: Date.now },
       },
     ],
-    visits: [
-      {
-        appointmentId: { type: mongoose.Schema.Types.ObjectId },
-        date: { type: Date, required: true },
-        totalAmount: { type: Number, required: true },
-        status: { type: String, required: true },
-      },
-    ],
-    services: [
-      {
-        serviceId: { type: mongoose.Schema.Types.ObjectId },
-        serviceName: { type: String, required: true },
-        date: { type: Date, required: true },
-      },
-    ],
-    memberships: [
-      {
-        membershipName: { type: String, required: true },
-        startDate: { type: Date, required: true },
-        endDate: { type: Date, required: true },
-        status: { type: String, enum: ["active", "expired", "cancelled"], default: "active" },
-      },
-    ],
     activityTimeline: [
       {
         action: { type: String, required: true },
@@ -95,7 +78,15 @@ const customerSchema = new mongoose.Schema(
   }
 );
 
-customerSchema.index({ organizationId: 1, phone: 1 }, { unique: true });
-customerSchema.index({ branchId: 1, phone: 1 });
+customerSchema.pre("save", function (next) {
+  if (this.phone) {
+    this.phone = this.phone.replace(/[^\d+]/g, "");
+  }
+  next();
+});
+
+customerSchema.index({ organizationId: 1, phone: 1 });
+customerSchema.index({ homeBranchId: 1 });
+customerSchema.index({ visitedBranchIds: 1 });
 
 export const Customer = mongoose.model("Customer", customerSchema);

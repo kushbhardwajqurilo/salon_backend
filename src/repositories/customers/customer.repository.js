@@ -75,16 +75,6 @@ export class CustomerRepository extends BaseRepository {
     );
   }
 
-  async updatePreferences(id, preferences, organizationId) {
-    return this.model.findOneAndUpdate(
-      { _id: id, organizationId },
-      {
-        $set: { preferences },
-      },
-      { new: true }
-    );
-  }
-
   async addActivity(id, action, description, organizationId, userId) {
     return this.model.findOneAndUpdate(
       { _id: id, organizationId },
@@ -97,46 +87,6 @@ export class CustomerRepository extends BaseRepository {
             date: new Date(),
           },
         },
-      },
-      { new: true }
-    );
-  }
-
-  async addVisit(id, visitDetails, organizationId) {
-    return this.model.findOneAndUpdate(
-      { _id: id, organizationId },
-      {
-        $push: { visits: visitDetails },
-      },
-      { new: true }
-    );
-  }
-
-  async addServiceHistory(id, serviceDetails, organizationId) {
-    return this.model.findOneAndUpdate(
-      { _id: id, organizationId },
-      {
-        $push: { services: serviceDetails },
-      },
-      { new: true }
-    );
-  }
-
-  async addMembershipHistory(id, membershipDetails, organizationId) {
-    return this.model.findOneAndUpdate(
-      { _id: id, organizationId },
-      {
-        $push: { memberships: membershipDetails },
-      },
-      { new: true }
-    );
-  }
-
-  async adjustLoyaltyPoints(id, points, organizationId) {
-    return this.model.findOneAndUpdate(
-      { _id: id, organizationId },
-      {
-        $inc: { loyaltyPoints: points },
       },
       { new: true }
     );

@@ -2,7 +2,7 @@ import { jest } from "@jest/globals";
 import { CustomerService } from "../../services/customers/customer.service.js";
 import { AppError } from "../../utils/errors.js";
 
-describe("CustomerService", () => {
+describe("CustomerService Unit Tests", () => {
   let customerService;
   let mockCustomerRepo;
 
@@ -15,39 +15,41 @@ describe("CustomerService", () => {
       deleteById: jest.fn(),
       find: jest.fn(),
       addNote: jest.fn(),
-      updatePreferences: jest.fn(),
       addActivity: jest.fn(),
-      addVisit: jest.fn(),
-      addServiceHistory: jest.fn(),
-      addMembershipHistory: jest.fn(),
-      adjustLoyaltyPoints: jest.fn(),
     };
 
     customerService = new CustomerService(mockCustomerRepo);
   });
 
   describe("createCustomer", () => {
-    it("should throw an error if customer with same phone exists", async () => {
-      mockCustomerRepo.findOne.mockResolvedValue({ _id: "existing-customer" });
-
+    it("should throw an error if homeBranchId is missing", async () => {
       await expect(
-        customerService.createCustomer({ phone: "+1234567890", name: "Test" }, "org-789", "user-123")
-      ).rejects.toThrow(new AppError("Customer with this phone number already exists", 400));
+        customerService.createCustomer({ phone: "+919999988888", name: "Test" }, "org-789", "user-123")
+      ).rejects.toThrow(new AppError("homeBranchId is required to create a customer.", 400));
     });
 
     it("should create customer and write CREATED timeline event", async () => {
-      const mockCustomer = { _id: "new-customer-id", phone: "+1234567890", name: "Test", organizationId: "org-789" };
-      mockCustomerRepo.findOne.mockResolvedValue(null);
+      const mockCustomer = {
+        _id: "new-customer-id",
+        phone: "+919999988888",
+        name: "Test",
+        homeBranchId: "branch-123",
+        organizationId: "org-789",
+      };
       mockCustomerRepo.create.mockResolvedValue(mockCustomer);
 
       const result = await customerService.createCustomer(
-        { phone: "+1234567890", name: "Test" },
+        { phone: "+919999988888", name: "Test", homeBranchId: "branch-123" },
         "org-789",
         "user-123"
       );
 
       expect(result).toEqual(mockCustomer);
-      expect(mockCustomerRepo.create).toHaveBeenCalledWith({ phone: "+1234567890", name: "Test" }, "org-789", "user-123");
+      expect(mockCustomerRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ phone: "+919999988888", name: "Test", homeBranchId: "branch-123" }),
+        "org-789",
+        "user-123"
+      );
       expect(mockCustomerRepo.addActivity).toHaveBeenCalledWith(
         "new-customer-id",
         "CREATED",
@@ -58,28 +60,70 @@ describe("CustomerService", () => {
     });
   });
 
-  describe("adjustLoyaltyPoints", () => {
-    it("should adjust points and log updates to timeline", async () => {
-      const mockCustomer = { _id: "customer-1", branchId: "branch-a", loyaltyPoints: 10, organizationId: "org-789" };
-      mockCustomerRepo.findById.mockResolvedValue(mockCustomer);
-      mockCustomerRepo.adjustLoyaltyPoints.mockResolvedValue({
+  describe("getCustomerById", () => {
+    it("should allow reading if user is org-wide", async () => {
+      const mockCustomer = {
         _id: "customer-1",
-        loyaltyPoints: 15,
-      });
+        homeBranchId: "branch-2",
+        visitedBranchIds: [],
+        organizationId: "org-789",
+      };
+      mockCustomerRepo.findById.mockResolvedValue(mockCustomer);
 
-      const result = await customerService.adjustLoyaltyPoints(
+      const result = await customerService.getCustomerById(
         "customer-1",
-        5,
         "org-789",
-        "user-123"
+        { hasOrgWideAccess: true }
       );
 
-      expect(result.loyaltyPoints).toBe(15);
-      expect(mockCustomerRepo.adjustLoyaltyPoints).toHaveBeenCalledWith("customer-1", 5, "org-789");
-      expect(mockCustomerRepo.addActivity).toHaveBeenCalledWith(
+      expect(result).toEqual(mockCustomer);
+    });
+
+    it("should deny reading if user is branch-limited and customer did not visit user branch", async () => {
+      const mockCustomer = {
+        _id: "customer-1",
+        homeBranchId: "branch-2",
+        visitedBranchIds: [],
+        organizationId: "org-789",
+      };
+      mockCustomerRepo.findById.mockResolvedValue(mockCustomer);
+
+      await expect(
+        customerService.getCustomerById(
+          "customer-1",
+          "org-789",
+          { hasOrgWideAccess: false },
+          "branch-3" // User branch context
+        )
+      ).rejects.toThrow(
+        new AppError("Access denied. Customer is not visible within your active branch scope.", 403)
+      );
+    });
+  });
+
+  describe("updateCustomer", () => {
+    it("should update properties but ignore immutable fields", async () => {
+      const mockCustomer = {
+        _id: "customer-1",
+        homeBranchId: "branch-123",
+        visitedBranchIds: [],
+        organizationId: "org-789",
+      };
+      mockCustomerRepo.findById.mockResolvedValue(mockCustomer);
+      mockCustomerRepo.updateById.mockResolvedValue({ ...mockCustomer, name: "New Name" });
+
+      const result = await customerService.updateCustomer(
         "customer-1",
-        "LOYALTY_ADJUSTED",
-        "Adjusted loyalty points by +5 (Current: 15)",
+        { name: "New Name", homeBranchId: "malicious-change-attempt", organizationId: "other-org" },
+        "org-789",
+        "user-123",
+        { hasOrgWideAccess: true }
+      );
+
+      expect(result.name).toBe("New Name");
+      expect(mockCustomerRepo.updateById).toHaveBeenCalledWith(
+        "customer-1",
+        { name: "New Name" },
         "org-789",
         "user-123"
       );
