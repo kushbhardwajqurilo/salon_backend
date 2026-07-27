@@ -51,10 +51,11 @@ export const auditPlugin = (schema) => {
     // If explicitly querying for deleted records or soft delete check is bypassed
     if (this.getFilter && this.getFilter().includeDeleted) {
       delete this.getFilter().includeDeleted;
-      return next();
+      if (typeof next === "function") return next();
+      return;
     }
     this.where({ isDeleted: { $ne: true } });
-    next();
+    if (typeof next === "function") next();
   }
 
   queryMethods.forEach((method) => {
@@ -62,7 +63,7 @@ export const auditPlugin = (schema) => {
       schema.pre(method, function (next) {
         // Exclude deleted in aggregation pipelines
         this.pipeline().unshift({ $match: { isDeleted: { $ne: true } } });
-        next();
+        if (typeof next === "function") next();
       });
     } else {
       schema.pre(method, excludeDeleted);

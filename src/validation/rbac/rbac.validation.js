@@ -8,9 +8,11 @@ export const createPermissionSchema = z.object({
     name: z
       .string()
       .min(3, "Permission name must be at least 3 characters")
-      .regex(/^[a-z]+:[a-z]+$/, "Permission name must follow format 'module:action' (e.g. 'customer:create')")
+      .regex(/^[a-z_]+(?:\.[a-z_]+)+$/, "Permission name must follow format 'module.action' or 'module.submodule.action' (e.g. 'customers.create')")
       .trim()
       .lowercase(),
+    module: z.string().min(2, "Module must be at least 2 characters").trim(),
+    action: z.string().min(2, "Action must be at least 2 characters").trim(),
     description: z.string().min(5, "Description must be at least 5 characters").trim(),
   }),
 });

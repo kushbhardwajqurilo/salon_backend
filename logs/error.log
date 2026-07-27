@@ -4,3 +4,11 @@
 [2026-07-25 15:35:47:3547] [[31merror[39m]: [31mERROR 💥 Cannot read properties of undefined (reading 'refreshToken')[39m
 [2026-07-25 16:34:08:348] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
 [2026-07-25 16:34:10:3410] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 12:24:38:2438] [[31merror[39m]: [31mPermissions sync failed: next is not a function[39m
+[2026-07-27 12:24:47:2447] [[31merror[39m]: [31mPermissions sync failed: next is not a function[39m
+[2026-07-27 12:25:00:250] [[31merror[39m]: [31mPermissions sync failed: TypeError: next is not a function[39m
+[31m    at model.Query.excludeDeleted (file:///C:/Users/deves/Desktop/Projects/Saloon%20ERP/src/database/plugins/audit.js:57:5)[39m
+[31m    at Kareem.execPre (C:\Users\deves\Desktop\Projects\Saloon ERP\node_modules\kareem\index.js:59:39)[39m
+[31m    at _executePreHooks (C:\Users\deves\Desktop\Projects\Saloon ERP\node_modules\mongoose\lib\query.js:4871:33)[39m
+[31m    at maybeTracedQueryExec (C:\Users\deves\Desktop\Projects\Saloon ERP\node_modules\mongoose\lib\query.js:4800:13)[39m
+[31m    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)[39m

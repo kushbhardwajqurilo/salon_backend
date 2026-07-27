@@ -6,6 +6,7 @@
   "scripts": {
     "start": "nodemon index.mjs",
     "seed": "node src/seed/seed.js",
+    "permissions:sync": "node src/scripts/syncPermissions.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand"
   },
   "keywords": [],
