@@ -16,6 +16,7 @@ import {
 Branch.findOne = jest.fn();
 Customer.findOne = jest.fn();
 Customer.findById = jest.fn();
+Customer.findOneAndUpdate = jest.fn();
 
 // Robust mongoose query mock creator
 const createQueryMock = (resolvedValue) => {
@@ -37,6 +38,7 @@ describe("Customer Core Integration & Scoping Tests", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    Customer.findOneAndUpdate.mockResolvedValue({});
     req = {
       headers: {},
       query: {},
@@ -261,41 +263,120 @@ describe("Customer Core Integration & Scoping Tests", () => {
     });
   });
 
-  describe("homeBranchId Immutability", () => {
-    it("should ignore homeBranchId, organizationId, visitedBranchIds in PUT payload", async () => {
-      const activeBranchId = new mongoose.Types.ObjectId().toString();
+  describe("homeBranchId Immutability and Hardening", () => {
+    let activeBranchId;
+    let mockCustomer;
+
+    beforeEach(() => {
+      activeBranchId = new mongoose.Types.ObjectId().toString();
       req.headers["x-branch-id"] = activeBranchId;
       req.params.id = new mongoose.Types.ObjectId().toString();
-      req.body = {
-        name: "Updated Name",
-        homeBranchId: new mongoose.Types.ObjectId().toString(),
-        organizationId: "new-org-id",
-        visitedBranchIds: [new mongoose.Types.ObjectId().toString()],
-      };
       req.user.branchAccess = [{ branchId: activeBranchId, isActive: true }];
 
       Branch.findOne.mockResolvedValue({ _id: activeBranchId, organizationId: req.user.organizationId, isActive: true });
 
-      const mockCustomer = {
+      mockCustomer = {
         _id: req.params.id,
         organizationId: req.user.organizationId,
         homeBranchId: activeBranchId,
         visitedBranchIds: [],
         name: "Old Name",
+        phone: "+919999999999",
         save: jest.fn().mockImplementation(function () {
           return Promise.resolve(this);
         }),
       };
 
-      // Mock Customer.findOne to return the mockCustomer when querying
       Customer.findOne.mockReturnValue(createQueryMock(mockCustomer));
+    });
+
+    it("Test 1 — should reject explicit attempt to update homeBranchId", async () => {
+      req.body = {
+        homeBranchId: new mongoose.Types.ObjectId().toString(),
+      };
 
       await updateCustomer(req, res, next);
 
-      expect(mockCustomer.name).toBe("Updated Name");
+      expect(next).toHaveBeenCalledWith(expect.any(AppError));
+      const err = next.mock.calls[0][0];
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toBe("Immutable customer fields cannot be modified");
+      expect(err.errors).toEqual([
+        {
+          field: "homeBranchId",
+          message: "homeBranchId cannot be modified after customer creation",
+        },
+      ]);
       expect(mockCustomer.homeBranchId.toString()).toBe(activeBranchId);
+    });
+
+    it("Test 2 — should reject explicit attempt to update organizationId", async () => {
+      req.body = {
+        organizationId: "some-new-org",
+      };
+
+      await updateCustomer(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(AppError));
+      const err = next.mock.calls[0][0];
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toBe("Immutable customer fields cannot be modified");
+      expect(err.errors).toEqual([
+        {
+          field: "organizationId",
+          message: "organizationId cannot be modified after customer creation",
+        },
+      ]);
       expect(mockCustomer.organizationId).toBe(req.user.organizationId);
+    });
+
+    it("Test 3 — should reject explicit attempt to update visitedBranchIds", async () => {
+      req.body = {
+        visitedBranchIds: [new mongoose.Types.ObjectId().toString()],
+      };
+
+      await updateCustomer(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(AppError));
+      const err = next.mock.calls[0][0];
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toBe("Immutable customer fields cannot be modified");
+      expect(err.errors).toEqual([
+        {
+          field: "visitedBranchIds",
+          message: "visitedBranchIds cannot be modified after customer creation",
+        },
+      ]);
       expect(mockCustomer.visitedBranchIds).toEqual([]);
+    });
+
+    it("Test 4 — Mixed valid and immutable fields (should reject entire update)", async () => {
+      req.body = {
+        name: "Updated Name",
+        homeBranchId: new mongoose.Types.ObjectId().toString(),
+      };
+
+      await updateCustomer(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(AppError));
+      const err = next.mock.calls[0][0];
+      expect(err.statusCode).toBe(400);
+      expect(mockCustomer.name).toBe("Old Name"); // Remains unchanged
+      expect(mockCustomer.homeBranchId.toString()).toBe(activeBranchId);
+    });
+
+    it("Test 5 — Valid update without immutable fields", async () => {
+      req.body = {
+        name: "Updated Name",
+        phone: "+918888888888",
+      };
+
+      await updateCustomer(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockCustomer.name).toBe("Updated Name");
+      expect(mockCustomer.phone).toBe("+918888888888");
     });
   });
 });

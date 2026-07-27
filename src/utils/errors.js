@@ -2,11 +2,14 @@ import { logger } from "./logger.js";
 import { ZodError } from "zod";
 
 export class AppError extends Error {
-  constructor(message, statusCode) {
+  constructor(message, statusCode, errors = null, status = null) {
     super(message);
     this.statusCode = statusCode;
-    this.status = `${statusCode}`.startsWith("4") ? "fail" : "error";
+    this.status = status || (`${statusCode}`.startsWith("4") ? "fail" : "error");
     this.isOperational = true;
+    if (errors) {
+      this.errors = errors;
+    }
 
     Error.captureStackTrace(this, this.constructor);
   }
@@ -49,21 +52,29 @@ const handleJWTError = () => new AppError("Invalid token. Please log in again!",
 const handleJWTExpiredError = () => new AppError("Your token has expired! Please log in again.", 401);
 
 const sendErrorDev = (err, req, res) => {
-  return res.status(err.statusCode).json({
+  const response = {
     success: false,
     status: err.status,
     message: err.message,
     stack: err.stack,
-  });
+  };
+  if (err.errors) {
+    response.errors = err.errors;
+  }
+  return res.status(err.statusCode).json(response);
 };
 
 const sendErrorProd = (err, req, res) => {
   if (err.isOperational) {
-    return res.status(err.statusCode).json({
+    const response = {
       success: false,
       status: err.status,
       message: err.message,
-    });
+    };
+    if (err.errors) {
+      response.errors = err.errors;
+    }
+    return res.status(err.statusCode).json(response);
   }
   console.log("ERROR ", err);
   // Programming or other unknown error: don't leak details

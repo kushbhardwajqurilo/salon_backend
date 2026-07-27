@@ -349,3 +349,56 @@
 [2026-07-27 15:39:24:3924] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
 [2026-07-27 15:39:25:3925] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
 [2026-07-27 15:39:25:3925] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-07-27 16:08:49:849] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:08:50:850] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:08:50:850] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:08:50:850] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:08:51:851] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:08:51:851] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:08:51:851] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:08:51:851] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:08:51:851] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:08:52:852] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:08:52:852] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:08:53:853] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:08:53:853] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-07-27 16:10:34:1034] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 16:10:34:1034] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 16:10:41:1041] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 16:10:41:1041] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 16:10:49:1049] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 16:10:49:1049] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 16:10:55:1055] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 16:10:55:1055] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 16:11:02:112] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 16:11:02:112] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 16:11:12:1112] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 16:11:12:1112] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 16:11:24:1124] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:24:1124] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:24:1124] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:24:1124] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:25:1125] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:25:1125] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:25:1125] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:25:1125] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:26:1126] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:26:1126] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:26:1126] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:26:1126] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:27:1127] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-07-27 16:11:45:1145] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 16:11:45:1145] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 16:11:53:1153] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:53:1153] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:53:1153] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:53:1153] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:54:1154] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:54:1154] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:54:1154] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:54:1154] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:55:1155] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:55:1155] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:55:1155] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:56:1156] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 16:11:56:1156] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m

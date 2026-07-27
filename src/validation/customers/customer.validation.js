@@ -40,8 +40,11 @@ export const updateCustomerSchema = z.object({
       gender: z.string().optional(),
       dateOfBirth: z.string().datetime("Invalid date format").optional().nullable(),
       address: z.string().optional(),
+      organizationId: z.any().optional(),
+      homeBranchId: z.any().optional(),
+      visitedBranchIds: z.any().optional(),
     })
-    .strict(), // Reject request if any other field is sent (like organizationId, homeBranchId, visitedBranchIds, loyaltyPoints)
+    .strict(), // Reject request if any other field is sent (like loyaltyPoints)
 });
 
 export const addNoteSchema = z.object({

@@ -22,13 +22,11 @@ const customerSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Organization",
       required: true,
-      index: true,
     },
     homeBranchId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Branch",
       required: true,
-      index: true,
     },
     visitedBranchIds: [
       {
@@ -86,7 +84,7 @@ customerSchema.pre("save", function (next) {
 });
 
 customerSchema.index({ organizationId: 1, phone: 1 });
-customerSchema.index({ homeBranchId: 1 });
-customerSchema.index({ visitedBranchIds: 1 });
+customerSchema.index({ organizationId: 1, homeBranchId: 1 });
+customerSchema.index({ organizationId: 1, visitedBranchIds: 1 });
 
 export const Customer = mongoose.model("Customer", customerSchema);

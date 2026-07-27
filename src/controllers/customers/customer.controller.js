@@ -94,6 +94,16 @@ export const updateCustomer = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
   const activeBranchId = await getActiveBranchContext(req);
 
+  const immutableFields = ["organizationId", "homeBranchId", "visitedBranchIds"];
+  const attemptedFields = immutableFields.filter((field) => field in req.body);
+  if (attemptedFields.length > 0) {
+    const errors = attemptedFields.map((field) => ({
+      field,
+      message: `${field} cannot be modified after customer creation`,
+    }));
+    throw new AppError("Immutable customer fields cannot be modified", 400, errors, "error");
+  }
+
   const customer = await customerService.updateCustomer(
     req.params.id,
     req.body,
