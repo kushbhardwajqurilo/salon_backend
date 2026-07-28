@@ -403,3 +403,236 @@
 [2026-07-27 16:11:56:1156] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
 [2026-07-27 16:11:56:1156] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
 [2026-07-27 17:58:27:5827] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:00:07:07] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:00:07:07] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:00:56:056] [[31merror[39m]: [31mERROR 💥 Cannot set property query of #<IncomingMessage> which has only a getter[39m
+[2026-07-27 18:00:57:057] [[31merror[39m]: [31mERROR 💥 Cannot set property query of #<IncomingMessage> which has only a getter[39m
+[2026-07-27 18:01:00:10] [[31merror[39m]: [31mERROR 💥 Cannot set property query of #<IncomingMessage> which has only a getter[39m
+[2026-07-27 18:01:04:14] [[31merror[39m]: [31mERROR 💥 Cannot set property query of #<IncomingMessage> which has only a getter[39m
+[2026-07-27 18:01:09:19] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-07-27 18:01:47:147] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:01:47:147] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:01:49:149] [[31merror[39m]: [31mERROR 💥 Cannot set property query of #<IncomingMessage> which has only a getter[39m
+[2026-07-27 18:02:13:213] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:02:13:213] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:02:55:255] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:02:55:255] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:03:18:318] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:03:27:327] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:03:29:329] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:03:33:333] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:03:40:340] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:03:41:341] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:03:44:344] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:03:44:344] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:03:44:344] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:03:44:344] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:03:45:345] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:03:45:345] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:03:45:345] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:03:45:345] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:03:45:345] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:03:45:345] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:03:46:346] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:03:46:346] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:03:46:346] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-07-27 18:06:16:616] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:06:49:649] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:06:49:649] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:07:35:735] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:07:35:735] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-07-27 18:07:35:735] [[32minfo[39m]: [32mStarting permission synchronization...[39m
+[2026-07-27 18:07:35:735] [[32minfo[39m]: [32mPermissions Sync Summary:[39m
+[32m   - Canonical Registry Count: 88[39m
+[32m   - Created: 88[39m
+[32m   - Updated metadata: 0[39m
+[32m   - Unchanged: 0[39m
+[2026-07-27 18:07:35:735] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:35:735] [[32minfo[39m]: [32mOwner role updated with exactly 88 canonical permissions.[39m
+[2026-07-27 18:07:35:735] [[32minfo[39m]: [32mOwner role permissions cache invalidated.[39m
+[2026-07-27 18:07:42:742] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:43:743] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:43:743] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:43:743] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:43:743] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:44:744] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:44:744] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:44:744] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:44:744] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:44:744] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:44:744] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:45:745] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:07:45:745] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-07-27 18:08:14:814] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:08:14:814] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-07-27 18:08:14:814] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-07-27 18:08:19:819] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:08:19:819] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-07-27 18:08:20:820] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-07-27 18:08:51:851] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:08:51:851] [[32minfo[39m]: [32mStarting permission synchronization...[39m
+[2026-07-27 18:08:51:851] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-07-27 18:08:51:851] [[32minfo[39m]: [32mPermissions Sync Summary:[39m
+[32m   - Canonical Registry Count: 88[39m
+[32m   - Created: 0[39m
+[32m   - Updated metadata: 0[39m
+[32m   - Unchanged: 88[39m
+[2026-07-27 18:08:51:851] [[32minfo[39m]: [32mOwner role updated with exactly 88 canonical permissions.[39m
+[2026-07-27 18:08:51:851] [[32minfo[39m]: [32mOwner role permissions cache invalidated.[39m
+[2026-07-27 18:10:02:102] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:10:02:102] [[32minfo[39m]: [32mStarting permission synchronization...[39m
+[2026-07-27 18:10:02:102] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-07-27 18:10:02:102] [[32minfo[39m]: [32mPermissions Sync Summary:[39m
+[32m   - Canonical Registry Count: 88[39m
+[32m   - Created: 0[39m
+[32m   - Updated metadata: 0[39m
+[32m   - Unchanged: 88[39m
+[2026-07-27 18:10:02:102] [[32minfo[39m]: [32mOwner role updated with exactly 88 canonical permissions.[39m
+[2026-07-27 18:10:02:102] [[32minfo[39m]: [32mOwner role permissions cache invalidated.[39m
+[2026-07-27 18:10:29:1029] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:10:29:1029] [[32minfo[39m]: [32mStarting permission synchronization...[39m
+[2026-07-27 18:10:29:1029] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-07-27 18:10:29:1029] [[32minfo[39m]: [32mPermissions Sync Summary:[39m
+[32m   - Canonical Registry Count: 88[39m
+[32m   - Created: 0[39m
+[32m   - Updated metadata: 0[39m
+[32m   - Unchanged: 88[39m
+[2026-07-27 18:10:29:1029] [[32minfo[39m]: [32mOwner role updated with exactly 88 canonical permissions.[39m
+[2026-07-27 18:10:29:1029] [[32minfo[39m]: [32mOwner role permissions cache invalidated.[39m
+[2026-07-27 18:26:00:260] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:26:00:260] [[32minfo[39m]: [32mStarting permission synchronization...[39m
+[2026-07-27 18:26:00:260] [[32minfo[39m]: [32mPermissions Sync Summary:[39m
+[32m   - Canonical Registry Count: 88[39m
+[32m   - Created: 0[39m
+[32m   - Updated metadata: 0[39m
+[32m   - Unchanged: 88[39m
+[2026-07-27 18:26:00:260] [[32minfo[39m]: [32mOwner role updated with exactly 88 canonical permissions.[39m
+[2026-07-27 18:26:00:260] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-07-27 18:26:00:260] [[32minfo[39m]: [32mOwner role permissions cache invalidated.[39m
+[2026-07-27 18:26:19:2619] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:26:19:2619] [[32minfo[39m]: [32mStarting permission synchronization...[39m
+[2026-07-27 18:26:19:2619] [[32minfo[39m]: [32mPermissions Sync Summary:[39m
+[32m   - Canonical Registry Count: 88[39m
+[32m   - Created: 0[39m
+[32m   - Updated metadata: 0[39m
+[32m   - Unchanged: 88[39m
+[2026-07-27 18:26:19:2619] [[32minfo[39m]: [32mOwner role updated with exactly 88 canonical permissions.[39m
+[2026-07-27 18:26:20:2620] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-07-27 18:26:20:2620] [[32minfo[39m]: [32mOwner role permissions cache invalidated.[39m
+[2026-07-27 18:27:13:2713] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:27:13:2713] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:27:18:2718] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:30:11:3011] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:30:11:3011] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:30:54:3054] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:31:43:3143] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:31:43:3143] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:31:54:3154] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:33:10:3310] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:33:10:3310] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:34:01:341] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:34:01:341] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:38:43:3843] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:38:43:3843] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:39:02:392] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:41:23:4123] [[31merror[39m]: [31mERROR 💥 next is not a function[39m
+[2026-07-27 18:42:27:4227] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:42:27:4227] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:42:35:4235] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:42:35:4235] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:42:36:4236] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:42:36:4236] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:42:36:4236] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:42:36:4236] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:42:36:4236] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:42:37:4237] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:42:37:4237] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:42:37:4237] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:42:37:4237] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:42:37:4237] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:42:37:4237] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-07-27 18:42:52:4252] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-27 18:44:14:4414] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:44:14:4414] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:45:54:4554] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:46:48:4648] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:46:50:4650] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:46:56:4656] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:47:44:4744] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:47:45:4745] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:47:47:4747] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:47:52:4752] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:50:52:5052] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:50:52:5052] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:51:07:517] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-27 18:51:07:517] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-27 18:52:39:5239] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:52:40:5240] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:52:43:5243] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:52:47:5247] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:57:06:576] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:57:11:5711] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:57:13:5713] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:57:17:5717] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:58:55:5855] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:58:55:5855] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:58:56:5856] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:58:58:5858] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:59:01:591] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:59:01:591] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:59:03:593] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:59:05:595] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:59:09:599] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 19:02:51:251] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-07-27 19:17:54:1754] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-07-28 10:27:26:2726] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-28 10:27:26:2726] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-28 10:31:57:3157] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-28 10:31:59:3159] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-28 10:32:01:321] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-28 10:32:06:326] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-28 10:38:29:3829] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:38:29:3829] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:38:29:3829] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:38:29:3829] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:38:29:3829] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:38:30:3830] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:38:30:3830] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:38:30:3830] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:38:30:3830] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:38:30:3830] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:38:30:3830] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:38:31:3831] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:38:31:3831] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-07-28 10:41:46:4146] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-28 10:41:46:4146] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-28 10:41:58:4158] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:45:07:457] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-28 10:45:07:457] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-28 10:45:11:4511] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-28 10:45:11:4511] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-28 10:45:13:4513] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-28 10:45:13:4513] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-28 10:46:48:4648] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-28 10:46:48:4648] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-28 10:47:08:478] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:47:08:478] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:47:08:478] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:47:08:478] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:47:08:478] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:47:09:479] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:47:09:479] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:47:09:479] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:47:09:479] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:47:09:479] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:47:09:479] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:47:10:4710] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-07-28 10:47:10:4710] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-07-28 10:47:11:4711] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-28 10:47:11:4711] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-28 10:51:36:5136] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-28 10:51:36:5136] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-28 10:51:47:5147] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-28 10:51:47:5147] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-28 10:52:21:5221] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-28 10:52:21:5221] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m

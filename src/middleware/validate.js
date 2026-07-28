@@ -13,7 +13,12 @@ export const validate = (schema) =>
     });
     // Reassign validated and stripped objects back to request
     for (const [key, value] of Object.entries(parsed)) {
-      req[key] = value;
+      if (req[key] && typeof req[key] === "object" && !Array.isArray(req[key])) {
+        Object.keys(req[key]).forEach(k => delete req[key][k]);
+        Object.assign(req[key], value);
+      } else {
+        req[key] = value;
+      }
     }
 
     next();

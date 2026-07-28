@@ -18,7 +18,7 @@ export const createCustomerSchema = z.object({
       })
       .optional(),
     gender: z.string().optional(),
-    dateOfBirth: z.string().datetime("Invalid date format").optional().nullable(),
+    dateOfBirth: z.string().optional().nullable(),
     address: z.string().optional(),
   }),
 });

@@ -54,3 +54,6 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 // Start Execution
 serverStart();
+
+// "seed": "node src/seed/seed.js",
+// "permissions:sync": "node src/scripts/syncPermissions.js"

@@ -12,8 +12,15 @@ describe("Permissions Synchronization Integration Tests", () => {
   let originalPermissions;
 
   beforeAll(async () => {
-    // Connect to test database
-    await connectDB();
+    // Connect to separate integration test database to protect dev database data
+    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
+    if (testUri.includes("?")) {
+      const parts = testUri.split("?");
+      testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_integration_test") + "?" + parts[1];
+    } else {
+      testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_integration_test");
+    }
+    await mongoose.connect(testUri);
     
     // Save original canonical permissions array content to restore later
     originalPermissions = [...CANONICAL_PERMISSIONS.map(p => ({ ...p }))];

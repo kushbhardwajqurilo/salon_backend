@@ -128,7 +128,7 @@ export class AuthService {
 
     try {
       const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET);
-      const user = await this.userRepo.findById(decoded.id);
+      const user = await this.userRepo.findById(decoded.id, ["role"]);
       console.log("decode", decoded)
       console.log("user", user)
       if (!user || user.status !== "active" || !user.refreshToken) {

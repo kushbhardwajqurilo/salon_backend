@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "start": "nodemon index.mjs",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
+    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch=\"**/permissionsSync.manual.js\" --runInBand",
     "seed": "node src/seed/seed.js",
-    "permissions:sync": "node src/scripts/syncPermissions.js",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand"
+    "permissions:sync": "node src/scripts/syncPermissions.js"
   },
   "keywords": [],
   "author": "kush bhardwaj",

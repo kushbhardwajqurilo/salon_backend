@@ -76,11 +76,10 @@ const customerSchema = new mongoose.Schema(
   }
 );
 
-customerSchema.pre("save", function (next) {
+customerSchema.pre("save", function () {
   if (this.phone) {
     this.phone = this.phone.replace(/[^\d+]/g, "");
   }
-  next();
 });
 
 customerSchema.index({ organizationId: 1, phone: 1 });

@@ -92,4 +92,34 @@ describe("AuthService", () => {
       expect(mockUser.lockUntil).toBeDefined();
     });
   });
+
+  describe("refresh", () => {
+    it("should populate role when fetching user and generate access token with role", async () => {
+      const jwt = (await import("jsonwebtoken")).default;
+      const bcrypt = (await import("bcryptjs")).default;
+
+      const refreshToken = jwt.sign({ id: "user-id" }, process.env.JWT_REFRESH_SECRET || "refresh_secret");
+      const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+
+      const mockUser = {
+        _id: "user-id",
+        email: "test@example.com",
+        status: "active",
+        refreshToken: hashedRefreshToken,
+        role: { name: "admin" },
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      mockUserRepo.findById.mockResolvedValue(mockUser);
+
+      const result = await authService.refresh(refreshToken, "127.0.0.1", "agent");
+
+      expect(mockUserRepo.findById).toHaveBeenCalledWith("user-id", ["role"]);
+      expect(result.accessToken).toBeDefined();
+      expect(result.refreshToken).toBeDefined();
+
+      const decoded = jwt.decode(result.accessToken);
+      expect(decoded.role).toBe("admin");
+    });
+  });
 });

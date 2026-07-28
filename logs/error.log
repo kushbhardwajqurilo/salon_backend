@@ -12,3 +12,47 @@
 [31m    at _executePreHooks (C:\Users\deves\Desktop\Projects\Saloon ERP\node_modules\mongoose\lib\query.js:4871:33)[39m
 [31m    at maybeTracedQueryExec (C:\Users\deves\Desktop\Projects\Saloon ERP\node_modules\mongoose\lib\query.js:4800:13)[39m
 [31m    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)[39m
+[2026-07-27 18:00:56:056] [[31merror[39m]: [31mERROR 💥 Cannot set property query of #<IncomingMessage> which has only a getter[39m
+[2026-07-27 18:00:57:057] [[31merror[39m]: [31mERROR 💥 Cannot set property query of #<IncomingMessage> which has only a getter[39m
+[2026-07-27 18:01:00:10] [[31merror[39m]: [31mERROR 💥 Cannot set property query of #<IncomingMessage> which has only a getter[39m
+[2026-07-27 18:01:04:14] [[31merror[39m]: [31mERROR 💥 Cannot set property query of #<IncomingMessage> which has only a getter[39m
+[2026-07-27 18:01:49:149] [[31merror[39m]: [31mERROR 💥 Cannot set property query of #<IncomingMessage> which has only a getter[39m
+[2026-07-27 18:03:18:318] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:03:27:327] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:03:29:329] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:03:33:333] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:03:40:340] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:03:41:341] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:30:54:3054] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:31:54:3154] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:39:02:392] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:41:23:4123] [[31merror[39m]: [31mERROR 💥 next is not a function[39m
+[2026-07-27 18:45:54:4554] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:46:48:4648] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:46:50:4650] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:46:56:4656] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:47:44:4744] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:47:45:4745] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:47:47:4747] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:47:52:4752] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:52:39:5239] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:52:40:5240] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:52:43:5243] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:52:47:5247] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:57:06:576] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:57:11:5711] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:57:13:5713] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:57:17:5717] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:58:55:5855] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:58:55:5855] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:58:56:5856] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:58:58:5858] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:59:01:591] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:59:01:591] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:59:03:593] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:59:05:595] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-27 18:59:09:599] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-28 10:31:57:3157] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-28 10:31:59:3159] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-28 10:32:01:321] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-28 10:32:06:326] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
