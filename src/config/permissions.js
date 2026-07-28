@@ -120,6 +120,12 @@ export const CANONICAL_PERMISSIONS = [
     description: "Export customer profile lists and service history records for reporting/data portability."
   },
   {
+    name: "customers.edit",
+    module: "Customers",
+    action: "Edit",
+    description: "Edit customer profile details."
+  },
+  {
     name: "appointments.view",
     module: "Appointments",
     action: "View",

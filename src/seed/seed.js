@@ -24,7 +24,7 @@ const seed = async () => {
     } else {
       console.log(`Organization "Unisex Parlour" already exists (${org._id})`);
     }
- 
+
     // 3. Create Branches if they don't exist
     let koramangala = await Branch.findOne({ name: "Koramangala", organizationId: org._id });
     if (!koramangala) {
@@ -39,7 +39,7 @@ const seed = async () => {
     } else {
       console.log("Koramangala branch already exists.");
     }
- 
+
     let indiranagar = await Branch.findOne({ name: "Indiranagar", organizationId: org._id });
     if (!indiranagar) {
       indiranagar = await Branch.create({
@@ -53,7 +53,7 @@ const seed = async () => {
     } else {
       console.log("Indiranagar branch already exists.");
     }
- 
+
     let whitefield = await Branch.findOne({ name: "Whitefield", organizationId: org._id });
     if (!whitefield) {
       whitefield = await Branch.create({
@@ -67,14 +67,14 @@ const seed = async () => {
     } else {
       console.log("Whitefield branch already exists.");
     }
- 
+
     // 4. Run Canonical Permissions Synchronization
     await syncPermissionsLogic();
     console.log("Canonical permissions synchronized.");
- 
+
     // 5. Get Owner Role
     const ownerRole = await Role.findOne({ name: "owner" });
- 
+
     // 6. Create Manager Role if it doesn't exist
     let managerRole = await Role.findOne({ name: "manager" });
     if (!managerRole) {
@@ -95,7 +95,7 @@ const seed = async () => {
     } else {
       console.log("Manager role already exists.");
     }
- 
+
     // 7. Create Owner user if it doesn't exist
     let ownerUser = await User.findOne({ email: "owner@parlour.com" });
     if (!ownerUser) {
@@ -107,6 +107,7 @@ const seed = async () => {
         role: ownerRole._id,
         organizationId: org._id,
         isVerified: true,
+        hasOrgWideAccess: true,
         branchAccess: [
           { branchId: koramangala._id, branchName: koramangala.name, isActive: koramangala.isActive },
           { branchId: indiranagar._id, branchName: indiranagar.name, isActive: indiranagar.isActive },
@@ -117,7 +118,7 @@ const seed = async () => {
     } else {
       console.log("Owner user (John Doe) already exists.");
     }
- 
+
     // 8. Create Manager user if it doesn't exist
     let managerUser = await User.findOne({ email: "manager@parlour.com" });
     if (!managerUser) {
