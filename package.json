@@ -8,7 +8,8 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch=\"**/permissionsSync.manual.js\" --runInBand",
     "seed": "node src/seed/seed.js",
-    "permissions:sync": "node src/scripts/syncPermissions.js"
+    "permissions:sync": "node src/scripts/syncPermissions.js",
+    "customers:migrate": "node src/scripts/migrateCustomers.js"
   },
   "keywords": [],
   "author": "kush bhardwaj",

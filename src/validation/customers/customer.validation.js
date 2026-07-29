@@ -20,6 +20,7 @@ export const createCustomerSchema = z.object({
     gender: z.string().optional(),
     dateOfBirth: z.string().optional().nullable(),
     address: z.string().optional(),
+    isActive: z.boolean().optional(),
   }),
 });
 
@@ -40,6 +41,7 @@ export const updateCustomerSchema = z.object({
       gender: z.string().optional(),
       dateOfBirth: z.string().datetime("Invalid date format").optional().nullable(),
       address: z.string().optional(),
+      isActive: z.boolean().optional(),
       organizationId: z.any().optional(),
       homeBranchId: z.any().optional(),
       visitedBranchIds: z.any().optional(),
@@ -53,11 +55,29 @@ export const addNoteSchema = z.object({
   }),
 });
 
+const allowedSortFields = ["name", "createdAt", "updatedAt", "loyaltyPoints"];
+
 export const queryCustomerSchema = z.object({
   query: z.object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().default(10),
-    sort: z.string().default("-createdAt"),
+    sort: z
+      .string()
+      .refine(
+        (val) => {
+          const field = val.startsWith("-") ? val.slice(1) : val;
+          return allowedSortFields.includes(field);
+        },
+        {
+          message: `Sort field must be one of: ${allowedSortFields.join(", ")} (optionally prefixed with '-')`,
+        }
+      )
+      .default("-createdAt"),
     search: z.string().optional(),
+    isActive: z.preprocess((val) => {
+      if (val === "true") return true;
+      if (val === "false") return false;
+      return undefined;
+    }, z.boolean().optional()),
   }),
 });

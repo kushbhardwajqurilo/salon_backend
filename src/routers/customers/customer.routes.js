@@ -41,7 +41,7 @@ router.get(
 router.put(
   "/:id",
   requireOrganizationScope,
-  authorize("customers.update"),
+  authorize("customers.edit"),
   validate(customerValidation.updateCustomerSchema),
   customerController.updateCustomer
 );
@@ -58,7 +58,7 @@ router.delete(
 router.post(
   "/:id/notes",
   requireOrganizationScope,
-  authorize("customers.update"),
+  authorize("customers.edit"),
   validate(customerValidation.addNoteSchema),
   customerController.addNote
 );

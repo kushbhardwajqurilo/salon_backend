@@ -130,15 +130,47 @@ export const listCustomers = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
   const activeBranchId = await getActiveBranchContext(req);
 
-  const { page, limit, sort, search } = req.query;
+  const { page, limit, sort, search, isActive } = req.query;
 
   const filter = {};
+  const andConditions = [];
+
   if (activeBranchId) {
     // Branch-limited visibility rule
-    filter.$or = [
-      { homeBranchId: activeBranchId },
-      { visitedBranchIds: activeBranchId }
-    ];
+    andConditions.push({
+      $or: [
+        { homeBranchId: activeBranchId },
+        { visitedBranchIds: activeBranchId }
+      ]
+    });
+  }
+
+  // Active/inactive filtering: default to active-only if not specified
+  // Support legacy records where isActive is missing
+  if (isActive === undefined || isActive === true) {
+    andConditions.push({
+      $or: [
+        { isActive: true },
+        { isActive: { $exists: false } }
+      ]
+    });
+  } else {
+    andConditions.push({ isActive: false });
+  }
+
+  if (andConditions.length > 0) {
+    filter.$and = andConditions;
+  }
+
+  // Safe sort parsing with strict deterministic fallback ordering
+  const sortOption = {};
+  if (sort) {
+    const isDesc = sort.startsWith("-");
+    const field = isDesc ? sort.slice(1) : sort;
+    sortOption[field] = isDesc ? -1 : 1;
+  }
+  if (!sortOption._id) {
+    sortOption._id = 1;
   }
 
   const result = await customerService.listCustomers(
@@ -146,7 +178,7 @@ export const listCustomers = asyncHandler(async (req, res) => {
     {
       page,
       limit,
-      sort,
+      sort: sortOption,
       search,
       searchFields: ["name", "phone", "email"],
     },

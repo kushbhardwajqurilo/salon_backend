@@ -25,6 +25,7 @@ export class CustomerService {
         dateOfBirth: data.dateOfBirth,
         address: data.address,
         preferences: data.preferences || {},
+        isActive: data.isActive !== undefined ? data.isActive : true,
       },
       organizationId,
       userId
@@ -66,15 +67,25 @@ export class CustomerService {
     // Fetch and check visibility first
     const customer = await this.getCustomerById(id, organizationId, userContext, activeBranchId);
 
+    // If customer is deactivated, block edits unless it is a reactivation (data.isActive === true)
+    if (customer.isActive === false && data.isActive !== true) {
+      throw new AppError("Cannot perform operations on a deactivated customer profile.", 400);
+    }
+
     // Filter out immutable fields
     const { organizationId: _, homeBranchId: __, visitedBranchIds: ___, isDeleted: ____, deletedAt: _____, ...updateData } = data;
 
     const updated = await this.customerRepo.updateById(id, updateData, organizationId, userId);
 
+    let actionDescription = "Customer profile details updated";
+    if (data.isActive !== undefined && customer.isActive !== data.isActive) {
+      actionDescription = data.isActive ? "Customer profile activated" : "Customer profile deactivated";
+    }
+
     await this.customerRepo.addActivity(
       id,
       "UPDATED",
-      "Customer profile details updated",
+      actionDescription,
       organizationId,
       userId
     );
@@ -106,7 +117,11 @@ export class CustomerService {
 
   async addNote(id, noteText, organizationId, userId, userContext = null, activeBranchId = null) {
     // Check visibility first
-    await this.getCustomerById(id, organizationId, userContext, activeBranchId);
+    const customer = await this.getCustomerById(id, organizationId, userContext, activeBranchId);
+
+    if (customer.isActive === false) {
+      throw new AppError("Cannot perform operations on a deactivated customer profile.", 400);
+    }
 
     const updated = await this.customerRepo.addNote(id, noteText, organizationId, userId);
     await this.customerRepo.addActivity(id, "ADD_NOTE", `Added note: "${noteText}"`, organizationId, userId);

@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { AppError } from "../../utils/errors.js";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Customer } from "../../models/customers/customer.model.js";
+import { CustomerService } from "../../services/customers/customer.service.js";
 import {
   createCustomer,
   listCustomers,
@@ -282,6 +283,7 @@ describe("Customer Core Integration & Scoping Tests", () => {
         visitedBranchIds: [],
         name: "Old Name",
         phone: "+919999999999",
+        isActive: true,
         save: jest.fn().mockImplementation(function () {
           return Promise.resolve(this);
         }),
@@ -377,6 +379,88 @@ describe("Customer Core Integration & Scoping Tests", () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(mockCustomer.name).toBe("Updated Name");
       expect(mockCustomer.phone).toBe("+918888888888");
+    });
+
+    it("Test 6 — should reject updates if customer is deactivated and body does not reactivate them", async () => {
+      mockCustomer.isActive = false;
+      req.body = {
+        name: "Updated Name",
+      };
+
+      await updateCustomer(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(AppError));
+      expect(next.mock.calls[0][0].statusCode).toBe(400);
+      expect(next.mock.calls[0][0].message).toBe("Cannot perform operations on a deactivated customer profile.");
+    });
+  });
+
+  describe("Customer List Filtering and Sorting", () => {
+    it("should query customers defaulting to active-only (true or missing isActive) and using safe sorting options", async () => {
+      const activeBranchId = new mongoose.Types.ObjectId().toString();
+      req.headers["x-branch-id"] = activeBranchId;
+      req.query = { page: 1, limit: 10, sort: "name" };
+      req.user.branchAccess = [{ branchId: activeBranchId, isActive: true }];
+
+      Branch.findOne.mockResolvedValue({ _id: activeBranchId, organizationId: req.user.organizationId, isActive: true });
+      CustomerService.prototype.listCustomers = jest.fn().mockResolvedValue({ data: [], meta: {} });
+
+      await listCustomers(req, res, next);
+
+      expect(CustomerService.prototype.listCustomers).toHaveBeenCalledWith(
+        expect.objectContaining({
+          $and: expect.arrayContaining([
+            {
+              $or: [
+                { homeBranchId: activeBranchId },
+                { visitedBranchIds: activeBranchId }
+              ]
+            },
+            {
+              $or: [
+                { isActive: true },
+                { isActive: { $exists: false } }
+              ]
+            }
+          ])
+        }),
+        expect.objectContaining({ sort: { name: 1, _id: 1 } }),
+        req.organizationId
+      );
+    });
+
+    it("should query customers matching explicitly inactive when queried", async () => {
+      const activeBranchId = new mongoose.Types.ObjectId().toString();
+      req.headers["x-branch-id"] = activeBranchId;
+      req.query = { page: 1, limit: 10, sort: "name", isActive: "false" };
+      req.user.branchAccess = [{ branchId: activeBranchId, isActive: true }];
+
+      Branch.findOne.mockResolvedValue({ _id: activeBranchId, organizationId: req.user.organizationId, isActive: true });
+      CustomerService.prototype.listCustomers = jest.fn().mockResolvedValue({ data: [], meta: {} });
+
+      await listCustomers(req, res, next);
+
+      expect(CustomerService.prototype.listCustomers).toHaveBeenCalledWith(
+        expect.objectContaining({
+          $and: expect.arrayContaining([
+            { isActive: false }
+          ])
+        }),
+        expect.any(Object),
+        req.organizationId
+      );
+    });
+
+    it("should update legacy customers and exclude soft-deleted ones (migration logic)", async () => {
+      Customer.updateMany = jest.fn().mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
+      const { migrateCustomersLogic } = await import("../../scripts/migrateCustomers.js");
+      const result = await migrateCustomersLogic();
+      expect(Customer.updateMany).toHaveBeenCalledWith(
+        { isActive: { $exists: false }, isDeleted: { $ne: true } },
+        { $set: { isActive: true } }
+      );
+      expect(result.matchedCount).toBe(1);
+      expect(result.modifiedCount).toBe(1);
     });
   });
 });

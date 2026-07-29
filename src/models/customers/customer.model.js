@@ -70,6 +70,11 @@ const customerSchema = new mongoose.Schema(
         performedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
       },
     ],
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
   },
   {
     timestamps: true,
