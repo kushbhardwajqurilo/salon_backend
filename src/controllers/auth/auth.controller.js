@@ -94,7 +94,6 @@ export const me = asyncHandler(async (req, res) => {
 
 export const logout = asyncHandler(async (req, res) => {
   const token = req.cookies?.refreshToken || req.body.refreshToken;
-  console.log("token", token)
   if (token) {
     await authService.logout(token);
   }

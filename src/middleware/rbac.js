@@ -14,11 +14,9 @@ const roleRepo = new RoleRepository();
  */
 export const authorize = (requiredPermission, checkBranchScope = false) => {
   return asyncHandler(async (req, res, next) => {
-    console.log("user", req.user)
     const { role: roleName, branchAccess } = req.user;
 
     const normalizedRole = roleName ? roleName.toLowerCase() : "";
-    console.log("role", normalizedRole)
     const cacheKey = `rbac:role:${normalizedRole}:permissions`;
     let permissions = [];
 

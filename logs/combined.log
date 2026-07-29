@@ -644,3 +644,13 @@
 [2026-07-28 11:13:20:1320] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
 [2026-07-28 11:21:05:215] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
 [2026-07-28 11:21:05:215] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-28 13:34:26:3426] [[31merror[39m]: [31mERROR 💥 Cannot read properties of undefined (reading 'refreshToken')[39m
+[2026-07-28 13:34:54:3454] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-07-28 13:35:00:350] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-28 13:35:00:350] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-29 10:08:45:845] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-29 10:08:45:845] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-29 11:57:29:5729] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-29 11:57:29:5729] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-29 11:57:41:5741] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-29 11:57:41:5741] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m

@@ -56,3 +56,4 @@
 [2026-07-28 10:31:59:3159] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
 [2026-07-28 10:32:01:321] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
 [2026-07-28 10:32:06:326] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
+[2026-07-28 13:34:26:3426] [[31merror[39m]: [31mERROR 💥 Cannot read properties of undefined (reading 'refreshToken')[39m
