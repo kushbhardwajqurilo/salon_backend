@@ -145,16 +145,17 @@ export const listCustomers = asyncHandler(async (req, res) => {
     });
   }
 
-  // Active/inactive filtering: default to active-only if not specified
-  // Support legacy records where isActive is missing
-  if (isActive === undefined || isActive === true) {
-    andConditions.push({
-      $or: [
-        { isActive: true },
-        { isActive: { $exists: false } }
-      ]
-    });
-  } else {
+  let activeFilter;
+  if (isActive === true || isActive === "true") {
+    activeFilter = true;
+  } else if (isActive === false || isActive === "false") {
+    activeFilter = false;
+  }
+
+  // Active/inactive filtering: default to all if not specified
+  if (activeFilter === true) {
+    andConditions.push({ isActive: true });
+  } else if (activeFilter === false) {
     andConditions.push({ isActive: false });
   }
 
@@ -201,4 +202,19 @@ export const addNote = asyncHandler(async (req, res) => {
     activeBranchId
   );
   return sendResponse(res, 200, "Note added successfully", customer);
+});
+
+
+export const customerStatusChangeById = asyncHandler(async (req, res) => {
+  const organizationId = req.organizationId;
+  const activeBranchId = await getActiveBranchContext(req);
+
+  const customer = await customerService.customerStatusChangeById(
+    req.params.id,
+    organizationId,
+    req.user?.id,
+    req.user,
+    activeBranchId
+  );
+  return sendResponse(res, 200, "Customer status updated successfully", customer);
 });

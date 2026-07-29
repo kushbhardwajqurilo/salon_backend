@@ -75,9 +75,16 @@ export const queryCustomerSchema = z.object({
       .default("-createdAt"),
     search: z.string().optional(),
     isActive: z.preprocess((val) => {
+      if (typeof val === "boolean") return val;
       if (val === "true") return true;
       if (val === "false") return false;
       return undefined;
     }, z.boolean().optional()),
+  }),
+});
+
+export const customerStatusUpdateSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
   }),
 });

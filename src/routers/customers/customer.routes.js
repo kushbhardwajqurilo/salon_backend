@@ -63,4 +63,11 @@ router.post(
   customerController.addNote
 );
 
+router.put(
+  "/:id/reactivate",
+  requireOrganizationScope,
+  authorize("customers.edit"),
+  validate(customerValidation.customerStatusUpdateSchema),
+  customerController.customerStatusChangeById
+);
 export default router;

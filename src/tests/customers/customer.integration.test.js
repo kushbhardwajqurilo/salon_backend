@@ -415,12 +415,6 @@ describe("Customer Core Integration & Scoping Tests", () => {
                 { homeBranchId: activeBranchId },
                 { visitedBranchIds: activeBranchId }
               ]
-            },
-            {
-              $or: [
-                { isActive: true },
-                { isActive: { $exists: false } }
-              ]
             }
           ])
         }),

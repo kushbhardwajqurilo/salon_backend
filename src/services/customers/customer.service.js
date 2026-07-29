@@ -111,6 +111,21 @@ export class CustomerService {
     return this.customerRepo.deleteById(id, organizationId, userId);
   }
 
+  async customerStatusChangeById(id, organizationId, userId) {
+    const customer = await this.customerRepo.findById(id, organizationId);
+    if (!customer) {
+      throw new AppError("Resource not found", 404);
+    }
+    await this.customerRepo.addActivity(
+      id,
+      "STATUS_UPDATED",
+      `Customer profile status updated`,
+      organizationId,
+      userId
+    );
+    return this.customerRepo.statusUpdateById(id, organizationId);
+  }
+
   async listCustomers(filter = {}, options = {}, organizationId) {
     return this.customerRepo.find(filter, options, organizationId);
   }

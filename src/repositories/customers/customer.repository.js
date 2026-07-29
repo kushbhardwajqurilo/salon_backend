@@ -52,16 +52,32 @@ export class CustomerRepository extends BaseRepository {
   async deleteById(id, organizationId, userId = null) {
     const doc = await this.model.findOne({ _id: id, organizationId });
     if (!doc) return null;
-    return doc.softDelete ? doc.softDelete(userId) : this.model.findByIdAndDelete(id);
+    if (typeof doc.softDelete === "function") {
+      return doc.softDelete(userId);
+    }
+    // Manual soft delete fallback to prevent permanent deletion
+    doc.isDeleted = true;
+    doc.isActive = false;
+    doc.deletedAt = new Date();
+    if (userId) {
+      doc.deletedBy = userId;
+    }
+    return doc.save();
   }
 
   async find(filter = {}, options = {}, organizationId) {
-    const queryFilter = { ...filter, organizationId };
+    const queryFilter = { ...filter };
+    if (organizationId !== undefined) {
+      queryFilter.organizationId = organizationId;
+    }
     return super.find(queryFilter, options);
   }
 
   async count(filter = {}, organizationId) {
-    const queryFilter = { ...filter, organizationId };
+    const queryFilter = { ...filter };
+    if (organizationId !== undefined) {
+      queryFilter.organizationId = organizationId;
+    }
     return super.count(queryFilter);
   }
 
@@ -91,4 +107,15 @@ export class CustomerRepository extends BaseRepository {
       { new: true }
     );
   }
+
+  async statusUpdateById(id, organizationId) {
+    const customer = await this.model.findOne({ _id: id, organizationId });
+    if (!customer) return null;
+    return this.model.findOneAndUpdate(
+      { _id: id, organizationId },
+      { $set: { isActive: !customer.isActive } },
+      { new: true }
+    );
+  }
 }
+
