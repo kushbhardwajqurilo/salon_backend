@@ -283,14 +283,17 @@ describe("Security Scoping Middleware & Validation tests", () => {
           _id: customerId,
           organizationId,
           homeBranchId,
-          visitedBranchIds: []
+          visitedBranchIds: [],
+          status: "active",
         });
 
         customerService.customerRepo.updateById = jest.fn().mockImplementation((id, data) => {
           return Promise.resolve({ _id: id, ...data });
         });
 
-        customerService.customerRepo.addActivity = jest.fn().mockResolvedValue(null);
+        customerService.auditRepo = {
+          create: jest.fn().mockResolvedValue({}),
+        };
 
         const updates = {
           name: "Updated Name",

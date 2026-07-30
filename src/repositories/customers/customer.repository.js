@@ -26,6 +26,17 @@ export class CustomerRepository extends BaseRepository {
     return query.exec();
   }
 
+  async findByIdIncludeDeleted(id, organizationId, populate = [], select = null) {
+    let query = this.model.findOne({ _id: id, organizationId, includeDeleted: true });
+    if (populate.length > 0) {
+      query = query.populate(populate);
+    }
+    if (select) {
+      query = query.select(select);
+    }
+    return query.exec();
+  }
+
   async findOne(filter, organizationId, populate = [], select = null) {
     let query = this.model.findOne({ ...filter, organizationId });
     if (populate.length > 0) {
@@ -35,6 +46,14 @@ export class CustomerRepository extends BaseRepository {
       query = query.select(select);
     }
     return query.exec();
+  }
+
+  async findByPhone(phone, organizationId, includeDeleted = false) {
+    const filter = { phone, organizationId };
+    if (includeDeleted) {
+      filter.includeDeleted = true;
+    }
+    return this.model.findOne(filter);
   }
 
   async updateById(id, data, organizationId, userId = null, session = null) {
@@ -57,7 +76,7 @@ export class CustomerRepository extends BaseRepository {
     }
     // Manual soft delete fallback to prevent permanent deletion
     doc.isDeleted = true;
-    doc.isActive = false;
+    doc.status = "inactive";
     doc.deletedAt = new Date();
     if (userId) {
       doc.deletedBy = userId;
@@ -81,41 +100,32 @@ export class CustomerRepository extends BaseRepository {
     return super.count(queryFilter);
   }
 
-  async addNote(id, noteText, organizationId, userId) {
-    return this.model.findOneAndUpdate(
-      { _id: id, organizationId },
-      {
-        $push: { notes: { text: noteText, createdBy: userId } },
-      },
-      { new: true }
-    );
-  }
-
-  async addActivity(id, action, description, organizationId, userId) {
-    return this.model.findOneAndUpdate(
-      { _id: id, organizationId },
-      {
-        $push: {
-          activityTimeline: {
-            action,
-            description,
-            performedBy: userId,
-            date: new Date(),
-          },
-        },
-      },
-      { new: true }
-    );
-  }
-
   async statusUpdateById(id, organizationId) {
     const customer = await this.model.findOne({ _id: id, organizationId });
     if (!customer) return null;
+    const newStatus = customer.status === "active" ? "inactive" : "active";
     return this.model.findOneAndUpdate(
       { _id: id, organizationId },
-      { $set: { isActive: !customer.isActive } },
+      { $set: { status: newStatus } },
+      { new: true }
+    );
+  }
+
+  async reactivateById(id, organizationId, userId = null) {
+    const update = {
+      isDeleted: false,
+      deletedAt: null,
+      status: "active",
+    };
+    if (userId) {
+      update.updatedBy = userId;
+    }
+    return this.model.findOneAndUpdate(
+      { _id: id, organizationId, includeDeleted: true },
+      { $set: update },
       { new: true }
     );
   }
 }
+
 

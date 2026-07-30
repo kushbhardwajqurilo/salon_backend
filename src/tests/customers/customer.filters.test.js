@@ -75,7 +75,7 @@ describe("Customer Filtering, Pagination, and Scoping Audits", () => {
   });
 
   describe("Requirement G2: isActive=true returns active customer", () => {
-    it("should query strictly isActive: true when isActive=true query parameter is supplied", async () => {
+    it("should query strictly status: 'active' when isActive=true query parameter is supplied", async () => {
       const activeBranchId = new mongoose.Types.ObjectId().toString();
       req.headers["x-branch-id"] = activeBranchId;
       req.query = { isActive: "true" };
@@ -90,7 +90,7 @@ describe("Customer Filtering, Pagination, and Scoping Audits", () => {
       expect(Customer.find).toHaveBeenCalledWith(
         expect.objectContaining({
           $and: expect.arrayContaining([
-            { isActive: true },
+            { status: "active" },
           ]),
         })
       );
@@ -98,7 +98,7 @@ describe("Customer Filtering, Pagination, and Scoping Audits", () => {
   });
 
   describe("Requirement G3: isActive=false returns inactive customer", () => {
-    it("should query strictly isActive: false when isActive=false query parameter is supplied", async () => {
+    it("should query strictly status in inactive/blocked when isActive=false query parameter is supplied", async () => {
       const activeBranchId = new mongoose.Types.ObjectId().toString();
       req.headers["x-branch-id"] = activeBranchId;
       req.query = { isActive: "false" };
@@ -113,7 +113,7 @@ describe("Customer Filtering, Pagination, and Scoping Audits", () => {
       expect(Customer.find).toHaveBeenCalledWith(
         expect.objectContaining({
           $and: expect.arrayContaining([
-            { isActive: false },
+            { status: { $in: ["inactive", "blocked"] } },
           ]),
         })
       );
@@ -126,11 +126,11 @@ describe("Customer Filtering, Pagination, and Scoping Audits", () => {
       Customer.find.mockReturnValue(createQueryMock([]));
       Customer.countDocuments.mockReturnValue({ exec: jest.fn().mockResolvedValue(0) });
 
-      await mockRepo.find({ isActive: true }, { page: 1, limit: 10 }, organizationId);
+      await mockRepo.find({ status: "active" }, { page: 1, limit: 10 }, organizationId);
 
       expect(Customer.find).toHaveBeenCalledWith(
         expect.objectContaining({
-          isActive: true,
+          status: "active",
           organizationId,
         })
       );
@@ -219,7 +219,7 @@ describe("Customer Filtering, Pagination, and Scoping Audits", () => {
   });
 
   describe("Requirement G10: Search + isActive filter combination", () => {
-    it("should query with search query AND isActive: true", async () => {
+    it("should query with search query AND status: 'active'", async () => {
       const activeBranchId = new mongoose.Types.ObjectId().toString();
       req.headers["x-branch-id"] = activeBranchId;
       req.query = { search: "bikram", isActive: "true" };
@@ -234,7 +234,7 @@ describe("Customer Filtering, Pagination, and Scoping Audits", () => {
       expect(Customer.find).toHaveBeenCalledWith(
         expect.objectContaining({
           $and: expect.arrayContaining([
-            { isActive: true },
+            { status: "active" },
           ]),
           $or: expect.arrayContaining([
             { name: { $regex: "bikram", $options: "i" } },
@@ -247,12 +247,12 @@ describe("Customer Filtering, Pagination, and Scoping Audits", () => {
   });
 
   describe("Requirement G11: Pagination + isActive filter combination", () => {
-    it("should support page/limit pagination together with isActive=true", async () => {
+    it("should support page/limit pagination together with status: 'active'", async () => {
       const organizationId = new mongoose.Types.ObjectId().toString();
       Customer.find.mockReturnValue(createQueryMock([]));
       Customer.countDocuments.mockReturnValue({ exec: jest.fn().mockResolvedValue(15) });
 
-      const result = await mockRepo.find({ isActive: true }, { page: 2, limit: 5 }, organizationId);
+      const result = await mockRepo.find({ status: "active" }, { page: 2, limit: 5 }, organizationId);
 
       expect(result.meta.page).toBe(2);
       expect(result.meta.limit).toBe(5);
@@ -262,7 +262,7 @@ describe("Customer Filtering, Pagination, and Scoping Audits", () => {
   });
 
   describe("Requirement G12: Branch + isActive filter combination", () => {
-    it("should apply branch scoping and isActive filters together in the same query", async () => {
+    it("should apply branch scoping and status filters together in the same query", async () => {
       const activeBranchId = new mongoose.Types.ObjectId().toString();
       req.headers["x-branch-id"] = activeBranchId;
       req.query = { isActive: "true" };
@@ -283,7 +283,7 @@ describe("Customer Filtering, Pagination, and Scoping Audits", () => {
                 { visitedBranchIds: activeBranchId },
               ],
             },
-            { isActive: true },
+            { status: "active" },
           ]),
         })
       );

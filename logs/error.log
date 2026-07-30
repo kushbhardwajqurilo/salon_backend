@@ -57,3 +57,7 @@
 [2026-07-28 10:32:01:321] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
 [2026-07-28 10:32:06:326] [[31merror[39m]: [31mError resolving permissions from cache/db: Access denied. Role not found.[39m
 [2026-07-28 13:34:26:3426] [[31merror[39m]: [31mERROR 💥 Cannot read properties of undefined (reading 'refreshToken')[39m
+[2026-07-29 18:32:35:3235] [[31merror[39m]: [31mERROR 💥 userId is not defined[39m
+[2026-07-29 18:34:13:3413] [[31merror[39m]: [31mERROR 💥 userId is not defined[39m
+[2026-07-30 11:24:09:249] [[31merror[39m]: [31mERROR 💥 Cannot read properties of undefined (reading '_zod')[39m
+[2026-07-30 13:22:34:2234] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m

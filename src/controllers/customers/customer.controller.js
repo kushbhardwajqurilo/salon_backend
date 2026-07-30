@@ -1,9 +1,23 @@
 import mongoose from "mongoose";
 import { CustomerService } from "../../services/customers/customer.service.js";
+import { CustomerNoteService } from "../../services/customers/customerNote.service.js";
+import { AuditLogService } from "../../services/audit/auditLog.service.js";
 import { sendResponse } from "../../utils/response.js";
 import { asyncHandler, AppError } from "../../utils/errors.js";
 
 const customerService = new CustomerService();
+const customerNoteService = new CustomerNoteService();
+const auditLogService = new AuditLogService();
+
+/**
+ * Helper to check user permission by role name
+ */
+const checkUserPermission = async (roleName, permission) => {
+  const normalizedRole = roleName ? roleName.toLowerCase() : "";
+  const roleObj = await mongoose.model("Role").findOne({ name: normalizedRole }).populate("permissions");
+  if (!roleObj) return false;
+  return roleObj.permissions.some((p) => p.name === permission);
+};
 
 /**
  * Helper to retrieve and validate active branch context from request headers.
@@ -94,14 +108,28 @@ export const updateCustomer = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
   const activeBranchId = await getActiveBranchContext(req);
 
-  const immutableFields = ["organizationId", "homeBranchId", "visitedBranchIds"];
-  const attemptedFields = immutableFields.filter((field) => field in req.body);
-  if (attemptedFields.length > 0) {
-    const errors = attemptedFields.map((field) => ({
+  // Strictly immutable fields for normal updates
+  const strictlyImmutable = ["organizationId", "visitedBranchIds"];
+  const attemptedStrictly = strictlyImmutable.filter((field) => field in req.body);
+  if (attemptedStrictly.length > 0) {
+    const errors = attemptedStrictly.map((field) => ({
       field,
       message: `${field} cannot be modified after customer creation`,
     }));
     throw new AppError("Immutable customer fields cannot be modified", 400, errors, "error");
+  }
+
+  // Handle homeBranchId modification permission check
+  if ("homeBranchId" in req.body) {
+    const hasBranchPermission = await checkUserPermission(req.user.role, "customers.manage_branch");
+    if (!hasBranchPermission) {
+      throw new AppError("Immutable customer fields cannot be modified", 400, [
+        {
+          field: "homeBranchId",
+          message: "homeBranchId cannot be modified after customer creation",
+        }
+      ], "error");
+    }
   }
 
   const customer = await customerService.updateCustomer(
@@ -122,7 +150,7 @@ export const deleteCustomer = asyncHandler(async (req, res) => {
   // Validate visibility before soft-deleting
   await customerService.getCustomerById(req.params.id, organizationId, req.user, activeBranchId);
 
-  await customerService.deleteCustomer(req.params.id, organizationId, req.user.id);
+  await customerService.deleteCustomer(req.params.id, organizationId, req.user.id, activeBranchId);
   return sendResponse(res, 200, "Customer profile deleted successfully");
 });
 
@@ -130,7 +158,7 @@ export const listCustomers = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
   const activeBranchId = await getActiveBranchContext(req);
 
-  const { page, limit, sort, search, isActive } = req.query;
+  const { page, limit, sort, search, isActive, status } = req.query;
 
   const filter = {};
   const andConditions = [];
@@ -152,11 +180,16 @@ export const listCustomers = asyncHandler(async (req, res) => {
     activeFilter = false;
   }
 
-  // Active/inactive filtering: default to all if not specified
+  // Active/inactive filtering
   if (activeFilter === true) {
-    andConditions.push({ isActive: true });
+    andConditions.push({ status: "active" });
   } else if (activeFilter === false) {
-    andConditions.push({ isActive: false });
+    andConditions.push({ status: { $in: ["inactive", "blocked"] } });
+  }
+
+  // Status filtering
+  if (status) {
+    andConditions.push({ status });
   }
 
   if (andConditions.length > 0) {
@@ -193,17 +226,51 @@ export const addNote = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
   const activeBranchId = await getActiveBranchContext(req);
 
-  const customer = await customerService.addNote(
+  if (!activeBranchId) {
+    throw new AppError("X-Branch-Id header is required to add a note.", 400);
+  }
+
+  const note = await customerNoteService.createNote(
     req.params.id,
     req.body.text,
     organizationId,
-    req.user.id,
-    req.user,
-    activeBranchId
+    activeBranchId,
+    req.user.id
   );
-  return sendResponse(res, 200, "Note added successfully", customer);
+  return sendResponse(res, 201, "Note added successfully", note);
 });
 
+export const getNotes = asyncHandler(async (req, res) => {
+  const organizationId = req.organizationId;
+  const activeBranchId = await getActiveBranchContext(req);
+
+  const { page, limit } = req.query;
+
+  const result = await customerNoteService.getNotes(
+    req.params.id,
+    organizationId,
+    activeBranchId,
+    { page, limit }
+  );
+  return sendResponse(res, 200, "Notes retrieved successfully", result.data, result.meta);
+});
+
+export const getActivity = asyncHandler(async (req, res) => {
+  const organizationId = req.organizationId;
+  const activeBranchId = await getActiveBranchContext(req);
+
+  // Enforce customer existence and organization ownership
+  await customerService.getCustomerById(req.params.id, organizationId, req.user, activeBranchId);
+
+  const { page, limit } = req.query;
+
+  const result = await auditLogService.getAuditLogs(
+    { entityType: "Customer", entityId: req.params.id },
+    { page, limit },
+    organizationId
+  );
+  return sendResponse(res, 200, "Activity log retrieved successfully", result.data, result.meta);
+});
 
 export const customerStatusChangeById = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
@@ -213,8 +280,21 @@ export const customerStatusChangeById = asyncHandler(async (req, res) => {
     req.params.id,
     organizationId,
     req.user?.id,
-    req.user,
     activeBranchId
   );
   return sendResponse(res, 200, "Customer status updated successfully", customer);
+});
+
+export const reactivateCustomer = asyncHandler(async (req, res) => {
+  const organizationId = req.organizationId;
+  const activeBranchId = await getActiveBranchContext(req);
+
+  const customer = await customerService.reactivateCustomer(
+    req.params.id,
+    organizationId,
+    req.user.id,
+    req.user,
+    activeBranchId
+  );
+  return sendResponse(res, 200, "Customer reactivated successfully", customer);
 });

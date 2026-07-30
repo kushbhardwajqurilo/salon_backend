@@ -4,6 +4,8 @@ import { AppError } from "../../utils/errors.js";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Customer } from "../../models/customers/customer.model.js";
 import { CustomerService } from "../../services/customers/customer.service.js";
+import "../../models/roles/role.model.js";
+import "../../models/permissions/permission.model.js";
 import {
   createCustomer,
   listCustomers,
@@ -18,6 +20,36 @@ Branch.findOne = jest.fn();
 Customer.findOne = jest.fn();
 Customer.findById = jest.fn();
 Customer.findOneAndUpdate = jest.fn();
+Customer.find = jest.fn();
+Customer.syncIndexes = jest.fn();
+
+// Mock connection db for migration
+Object.defineProperty(mongoose.connection, "db", {
+  get: () => ({
+    collection: () => ({
+      find: () => ({
+        toArray: async () => [],
+      }),
+    }),
+  }),
+  configurable: true,
+});
+
+// Import and mock new models
+import { AuditLog } from "../../models/audit/auditLog.model.js";
+import { CustomerNote } from "../../models/customers/customerNote.model.js";
+
+AuditLog.create = jest.fn().mockResolvedValue({});
+AuditLog.findOne = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
+AuditLog.find = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) });
+AuditLog.syncIndexes = jest.fn().mockResolvedValue(true);
+AuditLog.prototype.save = jest.fn().mockImplementation(function () { return Promise.resolve(this); });
+
+CustomerNote.create = jest.fn().mockResolvedValue({});
+CustomerNote.findOne = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
+CustomerNote.find = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) });
+CustomerNote.syncIndexes = jest.fn().mockResolvedValue(true);
+CustomerNote.prototype.save = jest.fn().mockImplementation(function () { return Promise.resolve(this); });
 
 // Robust mongoose query mock creator
 const createQueryMock = (resolvedValue) => {
@@ -40,6 +72,20 @@ describe("Customer Core Integration & Scoping Tests", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     Customer.findOneAndUpdate.mockResolvedValue({});
+    Customer.findOne.mockReturnValue(createQueryMock(null));
+    mongoose.model("Role").findOne = jest.fn().mockImplementation((query) => {
+      const roleName = query.name ? query.name.toLowerCase() : "";
+      const permissions = [{ name: "customers.edit" }];
+      if (roleName === "owner" || roleName === "admin") {
+        permissions.push({ name: "customers.manage_branch" });
+      }
+      return {
+        populate: jest.fn().mockResolvedValue({
+          name: roleName,
+          permissions
+        })
+      };
+    });
     req = {
       headers: {},
       query: {},
@@ -256,7 +302,6 @@ describe("Customer Core Integration & Scoping Tests", () => {
       jest.spyOn(Customer.prototype, "save").mockImplementation(saveMock);
 
       await createCustomer(req, res, next);
-
       // Verify it was saved with header branch ID and not body-supplied branch ID
       const savedInstance = saveMock.mock.instances[0];
       expect(savedInstance.homeBranchId.toString()).toBe(activeBranchId);
@@ -284,6 +329,7 @@ describe("Customer Core Integration & Scoping Tests", () => {
         name: "Old Name",
         phone: "+919999999999",
         isActive: true,
+        status: "active",
         save: jest.fn().mockImplementation(function () {
           return Promise.resolve(this);
         }),
@@ -382,7 +428,7 @@ describe("Customer Core Integration & Scoping Tests", () => {
     });
 
     it("Test 6 — should reject updates if customer is deactivated and body does not reactivate them", async () => {
-      mockCustomer.isActive = false;
+      mockCustomer.status = "inactive";
       req.body = {
         name: "Updated Name",
       };
@@ -437,7 +483,7 @@ describe("Customer Core Integration & Scoping Tests", () => {
       expect(CustomerService.prototype.listCustomers).toHaveBeenCalledWith(
         expect.objectContaining({
           $and: expect.arrayContaining([
-            { isActive: false }
+            { status: { $in: ["inactive", "blocked"] } }
           ])
         }),
         expect.any(Object),
@@ -445,16 +491,55 @@ describe("Customer Core Integration & Scoping Tests", () => {
       );
     });
 
-    it("should update legacy customers and exclude soft-deleted ones (migration logic)", async () => {
-      Customer.updateMany = jest.fn().mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
+    it("should run migrateCustomersLogic successfully", async () => {
+      const mockCustomer = {
+        organizationId: "org-1",
+        phone: "+91-99999-88888",
+        alternatePhone: "0091-88888-77777",
+        isActive: true,
+        loyaltyPoints: 10,
+        visitedBranchIds: [],
+        save: jest.fn().mockResolvedValue(true)
+      };
+      Customer.find.mockReturnValue({
+        setOptions: jest.fn().mockResolvedValue([mockCustomer])
+      });
+      Customer.syncIndexes.mockResolvedValue(true);
+      
       const { migrateCustomersLogic } = await import("../../scripts/migrateCustomers.js");
       const result = await migrateCustomersLogic();
-      expect(Customer.updateMany).toHaveBeenCalledWith(
-        { isActive: { $exists: false }, isDeleted: { $ne: true } },
-        { $set: { isActive: true } }
-      );
-      expect(result.matchedCount).toBe(1);
-      expect(result.modifiedCount).toBe(1);
+      
+      expect(result.duplicatesResolvedCount).toBe(0);
+      expect(mockCustomer.phone).toBe("+919999988888");
+      expect(mockCustomer.alternatePhone).toBe("+918888877777");
+      expect(mockCustomer.status).toBe("active");
+    });
+  });
+
+  describe("Customer Reactivation Endpoint", () => {
+    it("should reactivate a soft-deleted customer", async () => {
+      const activeBranchId = new mongoose.Types.ObjectId().toString();
+      req.headers["x-branch-id"] = activeBranchId;
+      req.params.id = new mongoose.Types.ObjectId().toString();
+      req.user.branchAccess = [{ branchId: activeBranchId, isActive: true }];
+
+      Branch.findOne.mockResolvedValue({ _id: activeBranchId, organizationId: req.user.organizationId, isActive: true });
+
+      const mockCustomer = {
+        _id: req.params.id,
+        organizationId: req.user.organizationId,
+        homeBranchId: activeBranchId,
+        visitedBranchIds: [],
+        isDeleted: true
+      };
+      Customer.findOne.mockReturnValue(createQueryMock(mockCustomer));
+      Customer.findOneAndUpdate.mockResolvedValue({ ...mockCustomer, isDeleted: false, status: "active", isActive: true });
+
+      const { reactivateCustomer } = await import("../../controllers/customers/customer.controller.js");
+      await reactivateCustomer(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
     });
   });
 });

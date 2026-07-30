@@ -54,13 +54,31 @@ router.delete(
   customerController.deleteCustomer
 );
 
-// Append Customer Note
+// Get Customer Notes
+router.get(
+  "/:id/notes",
+  requireBranchScope,
+  authorize("customers.view"),
+  validate(customerValidation.queryNotesSchema),
+  customerController.getNotes
+);
+
+// Create Customer Note
 router.post(
   "/:id/notes",
-  requireOrganizationScope,
+  requireBranchScope,
   authorize("customers.edit"),
   validate(customerValidation.addNoteSchema),
   customerController.addNote
+);
+
+// Get Customer Administrative Activity Timeline
+router.get(
+  "/:id/activity",
+  requireBranchScope,
+  authorize("customers.view"),
+  validate(customerValidation.queryActivitySchema),
+  customerController.getActivity
 );
 
 router.put(
@@ -68,6 +86,7 @@ router.put(
   requireOrganizationScope,
   authorize("customers.edit"),
   validate(customerValidation.customerStatusUpdateSchema),
-  customerController.customerStatusChangeById
+  customerController.reactivateCustomer
 );
+
 export default router;
