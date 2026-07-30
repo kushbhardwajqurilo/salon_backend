@@ -360,6 +360,7 @@ export class CustomerService {
 
   async reactivateCustomer(id, organizationId, userId, userContext = null, activeBranchId = null) {
     const customer = await this.customerRepo.findByIdIncludeDeleted(id, organizationId);
+    console.log("customer", customer)
     if (!customer) {
       throw new AppError("Resource not found", 404);
     }

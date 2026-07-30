@@ -49,8 +49,13 @@ export const auditPlugin = (schema) => {
 
   function excludeDeleted(next) {
     // If explicitly querying for deleted records or soft delete check is bypassed
-    if (this.getFilter && this.getFilter().includeDeleted) {
-      delete this.getFilter().includeDeleted;
+    const hasFilterFlag = this.getFilter && this.getFilter().includeDeleted;
+    const hasOptionsFlag = this.options && this.options.includeDeleted;
+
+    if (hasFilterFlag || hasOptionsFlag) {
+      if (hasFilterFlag) {
+        delete this.getFilter().includeDeleted;
+      }
       if (typeof next === "function") return next();
       return;
     }

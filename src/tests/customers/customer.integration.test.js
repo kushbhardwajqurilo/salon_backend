@@ -57,6 +57,7 @@ const createQueryMock = (resolvedValue) => {
     populate: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     session: jest.fn().mockReturnThis(),
+    setOptions: jest.fn().mockReturnThis(),
     exec: jest.fn().mockResolvedValue(resolvedValue),
     then: function (onResolve, onReject) {
       return Promise.resolve(resolvedValue).then(onResolve, onReject);

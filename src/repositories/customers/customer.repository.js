@@ -27,7 +27,7 @@ export class CustomerRepository extends BaseRepository {
   }
 
   async findByIdIncludeDeleted(id, organizationId, populate = [], select = null) {
-    let query = this.model.findOne({ _id: id, organizationId, includeDeleted: true });
+    let query = this.model.findOne({ _id: id, organizationId }).setOptions({ includeDeleted: true });
     if (populate.length > 0) {
       query = query.populate(populate);
     }
@@ -50,10 +50,11 @@ export class CustomerRepository extends BaseRepository {
 
   async findByPhone(phone, organizationId, includeDeleted = false) {
     const filter = { phone, organizationId };
+    let query = this.model.findOne(filter);
     if (includeDeleted) {
-      filter.includeDeleted = true;
+      query.setOptions({ includeDeleted: true });
     }
-    return this.model.findOne(filter);
+    return query.exec();
   }
 
   async updateById(id, data, organizationId, userId = null, session = null) {
@@ -121,9 +122,9 @@ export class CustomerRepository extends BaseRepository {
       update.updatedBy = userId;
     }
     return this.model.findOneAndUpdate(
-      { _id: id, organizationId, includeDeleted: true },
+      { _id: id, organizationId },
       { $set: update },
-      { new: true }
+      { new: true, includeDeleted: true }
     );
   }
 }
