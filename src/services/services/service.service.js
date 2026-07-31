@@ -206,4 +206,40 @@ export class ServiceService {
   async listServices(filter = {}, options = {}, organizationId) {
     return this.serviceRepo.find(filter, options, organizationId);
   }
+
+  async reactivateService(id, organizationId, userId, activeBranchId = null) {
+    const service = await this.serviceRepo.findByIdIncludeDeleted(id, organizationId);
+    if (!service) {
+      throw new AppError("Resource not found", 404);
+    }
+
+    if (activeBranchId && service.branchId.toString() !== activeBranchId.toString()) {
+      throw new AppError("Access denied. Service is not visible within your active branch scope.", 403);
+    }
+
+    // Verify parent category is valid/active
+    const category = await this.categoryRepo.findById(service.categoryId, organizationId);
+    if (!category || category.isDeleted) {
+      throw new AppError("Cannot reactivate service with invalid or deleted category.", 400);
+    }
+    if (category.status !== "active") {
+      throw new AppError("Cannot reactivate service with inactive category.", 400);
+    }
+
+    const reactivated = await this.serviceRepo.reactivateById(id, organizationId, userId);
+
+    await this.auditRepo.create(
+      {
+        branchId: service.branchId,
+        action: AUDIT_ACTIONS.SERVICE_ACTIVATED,
+        entityType: "Service",
+        entityId: id,
+        description: "Service reactivated successfully",
+      },
+      organizationId,
+      userId
+    );
+
+    return reactivated;
+  }
 }

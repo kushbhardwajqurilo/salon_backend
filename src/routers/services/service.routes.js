@@ -51,6 +51,13 @@ router.delete(
   categoryController.deleteCategory
 );
 
+router.patch(
+  "/categories/:id/reactivate",
+  requireOrganizationScope,
+  authorize("services.edit"),
+  categoryController.reactivateCategory
+);
+
 // --- Service Routes ---
 router.post(
   "/",
@@ -84,11 +91,10 @@ router.put(
 );
 
 router.patch(
-  "/:id/status",
+  "/:id/reactivate",
   requireOrganizationScope,
   authorize("services.edit"),
-  validate(serviceValidation.serviceStatusUpdateSchema),
-  serviceController.toggleServiceStatus
+  serviceController.reactivateService
 );
 
 router.delete(

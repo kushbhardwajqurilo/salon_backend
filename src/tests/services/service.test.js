@@ -43,6 +43,8 @@ describe("Services Module Unit Tests", () => {
       findOne: jest.fn(),
       find: jest.fn(),
       count: jest.fn(),
+      findByIdIncludeDeleted: jest.fn(),
+      reactivateById: jest.fn(),
     };
 
     mockCategoryRepo = {
@@ -53,6 +55,8 @@ describe("Services Module Unit Tests", () => {
       findOne: jest.fn(),
       find: jest.fn(),
       count: jest.fn(),
+      findByIdIncludeDeleted: jest.fn(),
+      reactivateById: jest.fn(),
     };
 
     mockAuditRepo = {
@@ -250,6 +254,36 @@ describe("Services Module Unit Tests", () => {
         "org-1",
         "user-1"
       );
+    });
+
+    it("should successfully reactivate service if category is active", async () => {
+      mockServiceRepo.findByIdIncludeDeleted.mockResolvedValue({
+        _id: "srv-1",
+        branchId: "branch-1",
+        categoryId: "cat-1",
+      });
+      mockCategoryRepo.findById.mockResolvedValue({
+        _id: "cat-1",
+        status: "active",
+        isDeleted: false,
+      });
+      mockServiceRepo.reactivateById.mockResolvedValue({ _id: "srv-1", status: "active" });
+
+      const result = await serviceService.reactivateService("srv-1", "org-1", "user-1");
+      expect(result.status).toBe("active");
+    });
+  });
+
+  describe("Reactivate Category", () => {
+    it("should successfully reactivate category", async () => {
+      mockCategoryRepo.findByIdIncludeDeleted.mockResolvedValue({
+        _id: "cat-1",
+        branchId: "branch-1",
+      });
+      mockCategoryRepo.reactivateById.mockResolvedValue({ _id: "cat-1", status: "active" });
+
+      const result = await categoryService.reactivateCategory("cat-1", "org-1", "user-1");
+      expect(result.status).toBe("active");
     });
   });
 });

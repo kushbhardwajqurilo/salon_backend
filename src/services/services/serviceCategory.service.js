@@ -175,4 +175,37 @@ export class ServiceCategoryService {
   async listCategories(filter = {}, options = {}, organizationId) {
     return this.categoryRepo.find(filter, options, organizationId);
   }
+
+  async reactivateCategory(id, organizationId, userId, activeBranchId = null) {
+    const category = await this.categoryRepo.findByIdIncludeDeleted(id, organizationId);
+    if (!category) {
+      throw new AppError("Resource not found", 404);
+    }
+
+    if (activeBranchId && category.branchId.toString() !== activeBranchId.toString()) {
+      throw new AppError("Access denied. Service Category is not visible within your active branch scope.", 403);
+    }
+
+    const BranchModel = mongoose.model("Branch");
+    const branch = await BranchModel.findOne({ _id: category.branchId, organizationId, isActive: true });
+    if (!branch) {
+      throw new AppError("Cannot activate category if parent branch is invalid or inactive.", 400);
+    }
+
+    const reactivated = await this.categoryRepo.reactivateById(id, organizationId, userId);
+
+    await this.auditRepo.create(
+      {
+        branchId: category.branchId,
+        action: AUDIT_ACTIONS.SERVICE_ACTIVATED,
+        entityType: "ServiceCategory",
+        entityId: id,
+        description: "Service category reactivated successfully",
+      },
+      organizationId,
+      userId
+    );
+
+    return reactivated;
+  }
 }

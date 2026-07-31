@@ -88,4 +88,20 @@ export class ServiceRepository extends BaseRepository {
     }
     return super.count(queryFilter);
   }
+
+  async reactivateById(id, organizationId, userId = null) {
+    const update = {
+      isDeleted: false,
+      deletedAt: null,
+      status: "active",
+    };
+    if (userId) {
+      update.updatedBy = userId;
+    }
+    return this.model.findOneAndUpdate(
+      { _id: id, organizationId },
+      { $set: update },
+      { new: true, includeDeleted: true }
+    );
+  }
 }

@@ -171,3 +171,16 @@ export const listServices = asyncHandler(async (req, res) => {
 
   return sendResponse(res, 200, "Services listed successfully", result.data, result.meta);
 });
+
+export const reactivateService = asyncHandler(async (req, res) => {
+  const organizationId = req.organizationId;
+  const activeBranchId = await getActiveBranchContext(req);
+
+  const service = await serviceService.reactivateService(
+    req.params.id,
+    organizationId,
+    req.user.id,
+    activeBranchId
+  );
+  return sendResponse(res, 200, "Service reactivated successfully", service);
+});

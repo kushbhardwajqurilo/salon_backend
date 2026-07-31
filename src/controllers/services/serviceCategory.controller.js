@@ -151,3 +151,16 @@ export const listCategories = asyncHandler(async (req, res) => {
 
   return sendResponse(res, 200, "Service categories listed successfully", result.data, result.meta);
 });
+
+export const reactivateCategory = asyncHandler(async (req, res) => {
+  const organizationId = req.organizationId;
+  const activeBranchId = await getActiveBranchContext(req);
+
+  const category = await categoryService.reactivateCategory(
+    req.params.id,
+    organizationId,
+    req.user.id,
+    activeBranchId
+  );
+  return sendResponse(res, 200, "Service category reactivated successfully", category);
+});
