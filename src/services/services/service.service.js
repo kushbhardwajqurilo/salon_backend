@@ -72,8 +72,11 @@ export class ServiceService {
         description: data.description || "",
         categoryId: data.categoryId,
         duration: data.duration,
-        pricing: data.pricing,
-        taxConfiguration: data.taxConfiguration || { taxable: false, taxRate: 0 },
+        pricing: { basePrice: data.basePrice },
+        taxConfiguration: {
+          taxable: data.taxable || false,
+          ...(data.taxRate !== undefined && { taxRate: data.taxRate || 0 }),
+        },
         displayOrder: data.displayOrder || 0,
         branchId: data.branchId,
         status: "active",

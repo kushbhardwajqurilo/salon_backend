@@ -6,7 +6,7 @@ import { AppError } from "../utils/errors.js";
 // Rate Limiter: Maximum 100 requests per 15 minutes for standard APIs
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: 1000,
   message: "Too many requests from this IP, please try again after 15 minutes",
   handler: (req, res, next, options) => {
     next(new AppError(options.message, 429));

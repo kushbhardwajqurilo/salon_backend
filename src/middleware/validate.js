@@ -6,6 +6,7 @@ import { asyncHandler } from "../utils/errors.js";
  */
 export const validate = (schema) =>
   asyncHandler(async (req, res, next) => {
+    console.log("body", req.body)
     const parsed = await schema.parseAsync({
       body: req.body,
       query: req.query,
