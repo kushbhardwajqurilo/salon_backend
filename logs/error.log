@@ -61,3 +61,10 @@
 [2026-07-29 18:34:13:3413] [[31merror[39m]: [31mERROR 💥 userId is not defined[39m
 [2026-07-30 11:24:09:249] [[31merror[39m]: [31mERROR 💥 Cannot read properties of undefined (reading '_zod')[39m
 [2026-07-30 13:22:34:2234] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-07-31 18:15:46:1546] [[31merror[39m]: [31mERROR 💥 Cannot populate path `actorId` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
+[2026-07-31 18:15:49:1549] [[31merror[39m]: [31mERROR 💥 Cannot populate path `actorId` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
+[2026-07-31 18:21:19:2119] [[31merror[39m]: [31mERROR 💥 Cannot populate path `actorId` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
+[2026-07-31 18:21:26:2126] [[31merror[39m]: [31mERROR 💥 Cannot populate path `actorId` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
+[2026-07-31 18:21:31:2131] [[31merror[39m]: [31mERROR 💥 Cannot populate path `actorId` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
+[2026-07-31 18:25:27:2527] [[31merror[39m]: [31mERROR 💥 Cannot read properties of undefined (reading 'actorId')[39m
+[2026-07-31 18:37:41:3741] [[31merror[39m]: [31mERROR 💥 Cannot read properties of undefined (reading 'actorId')[39m

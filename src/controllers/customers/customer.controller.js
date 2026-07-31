@@ -269,6 +269,17 @@ export const getActivity = asyncHandler(async (req, res) => {
     { page, limit },
     organizationId
   );
+  result.data = result.data.map((item) => ({
+    ...item._doc,
+    actorId: item.actorId
+      ? {
+        _id: item.actorId._id,
+        name: item.actorId.name,
+      }
+      : null,
+  }));
+
+  // console.log("result", result)
   return sendResponse(res, 200, "Activity log retrieved successfully", result.data, result.meta);
 });
 

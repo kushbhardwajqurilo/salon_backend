@@ -19,6 +19,6 @@ export class AuditLogService {
       ...options,
       sort: { createdAt: -1, _id: -1 },
     };
-    return this.auditRepo.find(queryFilter, findOptions);
+    return this.auditRepo.find(queryFilter, findOptions, ["actorId"]);
   }
 }

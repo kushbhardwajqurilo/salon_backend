@@ -992,3 +992,58 @@
 [2026-07-31 16:44:50:4450] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
 [2026-07-31 16:44:59:4459] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
 [2026-07-31 16:44:59:4459] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 16:45:07:457] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 16:45:07:457] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:13:30:1330] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:13:30:1330] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:15:33:1533] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:15:33:1533] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:15:46:1546] [[31merror[39m]: [31mERROR 💥 Cannot populate path `actorId` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
+[2026-07-31 18:15:49:1549] [[31merror[39m]: [31mERROR 💥 Cannot populate path `actorId` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
+[2026-07-31 18:17:10:1710] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:17:10:1710] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:20:56:2056] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:20:56:2056] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:21:19:2119] [[31merror[39m]: [31mERROR 💥 Cannot populate path `actorId` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
+[2026-07-31 18:21:26:2126] [[31merror[39m]: [31mERROR 💥 Cannot populate path `actorId` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
+[2026-07-31 18:21:31:2131] [[31merror[39m]: [31mERROR 💥 Cannot populate path `actorId` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
+[2026-07-31 18:21:43:2143] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:21:43:2143] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:21:49:2149] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:21:49:2149] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:22:50:2250] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:22:50:2250] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:23:03:233] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:23:03:233] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:23:09:239] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:23:09:239] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:24:19:2419] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:24:19:2419] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:25:20:2520] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:25:20:2520] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:25:27:2527] [[31merror[39m]: [31mERROR 💥 Cannot read properties of undefined (reading 'actorId')[39m
+[2026-07-31 18:25:34:2534] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:25:34:2534] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:37:14:3714] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:37:14:3714] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:37:41:3741] [[31merror[39m]: [31mERROR 💥 Cannot read properties of undefined (reading 'actorId')[39m
+[2026-07-31 18:38:10:3810] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:38:10:3810] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:38:32:3832] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:38:32:3832] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:39:47:3947] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:39:48:3948] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:39:52:3952] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:39:52:3952] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:40:26:4026] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:40:26:4026] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:42:17:4217] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:42:17:4217] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:42:26:4226] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:42:26:4226] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:43:32:4332] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:43:32:4332] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:43:40:4340] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:43:40:4340] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-07-31 18:44:19:4419] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-07-31 18:44:19:4419] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m

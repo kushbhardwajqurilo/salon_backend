@@ -59,14 +59,13 @@ export class BaseRepository {
   /**
    * Universal list query builder supporting search, filter, sort, and pagination.
    */
-  async find(filter = {}, options = {}) {
+  async find(filter = {}, options = {}, populate = []) {
     const {
       page = 1,
       limit = 10,
       sort = "-createdAt",
       search = "",
       searchFields = [],
-      populate = [],
       select = null,
     } = options;
 
