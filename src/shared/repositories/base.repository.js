@@ -67,6 +67,7 @@ export class BaseRepository {
       search = "",
       searchFields = [],
       select = null,
+      populate: optionsPopulate,
     } = options;
 
     const queryFilter = { ...filter };
@@ -82,8 +83,9 @@ export class BaseRepository {
 
     let query = this.model.find(queryFilter);
 
-    if (populate.length > 0) {
-      query = query.populate(populate);
+    const activePopulate = (populate && populate.length > 0) ? populate : (optionsPopulate || []);
+    if (activePopulate.length > 0) {
+      query = query.populate(activePopulate);
     }
 
     if (select) {

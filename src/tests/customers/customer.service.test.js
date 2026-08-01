@@ -256,4 +256,27 @@ describe("CustomerNoteService Unit Tests", () => {
       ).rejects.toThrow(new AppError("Note text exceeds maximum length of 2000 characters", 400));
     });
   });
+
+  describe("getNotes", () => {
+    it("should retrieve notes with populate option", async () => {
+      const mockNotes = [{ _id: "note-1", text: "Test Note", createdBy: { name: "John Doe" } }];
+      mockNoteRepo.findByCustomer.mockResolvedValue({ data: mockNotes, meta: {} });
+
+      const result = await noteService.getNotes(
+        "customer-1",
+        "org-789",
+        "branch-123",
+        { page: 1, limit: 10 }
+      );
+
+      expect(result.data).toEqual(mockNotes);
+      expect(mockNoteRepo.findByCustomer).toHaveBeenCalledWith(
+        "customer-1",
+        "org-789",
+        expect.objectContaining({
+          populate: [{ path: "createdBy", select: "name" }]
+        })
+      );
+    });
+  });
 });

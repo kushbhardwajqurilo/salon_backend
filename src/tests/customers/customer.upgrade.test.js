@@ -219,7 +219,8 @@ describe("Customer Upgraded Architecture Tests", () => {
 
       expect(mockAuditRepo.find).toHaveBeenCalledWith(
         { entityId: "customer-1", organizationId: "org-1" },
-        expect.objectContaining({ sort: { createdAt: -1, _id: -1 } })
+        expect.objectContaining({ sort: { createdAt: -1, _id: -1 } }),
+        expect.anything()
       );
     });
   });
