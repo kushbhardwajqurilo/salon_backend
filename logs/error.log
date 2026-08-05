@@ -68,3 +68,14 @@
 [2026-07-31 18:21:31:2131] [[31merror[39m]: [31mERROR 💥 Cannot populate path `actorId` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
 [2026-07-31 18:25:27:2527] [[31merror[39m]: [31mERROR 💥 Cannot read properties of undefined (reading 'actorId')[39m
 [2026-07-31 18:37:41:3741] [[31merror[39m]: [31mERROR 💥 Cannot read properties of undefined (reading 'actorId')[39m
+[2026-08-05 15:03:31:331] [[31merror[39m]: [31mERROR 💥 crypto.getRandomValues is not a function[39m
+[2026-08-05 15:11:20:1120] [[31merror[39m]: [31mERROR 💥 Unexpected token 'T', ..."ningDate":Tue Aug 19"... is not valid JSON[39m
+[2026-08-05 15:14:21:1421] [[31merror[39m]: [31mERROR 💥 Unexpected token 'h', ..."vatarUrl":https:[39m
+[31m}" is not valid JSON[39m
+[2026-08-05 15:14:45:1445] [[31merror[39m]: [31mERROR 💥 Unexpected token 'h', ..."avtarUrl":https:[39m
+[31m}" is not valid JSON[39m
+[2026-08-05 15:15:59:1559] [[31merror[39m]: [31mERROR 💥 Unexpected token 'h', ..."vatarUrl":https:[39m
+[31m}" is not valid JSON[39m
+[2026-08-05 15:19:41:1941] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-05 15:26:01:261] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-05 16:46:46:4646] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m

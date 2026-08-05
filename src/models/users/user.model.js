@@ -94,7 +94,7 @@ const userSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["active", "suspended", "locked"],
+      enum: ["active", "suspended", "locked", "inactive"],
       default: "active",
     },
     refreshToken: {

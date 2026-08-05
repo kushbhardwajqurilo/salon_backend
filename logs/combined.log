@@ -1056,3 +1056,45 @@
 [2026-08-01 10:43:03:433] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
 [2026-08-01 10:43:17:4317] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
 [2026-08-01 10:43:17:4317] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-01 14:47:45:4745] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-01 14:47:45:4745] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-01 18:05:03:53] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:08:51:851] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:12:37:1237] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:16:25:1625] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:20:13:2013] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:24:01:241] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:27:47:2747] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:31:34:3134] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:35:21:3521] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:39:08:398] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:42:55:4255] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:46:43:4643] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:50:31:5031] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:54:19:5419] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-01 18:58:06:586] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-03 10:03:02:32] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-03 11:17:48:1748] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-03 16:21:15:2115] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-05 14:56:15:5615] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 14:56:15:5615] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 15:03:31:331] [[31merror[39m]: [31mERROR 💥 crypto.getRandomValues is not a function[39m
+[2026-08-05 15:03:44:344] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-05 15:04:40:440] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 15:04:40:440] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 15:11:20:1120] [[31merror[39m]: [31mERROR 💥 Unexpected token 'T', ..."ningDate":Tue Aug 19"... is not valid JSON[39m
+[2026-08-05 15:14:21:1421] [[31merror[39m]: [31mERROR 💥 Unexpected token 'h', ..."vatarUrl":https:[39m
+[31m}" is not valid JSON[39m
+[2026-08-05 15:14:45:1445] [[31merror[39m]: [31mERROR 💥 Unexpected token 'h', ..."avtarUrl":https:[39m
+[31m}" is not valid JSON[39m
+[2026-08-05 15:15:59:1559] [[31merror[39m]: [31mERROR 💥 Unexpected token 'h', ..."vatarUrl":https:[39m
+[31m}" is not valid JSON[39m
+[2026-08-05 15:19:41:1941] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-05 15:25:04:254] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 15:25:04:254] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 15:26:01:261] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-05 15:56:09:569] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 15:56:09:569] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 16:46:46:4646] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-05 17:01:45:145] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 17:01:45:145] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m

@@ -186,6 +186,18 @@ export const CANONICAL_PERMISSIONS = [
     description: "Offboard or delete employee records."
   },
   {
+    name: "employees.assign_branch",
+    module: "Employees",
+    action: "Assign Branch",
+    description: "Link branches to employee profiles."
+  },
+  {
+    name: "employees.assign_service",
+    module: "Employees",
+    action: "Assign Service",
+    description: "Link service capabilities to employee profiles."
+  },
+  {
     name: "employees.leaves.view",
     module: "Employees & Leaves",
     action: "View",
