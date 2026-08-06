@@ -36,18 +36,72 @@ export class UserRepository extends BaseRepository {
     return query.exec();
   }
 
-  async findByEmail(email) {
-    return this.model.findOne({ email: email.toLowerCase() }).populate("role");
+  async find(filter = {}, options = {}, organizationId = null) {
+    const queryFilter = { ...filter };
+    if (organizationId) {
+      queryFilter.organizationId = organizationId;
+    }
+    return super.find(queryFilter, options);
   }
 
-  async findByPhone(phone) {
-    return this.model.findOne({ phone }).populate("role");
+  async count(filter = {}, organizationId = null) {
+    const queryFilter = { ...filter };
+    if (organizationId) {
+      queryFilter.organizationId = organizationId;
+    }
+    return super.count(queryFilter);
   }
 
-  async findByEmailOrPhone(email, phone) {
-    return this.model.findOne({
+  async updateById(id, data, organizationId = null, userId = null, session = null) {
+    const filter = { _id: id };
+    if (organizationId) {
+      filter.organizationId = organizationId;
+    }
+    const doc = await this.model.findOne(filter).session(session).exec();
+    if (!doc) return null;
+
+    Object.assign(doc, data);
+    if (userId) {
+      doc.updatedBy = userId;
+    }
+
+    return doc.save({ session });
+  }
+
+  async deleteById(id, organizationId = null, userId = null) {
+    const filter = { _id: id };
+    if (organizationId) {
+      filter.organizationId = organizationId;
+    }
+    const doc = await this.model.findOne(filter).exec();
+    if (!doc) return null;
+    return doc.softDelete(userId);
+  }
+
+  async findByEmail(email, organizationId = null) {
+    const filter = { email: email.toLowerCase() };
+    if (organizationId) {
+      filter.organizationId = organizationId;
+    }
+    return this.model.findOne(filter).populate("role");
+  }
+
+  async findByPhone(phone, organizationId = null) {
+    const filter = { phone };
+    if (organizationId) {
+      filter.organizationId = organizationId;
+    }
+    return this.model.findOne(filter).populate("role");
+  }
+
+  async findByEmailOrPhone(email, phone, organizationId = null) {
+    const filter = {
       $or: [{ email: email.toLowerCase() }, { phone }],
-    });
+    };
+    if (organizationId) {
+      filter.organizationId = organizationId;
+    }
+    return this.model.findOne(filter);
   }
 
   async findByVerificationToken(token) {
