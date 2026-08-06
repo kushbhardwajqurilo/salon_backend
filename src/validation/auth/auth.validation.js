@@ -58,3 +58,15 @@ export const verifyOtpSchema = z.object({
     otp: z.string().length(6, "OTP must be exactly 6 digits"),
   }),
 });
+
+export const verifyActivationOtpSchema = z.object({
+  body: z.object({
+    otp: z.string().length(6, "OTP must be exactly 6 digits"),
+  }),
+});
+
+export const activateChangePasswordSchema = z.object({
+  body: z.object({
+    password: passwordPolicy,
+  }),
+});

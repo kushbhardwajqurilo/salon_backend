@@ -21,6 +21,10 @@ router.post("/reset-password/:token", validate(authValidation.resetPasswordSchem
 router.post("/otp/send", validate(authValidation.sendOtpSchema), authController.sendOTP);
 router.post("/otp/verify", validate(authValidation.verifyOtpSchema), authController.verifyOTP);
 
+router.post("/activate/otp/send", authController.sendActivationOTP);
+router.post("/activate/otp/verify", validate(authValidation.verifyActivationOtpSchema), authController.verifyActivationOTP);
+router.post("/activate/change-password", validate(authValidation.activateChangePasswordSchema), authController.activateChangePassword);
+
 router.post("/logout-all", authenticate, authController.logoutAllDevices);
 
 export default router;

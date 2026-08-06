@@ -105,6 +105,21 @@ export class AuthService {
       throw new AppError("Invalid email or password", 401);
     }
 
+    if (user.isFirstLogin === true) {
+      const activationToken = jwt.sign(
+        {
+          sub: user._id,
+          scope: "activation",
+        },
+        env.JWT_SECRET,
+        { expiresIn: "5m" }
+      );
+      return {
+        requireActivation: true,
+        activationToken,
+      };
+    }
+
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
 
@@ -283,5 +298,92 @@ export class AuthService {
       accessToken,
       refreshToken,
     };
+  }
+
+  async sendActivationOTP(token) {
+    const decoded = jwt.verify(token, env.JWT_SECRET);
+    if (decoded.scope !== "activation") {
+      throw new AppError("Access denied. Invalid token scope.", 401);
+    }
+
+    const user = await this.userRepo.findById(decoded.sub);
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+
+    if (user.status === "locked" && user.lockUntil && user.lockUntil > new Date()) {
+      throw new AppError("Account locked.", 403);
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.otp = otp;
+    user.otpExpires = new Date(Date.now() + 5 * 60 * 1000);
+    await user.save();
+
+    await smsQueue.add("sendOtpSMS", {
+      phone: user.phone,
+      otp,
+    });
+
+    return { message: "Activation OTP sent successfully" };
+  }
+
+  async verifyActivationOTP(token, otp) {
+    const decoded = jwt.verify(token, env.JWT_SECRET);
+    if (decoded.scope !== "activation") {
+      throw new AppError("Access denied. Invalid token scope.", 401);
+    }
+
+    const user = await this.userRepo.findById(decoded.sub);
+    if (!user || !user.otp || user.otp !== otp || user.otpExpires < new Date()) {
+      throw new AppError("Invalid or expired OTP", 400);
+    }
+
+    if (user.status === "locked" && user.lockUntil && user.lockUntil > new Date()) {
+      throw new AppError("Account locked.", 403);
+    }
+
+    user.otp = null;
+    user.otpExpires = null;
+    await user.save();
+
+    const passwordChangeToken = jwt.sign(
+      {
+        sub: user._id,
+        scope: "password-change",
+      },
+      env.JWT_SECRET,
+      { expiresIn: "5m" }
+    );
+
+    return {
+      message: "OTP verified successfully",
+      passwordChangeToken,
+    };
+  }
+
+  async activateChangePassword(token, newPassword) {
+    const decoded = jwt.verify(token, env.JWT_SECRET);
+    if (decoded.scope !== "password-change") {
+      throw new AppError("Access denied. Invalid token scope.", 401);
+    }
+
+    const user = await this.userRepo.findById(decoded.sub);
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+
+    if (user.status === "locked" && user.lockUntil && user.lockUntil > new Date()) {
+      throw new AppError("Account locked.", 403);
+    }
+
+    user.password = newPassword;
+    user.isFirstLogin = false;
+    user.isVerified = true;
+    user.failedLoginAttempts = 0;
+    user.lockUntil = null;
+    await user.save();
+
+    return { message: "Password updated and account activated successfully" };
   }
 }

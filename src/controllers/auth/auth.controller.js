@@ -26,16 +26,58 @@ export const login = asyncHandler(async (req, res) => {
   const ipAddress = req.ip || req.headers["x-forwarded-for"] || "Unknown";
   const deviceInfo = req.headers["user-agent"] || "Unknown";
 
-  const { accessToken, refreshToken } = await authService.login(
+  const result = await authService.login(
     req.body.email,
     req.body.password,
     ipAddress,
     deviceInfo
   );
 
-  setRefreshTokenCookie(res, refreshToken);
+  if (result.requireActivation) {
+    return sendResponse(res, 200, "Activation required", {
+      requireActivation: true,
+      activationToken: result.activationToken,
+    });
+  }
 
-  return sendResponse(res, 200, "Login successful", { accessToken, refreshToken });
+  setRefreshTokenCookie(res, result.refreshToken);
+
+  return sendResponse(res, 200, "Login successful", {
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken,
+  });
+});
+
+export const sendActivationOTP = asyncHandler(async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    throw new AppError("Access denied. No token provided.", 401);
+  }
+  const token = authHeader.split(" ")[1];
+  const result = await authService.sendActivationOTP(token);
+  return sendResponse(res, 200, result.message, result);
+});
+
+export const verifyActivationOTP = asyncHandler(async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    throw new AppError("Access denied. No token provided.", 401);
+  }
+  const token = authHeader.split(" ")[1];
+  const { otp } = req.body;
+  const result = await authService.verifyActivationOTP(token, otp);
+  return sendResponse(res, 200, result.message, result);
+});
+
+export const activateChangePassword = asyncHandler(async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    throw new AppError("Access denied. No token provided.", 401);
+  }
+  const token = authHeader.split(" ")[1];
+  const { password } = req.body;
+  const result = await authService.activateChangePassword(token, password);
+  return sendResponse(res, 200, result.message, result);
 });
 
 export const refresh = asyncHandler(async (req, res) => {
