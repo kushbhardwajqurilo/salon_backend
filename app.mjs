@@ -16,6 +16,7 @@ import rbacRouter from "./src/routers/rbac/rbac.routes.js";
 import branchRouter from "./src/routers/branches/branch.routes.js";
 import serviceRouter from "./src/routers/services/service.routes.js";
 import staffRouter from "./src/routers/staff/staff.routes.js";
+import userRouter from "./src/routers/users/user.routes.js";
 import { apiLimiter, speedLimiter, sanitizeData } from "./src/middleware/security.js";
 import { globalErrorHandler } from "./src/utils/errors.js";
 //
@@ -84,6 +85,7 @@ app.use("/api/v1/rbac", rbacRouter);
 app.use("/api/v1/branches", branchRouter);
 app.use("/api/v1/services", serviceRouter);
 app.use("/api/v1/staff", staffRouter);
+app.use("/api/v1/users", userRouter);
 
 // health check endpoint for server
 app.get("/health", (req, res) => {
