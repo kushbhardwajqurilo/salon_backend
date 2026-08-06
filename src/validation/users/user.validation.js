@@ -54,3 +54,9 @@ export const listUsersQuerySchema = z.object({
     search: z.string().optional(),
   }),
 });
+
+export const updateUserStatusSchema = z.object({
+  body: z.object({
+    status: z.enum(["active", "inactive", "suspended"]),
+  }).strict(),
+});

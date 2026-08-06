@@ -72,7 +72,7 @@ describe("AuthService", () => {
       ).rejects.toThrow(new AppError("Invalid email or password", 401));
     });
 
-    it("should lock account after 5 failed login attempts", async () => {
+    it("should lock account after 5 failed login attempts and invalidate sessions", async () => {
       const mockUser = {
         _id: "user-id",
         email: "test@example.com",
@@ -92,6 +92,29 @@ describe("AuthService", () => {
       expect(mockUser.failedLoginAttempts).toBe(5);
       expect(mockUser.status).toBe("locked");
       expect(mockUser.lockUntil).toBeDefined();
+      expect(mockSessionRepo.invalidateAllUserSessions).toHaveBeenCalledWith("user-id");
+    });
+
+    it("should not lock account or invalidate sessions on failed attempts 1-4", async () => {
+      const mockUser = {
+        _id: "user-id",
+        email: "test@example.com",
+        password: "hashedpassword",
+        status: "active",
+        failedLoginAttempts: 2,
+        comparePassword: jest.fn().mockResolvedValue(false),
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      mockUserRepo.findByEmail.mockResolvedValue(mockUser);
+
+      await expect(
+        authService.login("test@example.com", "WrongPassword", "127.0.0.1", "agent")
+      ).rejects.toThrow(new AppError("Invalid email or password", 401));
+
+      expect(mockUser.failedLoginAttempts).toBe(3);
+      expect(mockUser.status).toBe("active");
+      expect(mockSessionRepo.invalidateAllUserSessions).not.toHaveBeenCalled();
     });
 
     it("should successfully log in and create hashed token in session", async () => {

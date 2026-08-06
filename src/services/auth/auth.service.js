@@ -99,6 +99,7 @@ export class AuthService {
       if (user.failedLoginAttempts >= 5) {
         user.status = "locked";
         user.lockUntil = new Date(Date.now() + 15 * 60 * 1000);
+        await this.sessionRepo.invalidateAllUserSessions(user._id);
       }
       await user.save();
       throw new AppError("Invalid email or password", 401);

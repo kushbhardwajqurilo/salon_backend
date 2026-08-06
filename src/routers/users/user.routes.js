@@ -8,6 +8,7 @@ import {
   createUserSchema,
   updateUserSchema,
   listUsersQuerySchema,
+  updateUserStatusSchema,
 } from "../../validation/users/user.validation.js";
 
 const router = Router();
@@ -41,6 +42,13 @@ router.patch(
   authorize("users.update"),
   validate(updateUserSchema),
   controller.updateUser
+);
+
+router.patch(
+  "/:id/status",
+  authorize("users.update"),
+  validate(updateUserStatusSchema),
+  controller.updateUserStatus
 );
 
 export default router;

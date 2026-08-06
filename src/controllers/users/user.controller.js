@@ -1,11 +1,13 @@
 import mongoose from "mongoose";
 import crypto from "crypto";
 import { UserRepository } from "../../repositories/users/user.repository.js";
+import { UserService } from "../../services/users/user.service.js";
 import { sendResponse } from "../../utils/response.js";
 import { asyncHandler, AppError } from "../../utils/errors.js";
 import { toUserResponseDTO } from "../../utils/userResponse.js";
 
 const userRepo = new UserRepository();
+const userService = new UserService();
 
 export const listUsers = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
@@ -113,4 +115,23 @@ export const updateUser = asyncHandler(async (req, res) => {
 
   const updatedUser = await userRepo.updateById(req.params.id, updateData, organizationId, req.user.id);
   return sendResponse(res, 200, "User updated successfully", toUserResponseDTO(updatedUser));
+});
+
+export const updateUserStatus = asyncHandler(async (req, res) => {
+  const organizationId = req.organizationId;
+  const { status } = req.body;
+
+  const updatedUser = await userService.updateUserStatus(
+    req.params.id,
+    status,
+    organizationId,
+    req.user.id
+  );
+
+  return sendResponse(
+    res,
+    200,
+    `User status updated to ${status} successfully`,
+    toUserResponseDTO(updatedUser)
+  );
 });
