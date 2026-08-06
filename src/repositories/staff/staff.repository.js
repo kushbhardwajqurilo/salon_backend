@@ -15,8 +15,11 @@ export class StaffRepository extends BaseRepository {
     return doc.save({ session });
   }
 
-  async findById(id, organizationId, populate = [], select = null) {
+  async findById(id, organizationId, populate = [], select = null, session = null) {
     let query = this.model.findOne({ _id: id, organizationId });
+    if (session) {
+      query = query.session(session);
+    }
     if (populate.length > 0) {
       query = query.populate(populate);
     }
@@ -37,8 +40,11 @@ export class StaffRepository extends BaseRepository {
     return query.exec();
   }
 
-  async findOne(filter, organizationId, populate = [], select = null) {
+  async findOne(filter, organizationId, populate = [], select = null, session = null) {
     let query = this.model.findOne({ ...filter, organizationId });
+    if (session) {
+      query = query.session(session);
+    }
     if (populate.length > 0) {
       query = query.populate(populate);
     }

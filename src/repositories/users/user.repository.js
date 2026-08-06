@@ -6,12 +6,15 @@ export class UserRepository extends BaseRepository {
     super(User);
   }
 
-  async findById(id, organizationId = null, populate = [], select = null) {
+  async findById(id, organizationId = null, populate = [], select = null, session = null) {
     const filter = { _id: id };
     if (organizationId) {
       filter.organizationId = organizationId;
     }
     let query = this.model.findOne(filter);
+    if (session) {
+      query = query.session(session);
+    }
     if (populate.length > 0) {
       query = query.populate(populate);
     }
@@ -21,12 +24,15 @@ export class UserRepository extends BaseRepository {
     return query.exec();
   }
 
-  async findOne(filter, organizationId = null, populate = [], select = null) {
+  async findOne(filter, organizationId = null, populate = [], select = null, session = null) {
     const queryFilter = { ...filter };
     if (organizationId) {
       queryFilter.organizationId = organizationId;
     }
     let query = this.model.findOne(queryFilter);
+    if (session) {
+      query = query.session(session);
+    }
     if (populate.length > 0) {
       query = query.populate(populate);
     }

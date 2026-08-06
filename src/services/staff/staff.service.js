@@ -312,32 +312,33 @@ export class StaffService {
 
   async linkUser(id, userId, organizationId, actorId) {
     return this.runTransaction(async (session) => {
-      const staff = await this.staffRepo.findById(id, organizationId);
+      const staff = await this.staffRepo.findById(id, organizationId, [], null, session);
       if (!staff) {
         throw new AppError("Staff not found", 404);
       }
 
-      const user = await this.userRepo.findById(userId, organizationId);
+      // 1. Staff cannot already be linked to another User
+      if (staff.userId && staff.userId.toString() !== userId.toString()) {
+        throw new AppError("Staff is already linked to another User", 400);
+      }
+
+      const user = await this.userRepo.findById(userId, organizationId, [], null, session);
       if (!user) {
         throw new AppError("User not found", 404);
       }
 
-      if (user.status === "suspended") {
-        throw new AppError("User is suspended and cannot be linked", 400);
-      }
-      if (user.status === "locked") {
-        throw new AppError("User is locked and cannot be linked", 400);
-      }
-      if (user.status === "inactive") {
-        throw new AppError("User is inactive and cannot be linked", 400);
+      // 2. Validate User status
+      if (user.status !== "active") {
+        throw new AppError(`User is ${user.status} and cannot be linked`, 400);
       }
 
-      if (user.organizationId.toString() !== organizationId.toString()) {
+      // 3. Prevent cross-organization linking
+      if (user.organizationId.toString() !== organizationId.toString() || staff.organizationId.toString() !== organizationId.toString()) {
         throw new AppError("Cross-organization linkage is prohibited", 400);
       }
 
-      // Verify User is not linked to another active Staff
-      const linkedStaff = await this.staffRepo.findOne({ userId, isDeleted: false }, organizationId);
+      // 4. Verify User is not linked to another active Staff
+      const linkedStaff = await this.staffRepo.findOne({ userId, isDeleted: false }, organizationId, [], null, session);
       if (linkedStaff && linkedStaff._id.toString() !== id.toString()) {
         throw new AppError("User is already linked to another active Staff", 400);
       }
@@ -365,7 +366,7 @@ export class StaffService {
 
   async unlinkUser(id, organizationId, actorId) {
     return this.runTransaction(async (session) => {
-      const staff = await this.staffRepo.findById(id, organizationId);
+      const staff = await this.staffRepo.findById(id, organizationId, [], null, session);
       if (!staff) {
         throw new AppError("Staff not found", 404);
       }
