@@ -40,7 +40,7 @@ export const getUserById = asyncHandler(async (req, res) => {
 
 export const createUser = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
-  const { name, email, phone, roleId, branchAccess = [] } = req.body;
+  const { name, email, phone, roleId, branchAccess = [], hasOrgWideAccess = false } = req.body;
 
   // 1. Verify email/phone uniqueness
   const existingUser = await userRepo.findByEmailOrPhone(email, phone);
@@ -61,15 +61,24 @@ export const createUser = asyncHandler(async (req, res) => {
   }
 
   // 3. Role existence verification
-  const role = await mongoose.model("Role").findById(roleId);
+  const role = await mongoose.model("Role").findById(roleId).populate("permissions");
   if (!role) {
     throw new AppError("Role not found", 404);
   }
 
-  // 4. Generate temporary password
+  // 4. Role delegation guard
+  const adminRoleObj = await mongoose.model("Role").findOne({ name: req.user.role.toLowerCase() }).populate("permissions");
+  const adminPermissions = adminRoleObj ? adminRoleObj.permissions.map(p => p.name) : [];
+  const targetPermissions = role.permissions.map(p => p.name);
+  const hasAllPermissions = targetPermissions.every(p => adminPermissions.includes(p));
+  if (!hasAllPermissions) {
+    throw new AppError("Access denied. You cannot assign a role with permissions you do not possess.", 403);
+  }
+
+  // 5. Generate temporary password
   const tempPassword = crypto.randomBytes(8).toString("hex");
 
-  // 5. Create user
+  // 6. Create user
   const user = await userRepo.create({
     name,
     email,
@@ -78,6 +87,7 @@ export const createUser = asyncHandler(async (req, res) => {
     role: roleId,
     organizationId,
     branchAccess,
+    hasOrgWideAccess,
     isFirstLogin: true,
     isVerified: false,
     status: "active",
@@ -88,12 +98,19 @@ export const createUser = asyncHandler(async (req, res) => {
 
 export const updateUser = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
-  const { name, phone, branchAccess } = req.body;
+  const { name, phone, branchAccess, hasOrgWideAccess } = req.body;
 
   // Check if user exists
   const existingUser = await userRepo.findById(req.params.id, organizationId);
   if (!existingUser) {
     throw new AppError("User not found", 404);
+  }
+
+  // Self-modification of hasOrgWideAccess protection
+  if (hasOrgWideAccess !== undefined) {
+    if (req.params.id === req.user.id.toString()) {
+      throw new AppError("Self-modification of hasOrgWideAccess is prohibited.", 403);
+    }
   }
 
   // Cross-tenant branch references protection
@@ -112,6 +129,7 @@ export const updateUser = asyncHandler(async (req, res) => {
   if (name !== undefined) updateData.name = name;
   if (phone !== undefined) updateData.phone = phone;
   if (branchAccess !== undefined) updateData.branchAccess = branchAccess;
+  if (hasOrgWideAccess !== undefined) updateData.hasOrgWideAccess = hasOrgWideAccess;
 
   const updatedUser = await userRepo.updateById(req.params.id, updateData, organizationId, req.user.id);
   return sendResponse(res, 200, "User updated successfully", toUserResponseDTO(updatedUser));

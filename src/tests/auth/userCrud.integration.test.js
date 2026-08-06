@@ -57,6 +57,18 @@ describe("User CRUD Integration Tests (Phase 3)", () => {
     };
 
     next = jest.fn();
+
+    // Mock Role.findOne to return admin permissions for delegation checks
+    Role.findOne = jest.fn().mockReturnValue({
+      populate: jest.fn().mockReturnValue({
+        permissions: [
+          { name: "users.create" },
+          { name: "users.view" },
+          { name: "users.update" },
+          { name: "stylist" }
+        ],
+      }),
+    });
   });
 
   describe("Tenant Isolation", () => {
@@ -117,7 +129,9 @@ describe("User CRUD Integration Tests (Phase 3)", () => {
       };
 
       UserRepository.prototype.findByEmailOrPhone.mockResolvedValue(null);
-      Role.findById.mockResolvedValue({ _id: roleId, name: "stylist" });
+      Role.findById.mockReturnValue({
+        populate: jest.fn().mockResolvedValue({ _id: roleId, name: "stylist", permissions: [{ name: "users.create" }] }),
+      });
 
       const mockSavedUser = {
         _id: new mongoose.Types.ObjectId(),
@@ -153,7 +167,9 @@ describe("User CRUD Integration Tests (Phase 3)", () => {
       };
 
       UserRepository.prototype.findByEmailOrPhone.mockResolvedValue(null);
-      Role.findById.mockResolvedValue({ _id: roleId });
+      Role.findById.mockReturnValue({
+        populate: jest.fn().mockResolvedValue({ _id: roleId, name: "stylist", permissions: [{ name: "users.create" }] }),
+      });
       Branch.find.mockResolvedValue([]); // No branches matched (cross-tenant)
 
       await createUser(req, res, next);
@@ -172,7 +188,9 @@ describe("User CRUD Integration Tests (Phase 3)", () => {
       };
 
       UserRepository.prototype.findByEmailOrPhone.mockResolvedValue(null);
-      Role.findById.mockResolvedValue({ _id: roleId });
+      Role.findById.mockReturnValue({
+        populate: jest.fn().mockResolvedValue({ _id: roleId, name: "stylist", permissions: [{ name: "users.create" }] }),
+      });
       
       const mockSavedUser = {
         _id: new mongoose.Types.ObjectId(),

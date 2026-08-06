@@ -16,6 +16,7 @@ export const createUserSchema = z.object({
         isActive: z.boolean().optional().default(true),
       })
     ).optional().default([]),
+    hasOrgWideAccess: z.boolean().optional().default(false),
   }).strict(),
 });
 
@@ -30,6 +31,7 @@ export const updateUserSchema = z.object({
         isActive: z.boolean().optional().default(true),
       })
     ).optional(),
+    hasOrgWideAccess: z.boolean().optional(),
   }).strict(),
 });
 
