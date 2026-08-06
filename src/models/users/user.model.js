@@ -60,6 +60,10 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    isFirstLogin: {
+      type: Boolean,
+      default: false,
+    },
     emailVerificationToken: {
       type: String,
       default: null,
