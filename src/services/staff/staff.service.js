@@ -149,7 +149,7 @@ export class StaffService {
 
         // Update linked User status if needed
         if (staff.userId) {
-          const linkedUser = await this.userRepo.findById(staff.userId);
+          const linkedUser = await this.userRepo.findById(staff.userId, organizationId);
           if (linkedUser) {
             if (target === "inactive") {
               linkedUser.status = "inactive";
@@ -216,7 +216,7 @@ export class StaffService {
 
       // Deactivate user account linkage
       if (staff.userId) {
-        const linkedUser = await this.userRepo.findById(staff.userId);
+        const linkedUser = await this.userRepo.findById(staff.userId, organizationId);
         if (linkedUser) {
           linkedUser.status = "inactive";
           await linkedUser.save({ session });
@@ -317,9 +317,19 @@ export class StaffService {
         throw new AppError("Staff not found", 404);
       }
 
-      const user = await this.userRepo.findById(userId);
+      const user = await this.userRepo.findById(userId, organizationId);
       if (!user) {
         throw new AppError("User not found", 404);
+      }
+
+      if (user.status === "suspended") {
+        throw new AppError("User is suspended and cannot be linked", 400);
+      }
+      if (user.status === "locked") {
+        throw new AppError("User is locked and cannot be linked", 400);
+      }
+      if (user.status === "inactive") {
+        throw new AppError("User is inactive and cannot be linked", 400);
       }
 
       if (user.organizationId.toString() !== organizationId.toString()) {
@@ -406,7 +416,19 @@ export class StaffService {
         throw new AppError("Branch is already assigned to Staff", 400);
       }
 
-      if (isPrimary) {
+      // Check count of active branch assignments
+      const activeCount = await mongoose.model("StaffBranch").countDocuments({
+        staffId: id,
+        organizationId,
+        isActive: true
+      }).session(session);
+
+      let primaryToAssign = isPrimary;
+      if (activeCount === 0) {
+        primaryToAssign = true;
+      }
+
+      if (primaryToAssign) {
         await mongoose.model("StaffBranch").updateMany(
           { staffId: id, organizationId },
           { $set: { isPrimary: false } },
@@ -415,7 +437,7 @@ export class StaffService {
       }
 
       const assignment = await this.staffBranchRepo.create(
-        { staffId: id, branchId, isPrimary, isActive: true },
+        { staffId: id, branchId, isPrimary: primaryToAssign, isActive: true },
         organizationId,
         actorId,
         session
@@ -454,8 +476,24 @@ export class StaffService {
         throw new AppError("Branch assignment not found", 404);
       }
 
+      const wasPrimary = assignment.isPrimary;
       assignment.isActive = false;
+      assignment.isPrimary = false;
       await assignment.save({ session });
+
+      if (wasPrimary) {
+        // Promote the oldest remaining active branch assignment
+        const remaining = await mongoose.model("StaffBranch")
+          .find({ staffId: id, organizationId, isActive: true })
+          .sort({ createdAt: 1 })
+          .session(session);
+
+        if (remaining.length > 0) {
+          const nextPrimary = remaining[0];
+          nextPrimary.isPrimary = true;
+          await nextPrimary.save({ session });
+        }
+      }
 
       await this.auditLogService.createAuditLog(
         {
@@ -554,5 +592,31 @@ export class StaffService {
       );
       return true;
     });
+  }
+
+  async getStaffBranches(id, organizationId) {
+    const staff = await this.staffRepo.findById(id, organizationId);
+    if (!staff) {
+      throw new AppError("Staff not found", 404);
+    }
+    const result = await this.staffBranchRepo.find(
+      { staffId: id, isActive: true },
+      { limit: 9999, populate: ["branchId"] },
+      organizationId
+    );
+    return result.data;
+  }
+
+  async getStaffServices(id, organizationId) {
+    const staff = await this.staffRepo.findById(id, organizationId);
+    if (!staff) {
+      throw new AppError("Staff not found", 404);
+    }
+    const result = await this.staffServiceRepo.find(
+      { staffId: id, isActive: true },
+      { limit: 9999, populate: ["serviceId"] },
+      organizationId
+    );
+    return result.data;
   }
 }

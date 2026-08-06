@@ -74,3 +74,13 @@ export const removeService = asyncHandler(async (req, res) => {
   await staffService.removeService(req.params.id, req.params.serviceId, req.organizationId, req.user.id);
   return sendResponse(res, 200, "Service capability mapping removed successfully");
 });
+
+export const getStaffBranches = asyncHandler(async (req, res) => {
+  const branches = await staffService.getStaffBranches(req.params.id, req.organizationId);
+  return sendResponse(res, 200, "Staff branch assignments retrieved successfully", branches);
+});
+
+export const getStaffServices = asyncHandler(async (req, res) => {
+  const services = await staffService.getStaffServices(req.params.id, req.organizationId);
+  return sendResponse(res, 200, "Staff service capabilities retrieved successfully", services);
+});

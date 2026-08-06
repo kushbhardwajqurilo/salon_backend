@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { BaseRepository } from "../../shared/repositories/base.repository.js";
 import { Session } from "../../models/auth/session.model.js";
 
@@ -7,7 +8,8 @@ export class SessionRepository extends BaseRepository {
   }
 
   async findByToken(token) {
-    return this.model.findOne({ refreshToken: token, isValid: true }).populate({
+    const hashed = crypto.createHash("sha256").update(token).digest("hex");
+    return this.model.findOne({ refreshToken: hashed, isValid: true }).populate({
       path: "user",
       populate: { path: "role" },
     });
@@ -18,6 +20,8 @@ export class SessionRepository extends BaseRepository {
   }
 
   async invalidateSession(token) {
-    return this.model.updateOne({ refreshToken: token }, { isValid: false });
+    const hashed = crypto.createHash("sha256").update(token).digest("hex");
+    return this.model.updateOne({ refreshToken: hashed }, { isValid: false });
   }
 }
+

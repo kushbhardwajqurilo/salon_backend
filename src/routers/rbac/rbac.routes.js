@@ -12,33 +12,33 @@ router.use(authenticate);
 
 router.post(
   "/permissions",
-  authorize("roles.manage"),
+  authorize("roles.create"),
   validate(rbacValidation.createPermissionSchema),
   rbacController.createPermission
 );
 
 router.get(
   "/permissions",
-  authorize("roles.manage"),
+  authorize("roles.view"),
   rbacController.listPermissions
 );
 
 router.post(
   "/roles",
-  authorize("roles.manage"),
+  authorize("roles.create"),
   validate(rbacValidation.createRoleSchema),
   rbacController.createRole
 );
 
 router.get(
   "/roles",
-  authorize("roles.manage"),
+  authorize("roles.view"),
   rbacController.listRoles
 );
 
 router.post(
   "/roles/:roleId/permissions",
-  authorize("roles.manage"),
+  authorize("roles.update"),
   validate(rbacValidation.assignPermissionsSchema),
   rbacController.assignPermissionsToRole
 );

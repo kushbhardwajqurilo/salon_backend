@@ -68,10 +68,21 @@ export class StaffRepository extends BaseRepository {
 
   async find(filter = {}, options = {}, organizationId) {
     const queryFilter = { ...filter };
+    
+    // Clean non-schema query parameters from the database query filter
+    const nonSchemaKeys = ["page", "limit", "sort", "search", "branchId", "searchFields", "populate", "select"];
+    nonSchemaKeys.forEach(key => delete queryFilter[key]);
+
     if (organizationId !== undefined) {
       queryFilter.organizationId = organizationId;
     }
-    return super.find(queryFilter, options);
+
+    const queryOptions = { ...options };
+    if (queryOptions.search && (!queryOptions.searchFields || queryOptions.searchFields.length === 0)) {
+      queryOptions.searchFields = ["name", "email", "phone", "staffCode", "designation"];
+    }
+
+    return super.find(queryFilter, queryOptions);
   }
 
   async count(filter = {}, organizationId) {

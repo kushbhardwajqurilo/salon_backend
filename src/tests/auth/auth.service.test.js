@@ -1,6 +1,8 @@
 import { jest } from "@jest/globals";
 import { AuthService } from "../../services/auth/auth.service.js";
 import { AppError } from "../../utils/errors.js";
+import jwt from "jsonwebtoken";
+import crypto from "crypto";
 
 describe("AuthService", () => {
   let authService;
@@ -91,35 +93,108 @@ describe("AuthService", () => {
       expect(mockUser.status).toBe("locked");
       expect(mockUser.lockUntil).toBeDefined();
     });
+
+    it("should successfully log in and create hashed token in session", async () => {
+      const mockUser = {
+        _id: "user-id",
+        email: "test@example.com",
+        password: "hashedpassword",
+        status: "active",
+        comparePassword: jest.fn().mockResolvedValue(true),
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      mockUserRepo.findByEmail.mockResolvedValue(mockUser);
+
+      const result = await authService.login("test@example.com", "Password123!", "127.0.0.1", "agent");
+      expect(result.accessToken).toBeDefined();
+      expect(result.refreshToken).toBeDefined();
+
+      // Verify raw token is NOT stored directly in Session, but hashed
+      const expectedHash = crypto.createHash("sha256").update(result.refreshToken).digest("hex");
+      expect(mockSessionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user: "user-id",
+          refreshToken: expectedHash,
+        })
+      );
+    });
   });
 
-  describe("refresh", () => {
-    it("should populate role when fetching user and generate access token with role", async () => {
-      const jwt = (await import("jsonwebtoken")).default;
-      const bcrypt = (await import("bcryptjs")).default;
+  describe("OTP Authentication", () => {
+    it("should successfully verify OTP, login, and create session without crashing", async () => {
+      const mockUser = {
+        _id: "user-id",
+        phone: "+919999988888",
+        otp: "123456",
+        otpExpires: new Date(Date.now() + 5 * 60 * 1000),
+        status: "active",
+        isVerified: false,
+        save: jest.fn().mockResolvedValue(true),
+      };
 
-      const refreshToken = jwt.sign({ id: "user-id" }, process.env.JWT_REFRESH_SECRET || "refresh_secret");
-      const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+      mockUserRepo.findByPhone.mockResolvedValue(mockUser);
 
+      const result = await authService.verifyOTP("+919999988888", "123456", "127.0.0.1", "agent");
+      expect(result.accessToken).toBeDefined();
+      expect(result.refreshToken).toBeDefined();
+
+      // Verify raw token is NOT stored directly in Session, but hashed
+      const expectedHash = crypto.createHash("sha256").update(result.refreshToken).digest("hex");
+      expect(mockSessionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user: "user-id",
+          refreshToken: expectedHash,
+        })
+      );
+    });
+  });
+
+  describe("refresh & logout", () => {
+    it("should refresh password/OTP session and rotate refresh token", async () => {
       const mockUser = {
         _id: "user-id",
         email: "test@example.com",
         status: "active",
-        refreshToken: hashedRefreshToken,
         role: { name: "admin" },
+      };
+
+      const mockSession = {
+        user: mockUser,
+        refreshToken: "some-hashed-token",
+        isValid: true,
+        expiresAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
         save: jest.fn().mockResolvedValue(true),
       };
 
-      mockUserRepo.findById.mockResolvedValue(mockUser);
+      mockSessionRepo.findByToken.mockResolvedValue(mockSession);
 
-      const result = await authService.refresh(refreshToken, "127.0.0.1", "agent");
-
-      expect(mockUserRepo.findById).toHaveBeenCalledWith("user-id", ["role"]);
+      const result = await authService.refresh("old-refresh-token", "127.0.0.1", "agent");
       expect(result.accessToken).toBeDefined();
       expect(result.refreshToken).toBeDefined();
 
-      const decoded = jwt.decode(result.accessToken);
-      expect(decoded.role).toBe("admin");
+      // Check if session updated token hash to preserve rotation
+      const newHash = crypto.createHash("sha256").update(result.refreshToken).digest("hex");
+      expect(mockSession.refreshToken).toBe(newHash);
+      expect(mockSession.save).toHaveBeenCalled();
+    });
+
+    it("should throw an error on invalid or non-existent refresh token", async () => {
+      mockSessionRepo.findByToken.mockResolvedValue(null);
+
+      await expect(
+        authService.refresh("invalid-token", "127.0.0.1", "agent")
+      ).rejects.toThrow(new AppError("Session not found or invalid", 401));
+    });
+
+    it("should invalidate session on logout", async () => {
+      await authService.logout("refresh-token-to-invalidate");
+      expect(mockSessionRepo.invalidateSession).toHaveBeenCalledWith("refresh-token-to-invalidate");
+    });
+
+    it("should invalidate all sessions on logoutAllDevices", async () => {
+      await authService.logoutAllDevices("user-id");
+      expect(mockSessionRepo.invalidateAllUserSessions).toHaveBeenCalledWith("user-id");
     });
   });
 });

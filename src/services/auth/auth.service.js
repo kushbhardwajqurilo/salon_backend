@@ -110,9 +110,15 @@ export class AuthService {
     const accessToken = this.generateAccessToken(user);
     const refreshToken = this.generateRefreshToken(user);
 
-    const salt = await bcrypt.genSalt(10);
-    user.refreshToken = await bcrypt.hash(refreshToken, salt);
-    await user.save();
+    const hashedToken = crypto.createHash("sha256").update(refreshToken).digest("hex");
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await this.sessionRepo.create({
+      user: user._id,
+      refreshToken: hashedToken,
+      ipAddress,
+      deviceInfo,
+      expiresAt,
+    });
 
     return {
       accessToken,
@@ -126,25 +132,27 @@ export class AuthService {
     }
 
     try {
-      const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET);
-      const user = await this.userRepo.findById(decoded.id, ["role"]);
-      if (!user || user.status !== "active" || !user.refreshToken) {
+      const session = await this.sessionRepo.findByToken(token);
+      if (!session || !session.user || session.user.status !== "active") {
         throw new AppError("Session not found or invalid", 401);
       }
 
-      const isMatch = await bcrypt.compare(token, user.refreshToken);
-      if (!isMatch) {
-        user.refreshToken = null;
-        await user.save();
+      if (session.expiresAt && session.expiresAt < new Date()) {
+        session.isValid = false;
+        await session.save();
         throw new AppError("Session not found or invalid", 401);
       }
 
+      const user = session.user;
       const newAccessToken = this.generateAccessToken(user);
       const newRefreshToken = this.generateRefreshToken(user);
+      const newHashedToken = crypto.createHash("sha256").update(newRefreshToken).digest("hex");
 
-      const salt = await bcrypt.genSalt(10);
-      user.refreshToken = await bcrypt.hash(newRefreshToken, salt);
-      await user.save();
+      session.refreshToken = newHashedToken;
+      session.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      if (ipAddress) session.ipAddress = ipAddress;
+      if (deviceInfo) session.deviceInfo = deviceInfo;
+      await session.save();
 
       return {
         accessToken: newAccessToken,
@@ -158,23 +166,14 @@ export class AuthService {
   async logout(token) {
     if (!token) return;
     try {
-      const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET);
-      const user = await this.userRepo.findById(decoded.id);
-      if (user) {
-        user.refreshToken = null;
-        await user.save();
-      }
+      await this.sessionRepo.invalidateSession(token);
     } catch (err) {
       // Ignore errors on logout
     }
   }
 
   async logoutAllDevices(userId) {
-    const user = await this.userRepo.findById(userId);
-    if (user) {
-      user.refreshToken = null;
-      await user.save();
-    }
+    await this.sessionRepo.invalidateAllUserSessions(userId);
   }
 
   async verifyEmail(token) {
@@ -260,12 +259,13 @@ export class AuthService {
     await user.save();
 
     const accessToken = this.generateAccessToken(user);
-    const refreshToken = this.generateRefreshToken();
+    const refreshToken = this.generateRefreshToken(user);
+    const hashedToken = crypto.createHash("sha256").update(refreshToken).digest("hex");
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await this.sessionRepo.create({
       user: user._id,
-      refreshToken,
+      refreshToken: hashedToken,
       ipAddress,
       deviceInfo,
       expiresAt,

@@ -117,4 +117,20 @@ router.delete(
   controller.removeService
 );
 
+router.get(
+  "/:id/branches",
+  authenticate,
+  requireOrganizationScope,
+  authorize("employees.view"),
+  controller.getStaffBranches
+);
+
+router.get(
+  "/:id/services",
+  authenticate,
+  requireOrganizationScope,
+  authorize("employees.view"),
+  controller.getStaffServices
+);
+
 export default router;
