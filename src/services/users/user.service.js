@@ -11,7 +11,8 @@ export class UserService {
 
   async runTransaction(operation) {
     let session = null;
-    if (mongoose.connection.db && typeof mongoose.connection.startSession === "function") {
+    const isSingle = mongoose.connection.client?.topology?.description?.type === "Single";
+    if (mongoose.connection.db && typeof mongoose.connection.startSession === "function" && !isSingle) {
       try {
         session = await mongoose.connection.startSession();
         session.startTransaction();
@@ -32,9 +33,16 @@ export class UserService {
 
   async updateUserStatus(id, status, organizationId, actorId) {
     return this.runTransaction(async (session) => {
-      const user = await this.userRepo.findById(id, organizationId);
+      const user = await this.userRepo.findById(id, organizationId, ["role"], null, session);
       if (!user) {
         throw new AppError("User not found", 404);
+      }
+
+      // Owner protection: cannot deactivate or suspend organization owner
+      if (user.role && user.role.name === "owner") {
+        if (["inactive", "suspended"].includes(status)) {
+          throw new AppError("Organization owner cannot be deactivated or suspended.", 400);
+        }
       }
 
       const prevStatus = user.status;

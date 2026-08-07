@@ -17,7 +17,7 @@ export const createUserSchema = z.object({
       })
     ).optional().default([]),
     hasOrgWideAccess: z.boolean().optional().default(false),
-  }).strict(),
+  }).optional(),
 });
 
 export const updateUserSchema = z.object({

@@ -14,7 +14,7 @@ export const createStaffSchema = z.object({
       z.date({ required_error: "Joining date is required" })
     ),
     avatarUrl: z.string().url("Invalid URL format").nullable().optional(),
-  }).strict(),
+  }),
 });
 
 export const updateStaffSchema = z.object({

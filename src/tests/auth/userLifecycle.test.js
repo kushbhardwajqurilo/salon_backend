@@ -124,8 +124,6 @@ describe("User Lifecycle Management & Session Invalidation (Phase 4)", () => {
       };
       UserRepository.prototype.findById.mockResolvedValue(mockUser);
 
-      // Session invalidation doesn't trigger when transitioning to active,
-      // but updateMany mock is needed since Mongoose model is accessed
       userService.sessionRepo.model = {
         updateMany: jest.fn().mockReturnValue({
           session: jest.fn().mockReturnThis(),
@@ -139,6 +137,112 @@ describe("User Lifecycle Management & Session Invalidation (Phase 4)", () => {
       expect(result.failedLoginAttempts).toBe(0);
       expect(result.lockUntil).toBeNull();
       expect(mockUser.save).toHaveBeenCalled();
+    });
+  });
+
+  describe("Owner Protection", () => {
+    it("should reject transitioning owner status to inactive", async () => {
+      const mockOwner = {
+        _id: userId,
+        status: "active",
+        role: { name: "owner" },
+        save: jest.fn().mockResolvedValue(true),
+      };
+      UserRepository.prototype.findById.mockResolvedValue(mockOwner);
+
+      await expect(
+        userService.updateUserStatus(userId, "inactive", orgAId, "actor-123")
+      ).rejects.toThrow(new AppError("Organization owner cannot be deactivated or suspended.", 400));
+    });
+
+    it("should reject transitioning owner status to suspended", async () => {
+      const mockOwner = {
+        _id: userId,
+        status: "active",
+        role: { name: "owner" },
+        save: jest.fn().mockResolvedValue(true),
+      };
+      UserRepository.prototype.findById.mockResolvedValue(mockOwner);
+
+      await expect(
+        userService.updateUserStatus(userId, "suspended", orgAId, "actor-123")
+      ).rejects.toThrow(new AppError("Organization owner cannot be deactivated or suspended.", 400));
+    });
+  });
+
+  describe("Transaction Fallback & Rollback", () => {
+    it("should fallback gracefully if client topology type is Single (standalone)", async () => {
+      // Mock topology to be Single
+      mongoose.connection.client = {
+        topology: {
+          description: {
+            type: "Single"
+          }
+        }
+      };
+
+      const mockUser = {
+        _id: userId,
+        status: "active",
+        save: jest.fn().mockResolvedValue(true),
+      };
+      UserRepository.prototype.findById.mockResolvedValue(mockUser);
+
+      userService.sessionRepo.model = {
+        updateMany: jest.fn().mockReturnValue({
+          session: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue({}),
+        }),
+      };
+
+      const result = await userService.updateUserStatus(userId, "inactive", orgAId, "actor-123");
+      expect(result.status).toBe("inactive");
+      // Verify startSession was NOT called since topology is Single
+      const spyStartSession = jest.spyOn(mongoose.connection, "startSession");
+      expect(spyStartSession).not.toHaveBeenCalled();
+    });
+
+    it("should abort transaction and propagate error if database operation fails inside transaction", async () => {
+      // Mock topology to be ReplicaSetWithPrimary to enable transaction
+      mongoose.connection.client = {
+        topology: {
+          description: {
+            type: "ReplicaSetWithPrimary"
+          }
+        }
+      };
+
+      const originalDb = mongoose.connection.db;
+      mongoose.connection.db = {}; // Ensure it's truthy
+
+      const mockSession = {
+        startTransaction: jest.fn(),
+        commitTransaction: jest.fn(),
+        abortTransaction: jest.fn(),
+        endSession: jest.fn(),
+      };
+      const startSessionSpy = jest.spyOn(mongoose.connection, "startSession").mockResolvedValue(mockSession);
+
+      const mockUser = {
+        _id: userId,
+        status: "active",
+        save: jest.fn().mockRejectedValue(new Error("Write Conflict")),
+      };
+      UserRepository.prototype.findById.mockResolvedValue(mockUser);
+
+      // Re-enable actual runTransaction logic for this test
+      userService.runTransaction = UserService.prototype.runTransaction;
+
+      await expect(
+        userService.updateUserStatus(userId, "inactive", orgAId, "actor-123")
+      ).rejects.toThrow("Write Conflict");
+
+      expect(mockSession.abortTransaction).toHaveBeenCalled();
+      expect(mockSession.endSession).toHaveBeenCalled();
+      
+      // Cleanup
+      mongoose.connection.db = originalDb;
+      startSessionSpy.mockRestore();
     });
   });
 });
