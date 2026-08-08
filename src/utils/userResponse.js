@@ -9,17 +9,23 @@
 export const toUserResponseDTO = (user) => {
   if (!user) return null;
 
-  const rawUser = typeof user.toObject === "function" ? user.toObject({ depopulate: false }) : user;
+  const rawUser =
+    typeof user.toObject === "function"
+      ? user.toObject({ depopulate: false })
+      : user;
 
   const dto = {
     id: rawUser._id ? rawUser._id.toString() : rawUser.id,
+    username: rawUser.username,
     name: rawUser.name,
     email: rawUser.email,
     phone: rawUser.phone,
     role: rawUser.role,
-    organizationId: rawUser.organizationId ? rawUser.organizationId.toString() : rawUser.organizationId,
+    organizationId: rawUser.organizationId
+      ? rawUser.organizationId.toString()
+      : rawUser.organizationId,
     hasOrgWideAccess: rawUser.hasOrgWideAccess || false,
-    branchAccess: (rawUser.branchAccess || []).map(b => ({
+    branchAccess: (rawUser.branchAccess || []).map((b) => ({
       branchId: b.branchId ? b.branchId.toString() : b.branchId,
       branchName: b.branchName,
       isActive: b.isActive,

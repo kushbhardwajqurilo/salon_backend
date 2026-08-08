@@ -5,7 +5,8 @@ export class AppError extends Error {
   constructor(message, statusCode, errors = null, status = null) {
     super(message);
     this.statusCode = statusCode;
-    this.status = status || (`${statusCode}`.startsWith("4") ? "fail" : "error");
+    this.status =
+      status || (`${statusCode}`.startsWith("4") ? "fail" : "error");
     this.isOperational = true;
     if (errors) {
       this.errors = errors;
@@ -22,7 +23,7 @@ export const asyncHandler = (fn) => {
 };
 
 const handleZodError = (err) => {
-  console.log("err", err)
+  console.log("zod error", err)
   const errors = err.errors.map((e) => ({
     field: e.path.join("."),
     message: e.message,
@@ -36,8 +37,12 @@ const handleCastErrorDB = (err) => {
 };
 
 const handleDuplicateFieldsDB = (err) => {
-  const value = err.errmsg.match(/(["'])(\\?.)*?\1/)[0];
-  const message = `Duplicate field value: ${value}. Please use another value!`;
+  const value = err.errmsg?.match(/(["'])(\\?.)*?\1/)[0] || "field";
+  const message = value.includes("username")
+    ? "Username already exists. Please choose another username."
+    : value.includes("email")
+      ? "Email already exists. Please use another email."
+      : `Duplicate field value: ${value}. Please use another value!`;
   return new AppError(message, 400);
 };
 
@@ -47,9 +52,11 @@ const handleValidationErrorDB = (err) => {
   return new AppError(message, 400);
 };
 
-const handleJWTError = () => new AppError("Invalid token. Please log in again!", 401);
+const handleJWTError = () =>
+  new AppError("Invalid token. Please log in again!", 401);
 
-const handleJWTExpiredError = () => new AppError("Your token has expired! Please log in again.", 401);
+const handleJWTExpiredError = () =>
+  new AppError("Your token has expired! Please log in again.", 401);
 
 const sendErrorDev = (err, req, res) => {
   const response = {
@@ -76,7 +83,6 @@ const sendErrorProd = (err, req, res) => {
     }
     return res.status(err.statusCode).json(response);
   }
-  console.log("ERROR ", err);
   // Programming or other unknown error: don't leak details
   logger.error("ERROR 💥", err);
   return res.status(500).json({
@@ -99,7 +105,8 @@ export const globalErrorHandler = (err, req, res, next) => {
     if (error instanceof ZodError) error = handleZodError(error);
     if (error.name === "CastError") error = handleCastErrorDB(error);
     if (error.code === 11000) error = handleDuplicateFieldsDB(error);
-    if (error.name === "ValidationError") error = handleValidationErrorDB(error);
+    if (error.name === "ValidationError")
+      error = handleValidationErrorDB(error);
     if (error.name === "JsonWebTokenError") error = handleJWTError();
     if (error.name === "TokenExpiredError") error = handleJWTExpiredError();
 

@@ -41,6 +41,7 @@ describe("Staff-User Linking & Transactions (Phase 6)", () => {
     };
     staffService.userRepo = {
       findById: jest.fn(),
+      findOne: jest.fn(),
     };
     staffService.auditLogService = {
       createAuditLog: jest.fn().mockResolvedValue({}),
@@ -87,6 +88,36 @@ describe("Staff-User Linking & Transactions (Phase 6)", () => {
       ).rejects.toThrow(new AppError("User is suspended and cannot be linked", 400));
 
       expect(mockSession.abortTransaction).toHaveBeenCalled();
+    });
+
+    it("should link a staff profile by username when an ObjectId is not supplied", async () => {
+      const mockStaff = {
+        _id: staffId,
+        organizationId: orgAId,
+        userId: null,
+        save: jest.fn().mockResolvedValue(true),
+      };
+      const mockUser = {
+        _id: userId,
+        organizationId: orgAId,
+        status: "active",
+        username: "rahul.sharma",
+      };
+
+      staffService.staffRepo.findById.mockResolvedValue(mockStaff);
+      staffService.userRepo.findOne.mockResolvedValue(mockUser);
+      staffService.staffRepo.findOne.mockResolvedValue(null);
+
+      const result = await staffService.linkUser(staffId, "rahul.sharma", orgAId, "actor-1");
+
+      expect(result.userId).toBe(userId);
+      expect(staffService.userRepo.findOne).toHaveBeenCalledWith(
+        { username: "rahul.sharma" },
+        orgAId,
+        [],
+        null,
+        mockSession,
+      );
     });
 
     it("should reject linking if Staff is already linked to another User", async () => {

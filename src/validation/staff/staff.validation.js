@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const objectIdRegex = /^[0-9a-fA-F]{24}$/;
 const objectIdSchema = z.string().regex(objectIdRegex, "Invalid ObjectId format");
+const usernameRegex = /^[a-z0-9._-]{3,30}$/;
 
 export const createStaffSchema = z.object({
   body: z.object({
@@ -58,7 +59,10 @@ export const queryStaffSchema = z.object({
 
 export const linkUserSchema = z.object({
   body: z.object({
-    userId: objectIdSchema,
+    userId: z.union([
+      objectIdSchema,
+      z.string().trim().min(3, "User selection is required").max(30, "User selection is too long").regex(usernameRegex, "User selection must be a valid username or ObjectId"),
+    ]),
   }).strict(),
 });
 

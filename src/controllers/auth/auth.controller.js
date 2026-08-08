@@ -19,7 +19,12 @@ const setRefreshTokenCookie = (res, token) => {
 
 export const register = asyncHandler(async (req, res) => {
   const result = await authService.register(req.body);
-  return sendResponse(res, 201, "Registration successful. Please verify your email.", result);
+  return sendResponse(
+    res,
+    201,
+    "Registration successful. Please verify your email.",
+    result,
+  );
 });
 
 export const login = asyncHandler(async (req, res) => {
@@ -30,7 +35,7 @@ export const login = asyncHandler(async (req, res) => {
     req.body.email,
     req.body.password,
     ipAddress,
-    deviceInfo
+    deviceInfo,
   );
 
   if (result.requireActivation) {
@@ -44,7 +49,6 @@ export const login = asyncHandler(async (req, res) => {
 
   return sendResponse(res, 200, "Login successful", {
     accessToken: result.accessToken,
-    refreshToken: result.refreshToken,
   });
 });
 
@@ -76,7 +80,21 @@ export const activateChangePassword = asyncHandler(async (req, res) => {
   }
   const token = authHeader.split(" ")[1];
   const { password } = req.body;
-  const result = await authService.activateChangePassword(token, password);
+  const ipAddress = req.ip || req.headers["x-forwarded-for"] || "Unknown";
+  const deviceInfo = req.headers["user-agent"] || "Unknown";
+
+  const result = await authService.activateChangePassword(
+    token,
+    password,
+    ipAddress,
+    deviceInfo,
+  );
+
+  if (result.refreshToken) {
+    setRefreshTokenCookie(res, result.refreshToken);
+    delete result.refreshToken;
+  }
+
   return sendResponse(res, 200, result.message, result);
 });
 
@@ -85,22 +103,34 @@ export const refresh = asyncHandler(async (req, res) => {
   const ipAddress = req.ip || req.headers["x-forwarded-for"] || "Unknown";
   const deviceInfo = req.headers["user-agent"] || "Unknown";
 
-  const { accessToken, refreshToken } = await authService.refresh(token, ipAddress, deviceInfo);
+  const { accessToken, refreshToken } = await authService.refresh(
+    token,
+    ipAddress,
+    deviceInfo,
+  );
 
   setRefreshTokenCookie(res, refreshToken);
 
-  return sendResponse(res, 200, "Token refreshed successfully", { accessToken, refreshToken });
+  return sendResponse(res, 200, "Token refreshed successfully", {
+    accessToken,
+  });
 });
 
 export const me = asyncHandler(async (req, res) => {
-  const user = await mongoose.model("User").findById(req.user.id).populate("role");
+  const user = await mongoose
+    .model("User")
+    .findById(req.user.id)
+    .populate("role");
   if (!user) {
     throw new AppError("User not found", 404);
   }
 
   let permissions = [];
   if (user.role) {
-    const roleObj = await mongoose.model("Role").findById(user.role._id).populate("permissions");
+    const roleObj = await mongoose
+      .model("Role")
+      .findById(user.role._id)
+      .populate("permissions");
     if (roleObj && roleObj.permissions) {
       permissions = roleObj.permissions.map((p) => p.name);
     }
@@ -109,20 +139,25 @@ export const me = asyncHandler(async (req, res) => {
   let branchAccess = user.branchAccess || [];
   const hasOrgWideAccess = user.hasOrgWideAccess || false;
   if (hasOrgWideAccess) {
-    const dbBranches = await mongoose.model("Branch").find({ organizationId: user.organizationId });
-    branchAccess = dbBranches.map(b => ({
+    const dbBranches = await mongoose
+      .model("Branch")
+      .find({ organizationId: user.organizationId });
+    branchAccess = dbBranches.map((b) => ({
       branchId: b._id,
       branchName: b.name,
-      isActive: b.isActive
+      isActive: b.isActive,
     }));
   } else {
-    branchAccess = branchAccess.filter(b => b.isActive);
+    branchAccess = branchAccess.filter((b) => b.isActive);
   }
 
   const roleName = user.role?.name;
-  const capitalizedRole = roleName ? roleName.charAt(0).toUpperCase() + roleName.slice(1).toLowerCase() : "";
+  const capitalizedRole = roleName
+    ? roleName.charAt(0).toUpperCase() + roleName.slice(1).toLowerCase()
+    : "";
   return sendResponse(res, 200, "Session details retrieved", {
     id: user._id,
+    username: user.username,
     name: user.name,
     email: user.email,
     phone: user.phone,
@@ -150,11 +185,19 @@ export const verifyEmail = asyncHandler(async (req, res) => {
 
 export const forgotPassword = asyncHandler(async (req, res) => {
   const result = await authService.forgotPassword(req.body.email);
-  return sendResponse(res, 200, "If registered, a password reset link has been sent.", result);
+  return sendResponse(
+    res,
+    200,
+    "If registered, a password reset link has been sent.",
+    result,
+  );
 });
 
 export const resetPassword = asyncHandler(async (req, res) => {
-  const result = await authService.resetPassword(req.params.token, req.body.password);
+  const result = await authService.resetPassword(
+    req.params.token,
+    req.body.password,
+  );
   return sendResponse(res, 200, "Password reset successfully", result);
 });
 
@@ -171,11 +214,14 @@ export const verifyOTP = asyncHandler(async (req, res) => {
     req.body.phone,
     req.body.otp,
     ipAddress,
-    deviceInfo
+    deviceInfo,
   );
 
   setRefreshTokenCookie(res, refreshToken);
-  return sendResponse(res, 200, "OTP verified and logged in", { user, accessToken });
+  return sendResponse(res, 200, "OTP verified and logged in", {
+    user,
+    accessToken,
+  });
 });
 
 export const logoutAllDevices = asyncHandler(async (req, res) => {

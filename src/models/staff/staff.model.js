@@ -51,6 +51,15 @@ const staffSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -77,7 +86,7 @@ staffSchema.index(
     unique: true,
     partialFilterExpression: {
       isDeleted: false,
-      userId: { $exists: true, $ne: null },
+      userId: { $type: "objectId" },
     },
   }
 );

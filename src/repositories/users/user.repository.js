@@ -6,7 +6,13 @@ export class UserRepository extends BaseRepository {
     super(User);
   }
 
-  async findById(id, organizationId = null, populate = [], select = null, session = null) {
+  async findById(
+    id,
+    organizationId = null,
+    populate = [],
+    select = null,
+    session = null,
+  ) {
     const filter = { _id: id };
     if (organizationId) {
       filter.organizationId = organizationId;
@@ -24,7 +30,13 @@ export class UserRepository extends BaseRepository {
     return query.exec();
   }
 
-  async findOne(filter, organizationId = null, populate = [], select = null, session = null) {
+  async findOne(
+    filter,
+    organizationId = null,
+    populate = [],
+    select = null,
+    session = null,
+  ) {
     const queryFilter = { ...filter };
     if (organizationId) {
       queryFilter.organizationId = organizationId;
@@ -58,7 +70,13 @@ export class UserRepository extends BaseRepository {
     return super.count(queryFilter);
   }
 
-  async updateById(id, data, organizationId = null, userId = null, session = null) {
+  async updateById(
+    id,
+    data,
+    organizationId = null,
+    userId = null,
+    session = null,
+  ) {
     const filter = { _id: id };
     if (organizationId) {
       filter.organizationId = organizationId;
@@ -86,6 +104,25 @@ export class UserRepository extends BaseRepository {
 
   async findByEmail(email, organizationId = null) {
     const filter = { email: email.toLowerCase() };
+    if (organizationId) {
+      filter.organizationId = organizationId;
+    }
+    return this.model.findOne(filter).populate("role");
+  }
+
+  async findByUsername(username, organizationId = null) {
+    const filter = { username: username.toLowerCase() };
+    if (organizationId) {
+      filter.organizationId = organizationId;
+    }
+    return this.model.findOne(filter).populate("role");
+  }
+
+  async findByEmailOrUsername(identifier, organizationId = null) {
+    const normalized = identifier.toLowerCase();
+    const filter = {
+      $or: [{ email: normalized }, { username: normalized }],
+    };
     if (organizationId) {
       filter.organizationId = organizationId;
     }

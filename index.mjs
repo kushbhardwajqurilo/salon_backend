@@ -7,7 +7,9 @@ if (!globalThis.crypto) {
 import app from "./app.mjs";
 import { env } from "./src/config/env.js";
 import { connectDB } from "./src/database/db.js";
+import { connectRedis, disconnectRedis } from "./src/config/redis.js";
 import { logger } from "./src/utils/logger.js";
+import { startNotificationWorkers, stopNotificationWorkers } from "./src/workers/notification.worker.js";
 import mongoose from "mongoose";
 
 let server;
@@ -17,7 +19,13 @@ const serverStart = async () => {
     // 1. Connect to MongoDB Database
     await connectDB();
 
-    // 2. Start Express Web Server
+    // 2. Connect to Redis Database ONCE at Server Startup
+    await connectRedis();
+
+    // 3. Start BullMQ Background Notification Workers
+    startNotificationWorkers();
+
+    // 4. Start Express Web Server
     server = app.listen(env.PORT, () => {
       logger.info(`🚀 Unisex Parlour ERP Server running in [${env.NODE_ENV}] mode on port ${env.PORT}`);
     });
@@ -36,11 +44,13 @@ const gracefulShutdown = (signal) => {
     server.close(async () => {
       logger.info("🛑 Express server stopped.");
       try {
+        await stopNotificationWorkers();
+        await disconnectRedis();
         await mongoose.connection.close();
-        logger.info("💾 Database connection closed safely.");
+        logger.info("💾 Database, Redis, and Worker connections closed safely.");
         process.exit(0);
       } catch (err) {
-        logger.error(`❌ Error during database shutdown connection close: ${err.message}`);
+        logger.error(`❌ Error during shutdown connection close: ${err.message}`);
         process.exit(1);
       }
     });

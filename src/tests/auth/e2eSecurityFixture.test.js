@@ -1,5 +1,6 @@
 import request from "supertest";
 import mongoose from "mongoose";
+import crypto from "crypto";
 import app from "../../../app.mjs";
 import { User } from "../../models/users/user.model.js";
 import { Role } from "../../models/roles/role.model.js";
@@ -30,7 +31,6 @@ describe("E2E Security Fixture Verification (Phase 5.4.2)", () => {
     } else {
       testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_integration_test");
     }
-    
     // Connect to integration test DB
     dbConnection = await mongoose.connect(testUri);
 
@@ -398,10 +398,10 @@ describe("E2E Security Fixture Verification (Phase 5.4.2)", () => {
       const sendRes = await request(app).post("/api/v1/auth/activate/otp/send").set("Authorization", `Bearer ${activationToken}`);
       expect(sendRes.status).toBe(200);
 
-      // Capture OTP directly from DB
-      const dbUser = await User.findById(firstLoginA._id);
-      const generatedOtp = dbUser.otp;
-      expect(generatedOtp).toBeDefined();
+      // Capture and set known hashed OTP in DB for deterministic test
+      const testOtp = "876283";
+      const hashedOtp = crypto.createHash("sha256").update(testOtp).digest("hex");
+      await User.findByIdAndUpdate(firstLoginA._id, { otp: hashedOtp, otpExpires: new Date(Date.now() + 5 * 60 * 1000) });
 
       // 3. Invalid OTP Verify (Requires activation token in auth header)
       const invalidVerifyRes = await request(app).post("/api/v1/auth/activate/otp/verify").set("Authorization", `Bearer ${activationToken}`).send({
@@ -411,7 +411,7 @@ describe("E2E Security Fixture Verification (Phase 5.4.2)", () => {
 
       // 4. Valid OTP Verify (returns password change token) (Requires activation token in auth header)
       const validVerifyRes = await request(app).post("/api/v1/auth/activate/otp/verify").set("Authorization", `Bearer ${activationToken}`).send({
-        otp: generatedOtp,
+        otp: testOtp,
       });
       expect(validVerifyRes.status).toBe(200);
       const passwordChangeToken = validVerifyRes.body.data.passwordChangeToken;

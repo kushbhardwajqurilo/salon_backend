@@ -9,7 +9,8 @@
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch=\"**/permissionsSync.manual.js\" --runInBand",
     "seed": "node src/seed/seed.js",
     "permissions:sync": "node src/scripts/syncPermissions.js",
-    "customers:migrate": "node src/scripts/migrateCustomers.js"
+    "customers:migrate": "node src/scripts/migrateCustomers.js",
+    "users:migrate-usernames": "node src/scripts/migrateUsernames.js"
   },
   "keywords": [],
   "author": "kush bhardwaj",
@@ -35,6 +36,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.7.4",
     "morgan": "^1.11.0",
+    "nodemailer": "^9.0.5",
     "nodemon": "^3.1.14",
     "socket.io": "^4.8.3",
     "swagger-jsdoc": "^6.3.0",

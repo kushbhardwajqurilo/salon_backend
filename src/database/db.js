@@ -9,6 +9,7 @@ mongoose.plugin(auditPlugin);
 export const connectDB = async () => {
   try {
     const conn = await mongoose.connect(env.MONGO_URI);
+    await mongoose.connection.syncIndexes();
     logger.info(`💾 MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     logger.error(`❌ MongoDB connection error: ${error.message}`);

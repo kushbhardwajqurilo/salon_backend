@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
+import { normalizeUsername } from "../../utils/userIdentity.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -8,17 +9,23 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    username: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
     email: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
       lowercase: true,
     },
     phone: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
     },
     password: {
@@ -80,6 +87,14 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    otpAttempts: {
+      type: Number,
+      default: 0,
+    },
+    otpResendUntil: {
+      type: Date,
+      default: null,
+    },
     passwordResetToken: {
       type: String,
       default: null,
@@ -108,13 +123,30 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
-userSchema.index({ email: 1 }, { unique: true });
-userSchema.index({ phone: 1 }, { unique: true });
+userSchema.index({ email: 1 }, { unique: true, sparse: true });
+userSchema.index({ phone: 1 }, { unique: true, sparse: true });
+userSchema.index(
+  { organizationId: 1, username: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      username: { $type: "string" },
+    },
+  },
+);
 
 userSchema.pre("save", async function () {
+  if (!this.username && this.name) {
+    this.username = normalizeUsername(this.name);
+  }
+
+  if (this.username) {
+    this.username = normalizeUsername(this.username);
+  }
+
   if (!this.isModified("password")) return;
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);

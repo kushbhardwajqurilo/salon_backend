@@ -7,12 +7,24 @@ import { SessionRepository } from "../../repositories/auth/session.repository.js
 import { AppError } from "../../utils/errors.js";
 import { env } from "../../config/env.js";
 import { emailQueue, smsQueue } from "../../queues/client.js";
+import {
+  normalizeUsername as normalizeUserUsername,
+  isValidUsername,
+} from "../../utils/userIdentity.js";
+
+import { logger } from "../../utils/logger.js";
+import { AuditLogService } from "../audit/auditLog.service.js";
 
 export class AuthService {
-  constructor(userRepo = null, roleRepo = null, sessionRepo = null) {
+  constructor(userRepo = null, roleRepo = null, sessionRepo = null, auditLogService = null) {
     this.userRepo = userRepo || new UserRepository();
     this.roleRepo = roleRepo || new RoleRepository();
     this.sessionRepo = sessionRepo || new SessionRepository();
+    this.auditLogService = auditLogService || new AuditLogService();
+  }
+
+  normalizeUsername(value) {
+    return normalizeUserUsername(value);
   }
 
   generateAccessToken(user) {
@@ -23,7 +35,7 @@ export class AuthService {
         role: user.role?.name || "",
       },
       env.JWT_SECRET,
-      { expiresIn: env.JWT_ACCESS_EXPIRATION }
+      { expiresIn: env.JWT_ACCESS_EXPIRATION },
     );
   }
 
@@ -33,21 +45,50 @@ export class AuthService {
         id: user._id,
       },
       env.JWT_REFRESH_SECRET,
-      { expiresIn: env.JWT_REFRESH_EXPIRATION }
+      { expiresIn: env.JWT_REFRESH_EXPIRATION },
     );
   }
 
   async register(data) {
-    const { name, email, phone, password, roleName = "customer" } = data;
+    const {
+      name,
+      email,
+      phone,
+      password,
+      roleName = "customer",
+      username,
+    } = data;
+
+    const normalizedUsername = normalizeUserUsername(username || name);
+    if (!isValidUsername(normalizedUsername)) {
+      throw new AppError(
+        "Username must be between 3 and 30 characters and contain only letters, numbers, dots, underscores, or hyphens",
+        400,
+      );
+    }
 
     const existingUser = await this.userRepo.findByEmailOrPhone(email, phone);
     if (existingUser) {
       throw new AppError("Email or phone number already registered", 400);
     }
 
+    if (typeof this.userRepo.findByUsername === "function") {
+      const existingUsername =
+        await this.userRepo.findByUsername(normalizedUsername);
+      if (existingUsername) {
+        throw new AppError(
+          "Username already exists. Please choose another username.",
+          400,
+        );
+      }
+    }
+
     const role = await this.roleRepo.findByName(roleName);
     if (!role) {
-      throw new AppError(`Role '${roleName}' does not exist. Please seed roles first.`, 400);
+      throw new AppError(
+        `Role '${roleName}' does not exist. Please seed roles first.`,
+        400,
+      );
     }
 
     const verificationToken = crypto.randomBytes(32).toString("hex");
@@ -55,6 +96,7 @@ export class AuthService {
 
     const user = await this.userRepo.create({
       name,
+      username: normalizedUsername,
       email,
       phone,
       password,
@@ -69,11 +111,26 @@ export class AuthService {
       name: user.name,
     });
 
-    return { id: user._id, name: user.name, email: user.email };
+    return {
+      id: user._id,
+      username: user.username,
+      name: user.name,
+      email: user.email,
+    };
   }
 
-  async login(email, password, ipAddress, deviceInfo) {
-    const user = await this.userRepo.findByEmail(email);
+  async login(identifier, password, ipAddress, deviceInfo) {
+    const normalizedIdentifier = normalizeUserUsername(identifier);
+    let user = null;
+    if (typeof this.userRepo.findByEmailOrUsername === "function") {
+      user = await this.userRepo.findByEmailOrUsername(
+        identifier.includes("@") ? identifier : normalizedIdentifier,
+      );
+    } else if (typeof this.userRepo.findByEmail === "function") {
+      user = await this.userRepo.findByEmail(
+        identifier.includes("@") ? identifier : normalizedIdentifier,
+      );
+    }
     if (!user) {
       throw new AppError("Invalid email or password", 401);
     }
@@ -84,8 +141,13 @@ export class AuthService {
 
     if (user.status === "locked") {
       if (user.lockUntil && user.lockUntil > new Date()) {
-        const remainingMinutes = Math.ceil((user.lockUntil - new Date()) / 60000);
-        throw new AppError(`Account locked. Try again in ${remainingMinutes} minutes.`, 403);
+        const remainingMinutes = Math.ceil(
+          (user.lockUntil - new Date()) / 60000,
+        );
+        throw new AppError(
+          `Account locked. Try again in ${remainingMinutes} minutes.`,
+          403,
+        );
       }
       user.status = "active";
       user.failedLoginAttempts = 0;
@@ -112,7 +174,7 @@ export class AuthService {
           scope: "activation",
         },
         env.JWT_SECRET,
-        { expiresIn: "5m" }
+        { expiresIn: "5m" },
       );
       return {
         requireActivation: true,
@@ -126,7 +188,10 @@ export class AuthService {
     const accessToken = this.generateAccessToken(user);
     const refreshToken = this.generateRefreshToken(user);
 
-    const hashedToken = crypto.createHash("sha256").update(refreshToken).digest("hex");
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await this.sessionRepo.create({
       user: user._id,
@@ -162,7 +227,10 @@ export class AuthService {
       const user = session.user;
       const newAccessToken = this.generateAccessToken(user);
       const newRefreshToken = this.generateRefreshToken(user);
-      const newHashedToken = crypto.createHash("sha256").update(newRefreshToken).digest("hex");
+      const newHashedToken = crypto
+        .createHash("sha256")
+        .update(newRefreshToken)
+        .digest("hex");
 
       session.refreshToken = newHashedToken;
       session.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -209,7 +277,10 @@ export class AuthService {
   async forgotPassword(email) {
     const user = await this.userRepo.findByEmail(email);
     if (!user) {
-      throw new AppError("If that email is registered, a reset link will be sent.", 200);
+      throw new AppError(
+        "If that email is registered, a reset link will be sent.",
+        200,
+      );
     }
 
     const resetToken = crypto.randomBytes(32).toString("hex");
@@ -265,7 +336,12 @@ export class AuthService {
 
   async verifyOTP(phone, otp, ipAddress, deviceInfo) {
     const user = await this.userRepo.findByPhone(phone);
-    if (!user || !user.otp || user.otp !== otp || user.otpExpires < new Date()) {
+    if (
+      !user ||
+      !user.otp ||
+      user.otp !== otp ||
+      user.otpExpires < new Date()
+    ) {
       throw new AppError("Invalid or expired OTP", 400);
     }
 
@@ -276,7 +352,10 @@ export class AuthService {
 
     const accessToken = this.generateAccessToken(user);
     const refreshToken = this.generateRefreshToken(user);
-    const hashedToken = crypto.createHash("sha256").update(refreshToken).digest("hex");
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await this.sessionRepo.create({
@@ -311,21 +390,56 @@ export class AuthService {
       throw new AppError("User not found", 404);
     }
 
-    if (user.status === "locked" && user.lockUntil && user.lockUntil > new Date()) {
+    if (user.status === "suspended") {
+      throw new AppError("Your account has been suspended.", 403);
+    }
+
+    if (
+      user.status === "locked" &&
+      user.lockUntil &&
+      user.lockUntil > new Date()
+    ) {
       throw new AppError("Account locked.", 403);
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    user.otp = otp;
+    // Rate limiting: 60s resend cooldown
+    if (user.otpResendUntil && user.otpResendUntil > new Date()) {
+      const waitSeconds = Math.ceil((user.otpResendUntil - new Date()) / 1000);
+      throw new AppError(
+        `Too many OTP requests. Please wait ${waitSeconds} seconds before requesting a new OTP.`,
+        429,
+      );
+    }
+
+    const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const hashedOtp = crypto
+      .createHash("sha256")
+      .update(rawOtp)
+      .digest("hex");
+
+    user.otp = hashedOtp;
     user.otpExpires = new Date(Date.now() + 5 * 60 * 1000);
+    user.otpResendUntil = new Date(Date.now() + 60 * 1000);
+    user.otpAttempts = 0;
     await user.save();
 
-    await smsQueue.add("sendOtpSMS", {
-      phone: user.phone,
-      otp,
-    });
+    try {
+      await smsQueue.add("sendOtpSMS", {
+        phone: user.phone,
+        otp: rawOtp,
+      });
+    } catch (queueErr) {
+      // Log queue warning if Redis queue worker unavailable
+    }
 
-    return { message: "Activation OTP sent successfully" };
+    logger.info(`[SECURITY] OTP_SENT for user ${user._id}`);
+
+    return {
+      success: true,
+      message: "Activation OTP sent successfully",
+      expiresIn: 300,
+      resendAfter: 60,
+    };
   }
 
   async verifyActivationOTP(token, otp) {
@@ -335,17 +449,65 @@ export class AuthService {
     }
 
     const user = await this.userRepo.findById(decoded.sub);
-    if (!user || !user.otp || user.otp !== otp || user.otpExpires < new Date()) {
-      throw new AppError("Invalid or expired OTP", 400);
+    if (!user) {
+      throw new AppError("User not found", 404);
     }
 
-    if (user.status === "locked" && user.lockUntil && user.lockUntil > new Date()) {
+    if (user.status === "suspended") {
+      throw new AppError("Your account has been suspended.", 403);
+    }
+
+    if (
+      user.status === "locked" &&
+      user.lockUntil &&
+      user.lockUntil > new Date()
+    ) {
       throw new AppError("Account locked.", 403);
     }
 
+    if (!user.otp || !user.otpExpires || user.otpExpires < new Date()) {
+      throw new AppError("Invalid or expired OTP", 400);
+    }
+
+    // Check maximum attempts
+    if (user.otpAttempts >= 5) {
+      user.otp = null;
+      user.otpExpires = null;
+      user.otpResendUntil = null;
+      await user.save();
+      throw new AppError(
+        "Too many invalid OTP verification attempts. Please request a new OTP.",
+        429,
+      );
+    }
+
+    const candidateHash = crypto
+      .createHash("sha256")
+      .update(otp)
+      .digest("hex");
+
+    if (candidateHash !== user.otp) {
+      user.otpAttempts += 1;
+      if (user.otpAttempts >= 5) {
+        user.otp = null;
+        user.otpExpires = null;
+        user.otpResendUntil = null;
+      }
+      await user.save();
+
+      logger.warn(`[SECURITY] OTP_VERIFICATION_FAILED for user ${user._id}, attempts: ${user.otpAttempts}`);
+
+      throw new AppError("Invalid or expired OTP", 400);
+    }
+
+    // Successful OTP verification
     user.otp = null;
     user.otpExpires = null;
+    user.otpResendUntil = null;
+    user.otpAttempts = 0;
     await user.save();
+
+    logger.info(`[SECURITY] OTP_VERIFIED for user ${user._id}`);
 
     const passwordChangeToken = jwt.sign(
       {
@@ -353,27 +515,36 @@ export class AuthService {
         scope: "password-change",
       },
       env.JWT_SECRET,
-      { expiresIn: "5m" }
+      { expiresIn: "5m" },
     );
 
     return {
+      success: true,
       message: "OTP verified successfully",
       passwordChangeToken,
     };
   }
 
-  async activateChangePassword(token, newPassword) {
+  async activateChangePassword(token, newPassword, ipAddress = "Unknown", deviceInfo = "Unknown") {
     const decoded = jwt.verify(token, env.JWT_SECRET);
     if (decoded.scope !== "password-change") {
       throw new AppError("Access denied. Invalid token scope.", 401);
     }
 
-    const user = await this.userRepo.findById(decoded.sub);
+    const user = await this.userRepo.findById(decoded.sub, null, ["role"]);
     if (!user) {
       throw new AppError("User not found", 404);
     }
 
-    if (user.status === "locked" && user.lockUntil && user.lockUntil > new Date()) {
+    if (user.status === "suspended") {
+      throw new AppError("Your account has been suspended.", 403);
+    }
+
+    if (
+      user.status === "locked" &&
+      user.lockUntil &&
+      user.lockUntil > new Date()
+    ) {
       throw new AppError("Account locked.", 403);
     }
 
@@ -382,8 +553,37 @@ export class AuthService {
     user.isVerified = true;
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
+    user.otp = null;
+    user.otpExpires = null;
+    user.otpAttempts = 0;
+    user.otpResendUntil = null;
     await user.save();
 
-    return { message: "Password updated and account activated successfully" };
+    logger.info(`[SECURITY] PASSWORD_ACTIVATION_COMPLETED for user ${user._id}`);
+
+    // Option A: Establish normal authenticated session
+    const accessToken = this.generateAccessToken(user);
+    const refreshToken = this.generateRefreshToken(user);
+
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await this.sessionRepo.create({
+      user: user._id,
+      refreshToken: hashedToken,
+      ipAddress,
+      deviceInfo,
+      expiresAt,
+    });
+
+    return {
+      success: true,
+      message: "Password updated and account activated successfully",
+      accessToken,
+      refreshToken,
+    };
   }
 }

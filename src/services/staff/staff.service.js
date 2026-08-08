@@ -6,6 +6,7 @@ import { UserRepository } from "../../repositories/users/user.repository.js";
 import { AuditLogService } from "../audit/auditLog.service.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { AppError } from "../../utils/errors.js";
+import { normalizeUsername } from "../../utils/userIdentity.js";
 
 export class StaffService {
   constructor() {
@@ -317,14 +318,58 @@ export class StaffService {
         throw new AppError("Staff not found", 404);
       }
 
-      // 1. Staff cannot already be linked to another User
-      if (staff.userId && staff.userId.toString() !== userId.toString()) {
-        throw new AppError("Staff is already linked to another User", 400);
+      let user;
+      let resolvedUserId = userId;
+
+      const isObjectIdLike =
+        userId instanceof mongoose.Types.ObjectId ||
+        (typeof userId === "string" && mongoose.Types.ObjectId.isValid(userId));
+
+      if (isObjectIdLike) {
+        user = await this.userRepo.findById(userId, organizationId, [], null, session);
+      } else {
+        try {
+          user = await this.userRepo.findById(userId, organizationId, [], null, session);
+        } catch (error) {
+          if (!error?.message?.includes("Cast to ObjectId")) {
+            throw error;
+          }
+          user = null;
+        }
+
+        if (!user && typeof userId === "string") {
+          const normalizedUsername = normalizeUsername(userId);
+          if (!normalizedUsername) {
+            throw new AppError("User selection is required", 400);
+          }
+          if (typeof this.userRepo.findOne === "function") {
+            try {
+              user = await this.userRepo.findOne(
+                { username: normalizedUsername },
+                organizationId,
+                [],
+                null,
+                session,
+              );
+            } catch (error) {
+              if (!error?.message?.includes("Cast to ObjectId")) {
+                throw error;
+              }
+              user = null;
+            }
+          }
+        }
       }
 
-      const user = await this.userRepo.findById(userId, organizationId, [], null, session);
       if (!user) {
         throw new AppError("User not found", 404);
+      }
+
+      resolvedUserId = user._id || userId;
+
+      // 1. Staff cannot already be linked to another User
+      if (staff.userId && staff.userId.toString() !== resolvedUserId.toString()) {
+        throw new AppError("Staff is already linked to another User", 400);
       }
 
       // 2. Validate User status
@@ -338,12 +383,12 @@ export class StaffService {
       }
 
       // 4. Verify User is not linked to another active Staff
-      const linkedStaff = await this.staffRepo.findOne({ userId, isDeleted: false }, organizationId, [], null, session);
+      const linkedStaff = await this.staffRepo.findOne({ userId: resolvedUserId, isDeleted: false }, organizationId, [], null, session);
       if (linkedStaff && linkedStaff._id.toString() !== id.toString()) {
         throw new AppError("User is already linked to another active Staff", 400);
       }
 
-      staff.userId = userId;
+      staff.userId = resolvedUserId;
       await staff.save({ session });
 
       await this.auditLogService.createAuditLog(
@@ -352,7 +397,7 @@ export class StaffService {
           entityId: id,
           action: "USER_LINKED",
           description: `User linked to Staff profile`,
-          metadata: { userId },
+          metadata: { userId: resolvedUserId },
           branchId: new mongoose.Types.ObjectId(),
           actorId,
         },
