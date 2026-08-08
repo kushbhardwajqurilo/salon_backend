@@ -10,6 +10,8 @@ describe("AuthService", () => {
   let mockRoleRepo;
   let mockSessionRepo;
 
+  let mockStaffRepo;
+
   beforeEach(() => {
     mockUserRepo = {
       findByEmailOrPhone: jest.fn(),
@@ -30,7 +32,11 @@ describe("AuthService", () => {
       invalidateSession: jest.fn(),
     };
 
-    authService = new AuthService(mockUserRepo, mockRoleRepo, mockSessionRepo);
+    mockStaffRepo = {
+      findOne: jest.fn().mockResolvedValue({ status: "active" }),
+    };
+
+    authService = new AuthService(mockUserRepo, mockRoleRepo, mockSessionRepo, null, mockStaffRepo);
   });
 
   describe("register", () => {

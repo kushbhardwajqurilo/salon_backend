@@ -57,8 +57,6 @@ export const startNotificationWorkers = () => {
         switch (job.name) {
           case "sendOtpSMS":
             return await smsService.sendOtpSMS(job.data);
-          case "sendWelcomeCredentialsSMS":
-            return await smsService.sendWelcomeCredentialsSMS(job.data);
           default:
             logger.warn(`Unknown SMS job type: ${job.name}`);
             return true;

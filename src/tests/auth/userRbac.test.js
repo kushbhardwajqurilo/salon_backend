@@ -11,6 +11,7 @@ UserRepository.prototype.create = jest.fn();
 UserRepository.prototype.findById = jest.fn();
 UserRepository.prototype.updateById = jest.fn();
 UserRepository.prototype.findByEmailOrPhone = jest.fn();
+UserRepository.prototype.findByUsername = jest.fn();
 
 describe("User Management RBAC & Delegation Protection (Phase 5)", () => {
   let req;

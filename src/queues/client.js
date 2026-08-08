@@ -5,10 +5,10 @@ import { logger } from "../utils/logger.js";
 const queues = {};
 
 const createQueue = (name) => {
-  if (process.env.NODE_ENV === "test") {
+  if (process.env.NODE_ENV === "test" || process.env.JEST_WORKER_ID !== undefined) {
     return {
       add: async (jobName, data) => ({ id: `mock-${name}-${Date.now()}` }),
-      close: async () => { },
+      close: async () => {},
     };
   }
 

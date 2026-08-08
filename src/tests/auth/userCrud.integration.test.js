@@ -18,6 +18,7 @@ UserRepository.prototype.findById = jest.fn();
 UserRepository.prototype.create = jest.fn();
 UserRepository.prototype.updateById = jest.fn();
 UserRepository.prototype.findByEmailOrPhone = jest.fn();
+UserRepository.prototype.findByUsername = jest.fn();
 
 // Mock Mongoose models
 Branch.find = jest.fn();

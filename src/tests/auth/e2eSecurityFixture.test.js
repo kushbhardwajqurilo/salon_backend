@@ -184,6 +184,7 @@ describe("E2E Security Fixture Verification (Phase 5.4.2)", () => {
       phone: "+919999999908",
       email: "staffb@parlour.test",
       organizationId: orgB._id,
+      userId: userB._id,
       designation: "Stylist",
       staffCode: "STF-B",
       joiningDate: new Date(),
@@ -194,8 +195,31 @@ describe("E2E Security Fixture Verification (Phase 5.4.2)", () => {
       phone: "+919999999909",
       email: "staffa@parlour.test",
       organizationId: orgA._id,
+      userId: managerA._id,
       designation: "Stylist",
       staffCode: "STF-A",
+      joiningDate: new Date(),
+    });
+
+    await Staff.create({
+      name: "Org A Restricted Staff",
+      phone: "+919999999910",
+      email: "staffrestricted@parlour.test",
+      organizationId: orgA._id,
+      userId: restrictedA._id,
+      designation: "Receptionist",
+      staffCode: "STF-R",
+      joiningDate: new Date(),
+    });
+
+    await Staff.create({
+      name: "Org A First Login Staff",
+      phone: "+919999999913",
+      email: "stafffirstlogin@parlour.test",
+      organizationId: orgA._id,
+      userId: firstLoginA._id,
+      designation: "Receptionist",
+      staffCode: "STF-FL",
       joiningDate: new Date(),
     });
 

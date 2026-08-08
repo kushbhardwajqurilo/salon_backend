@@ -75,17 +75,18 @@ const seed = async () => {
     // 5. Get Owner Role
     const ownerRole = await Role.findOne({ name: "owner" });
 
-    // 6. Create Manager Role if it doesn't exist
+    // 6. Create / Sync Manager Role
     let managerRole = await Role.findOne({ name: "manager" });
+    const managerPermNames = [
+      "customers.view", "customers.create", "customers.update",
+      "appointments.view", "appointments.book", "appointments.reschedule", "appointments.cancel",
+      "employees.view",
+      "billing.view", "billing.checkout",
+      "reports.revenue.view"
+    ];
+    const managerPerms = await Permission.find({ name: { $in: managerPermNames } });
+
     if (!managerRole) {
-      const managerPermNames = [
-        "customers.view", "customers.create",
-        "appointments.view", "appointments.book", "appointments.reschedule",
-        "employees.view",
-        "billing.view", "billing.checkout",
-        "reports.revenue.view"
-      ];
-      const managerPerms = await Permission.find({ name: { $in: managerPermNames } });
       managerRole = await Role.create({
         name: "manager",
         description: "Operational management role",
@@ -93,7 +94,9 @@ const seed = async () => {
       });
       console.log("Created Manager role.");
     } else {
-      console.log("Manager role already exists.");
+      managerRole.permissions = managerPerms.map(p => p._id);
+      await managerRole.save();
+      console.log("Updated Manager role permissions.");
     }
 
     // 7. Create Owner user if it doesn't exist

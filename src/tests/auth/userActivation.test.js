@@ -2,6 +2,7 @@ import { jest } from "@jest/globals";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { AuthService } from "../../services/auth/auth.service.js";
 import { AppError } from "../../utils/errors.js";
 import { env } from "../../config/env.js";
@@ -51,7 +52,11 @@ describe("First-Login Activation & Scoped JWTs (Phase 7)", () => {
       invalidateAllUserSessions: jest.fn(),
     };
 
-    authService = new AuthService(mockUserRepo, mockRoleRepo, mockSessionRepo);
+    const mockStaffRepo = {
+      findOne: jest.fn().mockResolvedValue({ status: "active" }),
+    };
+
+    authService = new AuthService(mockUserRepo, mockRoleRepo, mockSessionRepo, null, mockStaffRepo);
   });
 
   describe("Temporary Login", () => {
@@ -108,6 +113,8 @@ describe("First-Login Activation & Scoped JWTs (Phase 7)", () => {
         { expiresIn: "5m" }
       );
 
+      await authService.sendActivationOTP(activationToken);
+      mockUser.otp = crypto.createHash("sha256").update("123456").digest("hex");
       const result = await authService.verifyActivationOTP(activationToken, "123456");
       expect(result.message).toBe("OTP verified successfully");
       expect(result.passwordChangeToken).toBeDefined();

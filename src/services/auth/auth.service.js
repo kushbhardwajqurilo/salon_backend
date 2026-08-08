@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { UserRepository } from "../../repositories/users/user.repository.js";
+import { StaffRepository } from "../../repositories/staff/staff.repository.js";
 import { RoleRepository } from "../../repositories/roles/role.repository.js";
 import { SessionRepository } from "../../repositories/auth/session.repository.js";
 import { AppError } from "../../utils/errors.js";
@@ -16,11 +17,36 @@ import { logger } from "../../utils/logger.js";
 import { AuditLogService } from "../audit/auditLog.service.js";
 
 export class AuthService {
-  constructor(userRepo = null, roleRepo = null, sessionRepo = null, auditLogService = null) {
+  constructor(userRepo = null, roleRepo = null, sessionRepo = null, auditLogService = null, staffRepo = null) {
     this.userRepo = userRepo || new UserRepository();
     this.roleRepo = roleRepo || new RoleRepository();
     this.sessionRepo = sessionRepo || new SessionRepository();
     this.auditLogService = auditLogService || new AuditLogService();
+    this.staffRepo = staffRepo || new StaffRepository();
+  }
+
+  async validateStaffLinkage(user) {
+    const roleName = user.role?.name?.toLowerCase() || "";
+    const adminRoles = ["owner", "admin", "super_admin", "superadmin"];
+    if (adminRoles.includes(roleName) || user.hasOrgWideAccess === true) {
+      return;
+    }
+
+    let staff = null;
+    if (typeof this.staffRepo.findOne === "function") {
+      try {
+        staff = await this.staffRepo.findOne(
+          { userId: user._id, isDeleted: false },
+          user.organizationId
+        );
+      } catch (err) {
+        staff = null;
+      }
+    }
+
+    if (!staff || staff.status !== "active") {
+      throw new AppError("This account is not linked to an active staff profile. Please contact an administrator.", 403);
+    }
   }
 
   normalizeUsername(value) {
@@ -167,6 +193,8 @@ export class AuthService {
       throw new AppError("Invalid email or password", 401);
     }
 
+    await this.validateStaffLinkage(user);
+
     if (user.isFirstLogin === true) {
       const activationToken = jwt.sign(
         {
@@ -225,6 +253,7 @@ export class AuthService {
       }
 
       const user = session.user;
+      await this.validateStaffLinkage(user);
       const newAccessToken = this.generateAccessToken(user);
       const newRefreshToken = this.generateRefreshToken(user);
       const newHashedToken = crypto
@@ -487,7 +516,7 @@ export class AuthService {
       .digest("hex");
 
     if (candidateHash !== user.otp) {
-      user.otpAttempts += 1;
+      user.otpAttempts = (user.otpAttempts || 0) + 1;
       if (user.otpAttempts >= 5) {
         user.otp = null;
         user.otpExpires = null;
@@ -547,6 +576,8 @@ export class AuthService {
     ) {
       throw new AppError("Account locked.", 403);
     }
+
+    await this.validateStaffLinkage(user);
 
     user.password = newPassword;
     user.isFirstLogin = false;

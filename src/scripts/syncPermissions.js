@@ -68,7 +68,6 @@ export const syncPermissionsLogic = async () => {
    - Unchanged: ${unchangedCount}`);
    
   // 2. Synchronize Owner Role permissions
-  // Find owner role
   let ownerRole = await Role.findOne({ name: "owner" });
   if (!ownerRole) {
     logger.warn("Owner role not found in database. Creating a new one...");
@@ -82,11 +81,32 @@ export const syncPermissionsLogic = async () => {
   ownerRole.permissions = canonicalPermissionIds;
   await ownerRole.save();
   logger.info(`Owner role updated with exactly ${canonicalPermissionIds.length} canonical permissions.`);
+
+  // 3. Synchronize Manager Role permissions
+  const DEFAULT_MANAGER_PERM_NAMES = [
+    "customers.view", "customers.create", "customers.update",
+    "appointments.view", "appointments.book", "appointments.reschedule", "appointments.cancel",
+    "employees.view",
+    "billing.view", "billing.checkout",
+    "reports.revenue.view"
+  ];
+  let managerRole = await Role.findOne({ name: "manager" });
+  if (!managerRole) {
+    logger.warn("Manager role not found in database. Creating a new one...");
+    managerRole = await Role.create({
+      name: "manager",
+      description: "Operational management role"
+    });
+  }
+  const managerPermDocs = await Permission.find({ name: { $in: DEFAULT_MANAGER_PERM_NAMES } });
+  managerRole.permissions = managerPermDocs.map(p => p._id);
+  await managerRole.save();
+  logger.info(`Manager role updated with ${managerPermDocs.length} permissions.`);
   
-  // 3. Invalidate Owner Cache
-  const cacheKey = `rbac:role:owner:permissions`;
-  await redis.del(cacheKey);
-  logger.info("Owner role permissions cache invalidated.");
+  // 4. Invalidate Cache
+  await redis.del("rbac:role:owner:permissions");
+  await redis.del("rbac:role:manager:permissions");
+  logger.info("Owner & Manager role permissions cache invalidated.");
   
   // Return summary for testing/logs
   return {
@@ -94,7 +114,8 @@ export const syncPermissionsLogic = async () => {
     createdCount,
     updatedCount,
     unchangedCount,
-    ownerPermissionCount: canonicalPermissionIds.length
+    ownerPermissionCount: canonicalPermissionIds.length,
+    managerPermissionCount: managerPermDocs.length
   };
 };
 

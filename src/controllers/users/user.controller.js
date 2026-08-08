@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 import crypto from "crypto";
 import { UserRepository } from "../../repositories/users/user.repository.js";
 import { UserService } from "../../services/users/user.service.js";
+import { Role } from "../../models/roles/role.model.js";
+import { Branch } from "../../models/branches/branch.model.js";
 import { sendResponse } from "../../utils/response.js";
 import { asyncHandler, AppError } from "../../utils/errors.js";
 import { toUserResponseDTO } from "../../utils/userResponse.js";
@@ -92,7 +94,7 @@ export const createUser = asyncHandler(async (req, res) => {
   let formattedBranchAccess = [];
   if (branchAccess.length > 0) {
     const branchIds = branchAccess.map((b) => b.branchId);
-    const dbBranches = await mongoose.model("Branch").find({
+    const dbBranches = await Branch.find({
       _id: { $in: branchIds },
       organizationId,
     });
@@ -111,10 +113,7 @@ export const createUser = asyncHandler(async (req, res) => {
   }
 
   // 3. Role existence verification
-  const role = await mongoose
-    .model("Role")
-    .findById(roleId)
-    .populate("permissions");
+  const role = await Role.findById(roleId).populate("permissions");
   if (!role) {
     throw new AppError("Role not found", 404);
   }
@@ -165,12 +164,6 @@ export const createUser = asyncHandler(async (req, res) => {
       username: user.username,
       tempPassword,
       phone: user.phone,
-    });
-
-    await smsQueue.add("sendWelcomeCredentialsSMS", {
-      phone: user.phone,
-      username: user.username,
-      tempPassword,
     });
 
     logger.info(

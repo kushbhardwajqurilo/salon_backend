@@ -18,8 +18,11 @@ describe("User identity and username handling", () => {
       create: jest.fn().mockResolvedValue({}),
       invalidateAllUserSessions: jest.fn().mockResolvedValue({}),
     };
+    const staffRepo = {
+      findOne: jest.fn().mockResolvedValue({ status: "active" }),
+    };
 
-    const authService = new AuthService(userRepo, null, sessionRepo);
+    const authService = new AuthService(userRepo, null, sessionRepo, null, staffRepo);
     const result = await authService.login(
       "rahul.sharma",
       "Password123!",

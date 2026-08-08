@@ -2,6 +2,7 @@ import { jest } from "@jest/globals";
 import mongoose from "mongoose";
 import { AppError } from "../../utils/errors.js";
 import { StaffService } from "../../services/staff/staff.service.js";
+import { AuthService } from "../../services/auth/auth.service.js";
 
 describe("Staff-User Linking & Transactions (Phase 6)", () => {
   let staffService;
@@ -176,6 +177,136 @@ describe("Staff-User Linking & Transactions (Phase 6)", () => {
       ).rejects.toThrow("Database write error");
 
       expect(mockSession.abortTransaction).toHaveBeenCalled();
+    });
+  });
+
+  describe("AuthService Staff Linkage Authentication Enforcement", () => {
+    let authService;
+    let mockUserRepo;
+    let mockRoleRepo;
+    let mockSessionRepo;
+    let mockStaffRepo;
+    let mockUser;
+
+    beforeEach(() => {
+      mockUser = {
+        _id: userId,
+        email: "staffuser@parlour.com",
+        password: "hashedpassword",
+        organizationId: orgAId,
+        status: "active",
+        role: { name: "manager" },
+        comparePassword: jest.fn().mockResolvedValue(true),
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      mockUserRepo = {
+        findByEmailOrUsername: jest.fn().mockResolvedValue(mockUser),
+        findByEmail: jest.fn().mockResolvedValue(mockUser),
+      };
+
+      mockRoleRepo = {
+        findByName: jest.fn(),
+      };
+
+      mockSessionRepo = {
+        create: jest.fn().mockResolvedValue(true),
+        invalidateAllUserSessions: jest.fn(),
+      };
+
+      mockStaffRepo = {
+        findOne: jest.fn(),
+      };
+
+      authService = new AuthService(
+        mockUserRepo,
+        mockRoleRepo,
+        mockSessionRepo,
+        null,
+        mockStaffRepo
+      );
+    });
+
+    it("should reject login for unlinked staff User (staff link absent)", async () => {
+      mockStaffRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        authService.login("staffuser@parlour.com", "Password123!", "127.0.0.1", "agent")
+      ).rejects.toThrow(new AppError("This account is not linked to an active staff profile. Please contact an administrator.", 403));
+
+      expect(mockSessionRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("should allow login for linked active Staff", async () => {
+      mockStaffRepo.findOne.mockResolvedValue({
+        _id: staffId,
+        userId,
+        organizationId: orgAId,
+        status: "active",
+        isDeleted: false,
+      });
+
+      const result = await authService.login("staffuser@parlour.com", "Password123!", "127.0.0.1", "agent");
+      expect(result.accessToken).toBeDefined();
+      expect(result.refreshToken).toBeDefined();
+      expect(mockSessionRepo.create).toHaveBeenCalled();
+    });
+
+    it("should reject login for inactive Staff", async () => {
+      mockStaffRepo.findOne.mockResolvedValue({
+        _id: staffId,
+        userId,
+        organizationId: orgAId,
+        status: "inactive",
+        isDeleted: false,
+      });
+
+      await expect(
+        authService.login("staffuser@parlour.com", "Password123!", "127.0.0.1", "agent")
+      ).rejects.toThrow(new AppError("This account is not linked to an active staff profile. Please contact an administrator.", 403));
+    });
+
+    it("should reject login for suspended Staff", async () => {
+      mockStaffRepo.findOne.mockResolvedValue({
+        _id: staffId,
+        userId,
+        organizationId: orgAId,
+        status: "suspended",
+        isDeleted: false,
+      });
+
+      await expect(
+        authService.login("staffuser@parlour.com", "Password123!", "127.0.0.1", "agent")
+      ).rejects.toThrow(new AppError("This account is not linked to an active staff profile. Please contact an administrator.", 403));
+    });
+
+    it("should reject login for deleted Staff", async () => {
+      mockStaffRepo.findOne.mockResolvedValue(null); // findOne with isDeleted: false returns null
+
+      await expect(
+        authService.login("staffuser@parlour.com", "Password123!", "127.0.0.1", "agent")
+      ).rejects.toThrow(new AppError("This account is not linked to an active staff profile. Please contact an administrator.", 403));
+    });
+
+    it("should reject login for cross-organization staff linkage", async () => {
+      // If staff belongs to orgBId while user belongs to orgAId, staffRepo.findOne returns null because organizationId does not match
+      mockStaffRepo.findOne.mockImplementation((filter, orgId) => {
+        if (orgId !== orgAId) return null;
+        return null;
+      });
+
+      await expect(
+        authService.login("staffuser@parlour.com", "Password123!", "127.0.0.1", "agent")
+      ).rejects.toThrow(new AppError("This account is not linked to an active staff profile. Please contact an administrator.", 403));
+    });
+
+    it("should allow login for Admin User without Staff record", async () => {
+      mockUser.role = { name: "owner" };
+      mockStaffRepo.findOne.mockResolvedValue(null);
+
+      const result = await authService.login("staffuser@parlour.com", "Password123!", "127.0.0.1", "agent");
+      expect(result.accessToken).toBeDefined();
+      expect(result.refreshToken).toBeDefined();
     });
   });
 });

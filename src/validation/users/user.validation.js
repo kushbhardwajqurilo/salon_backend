@@ -30,7 +30,7 @@ export const createUserSchema = z.object({
         .array(
           z.object({
             branchId: objectIdSchema,
-            branchName: z.string().optional(),
+            branchName: z.string().min(1, "Branch name is required"),
             isActive: z.boolean().optional().default(true),
           }),
         )
@@ -67,7 +67,7 @@ export const updateUserSchema = z.object({
         .array(
           z.object({
             branchId: objectIdSchema,
-            branchName: z.string().optional(),
+            branchName: z.string().min(1, "Branch name is required"),
             isActive: z.boolean().optional().default(true),
           }),
         )

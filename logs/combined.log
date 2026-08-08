@@ -1098,3 +1098,1558 @@
 [2026-08-05 16:46:46:4646] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
 [2026-08-05 17:01:45:145] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
 [2026-08-05 17:01:45:145] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 18:14:32:1432] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 18:14:32:1432] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 18:14:33:1433] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 18:14:33:1433] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 18:14:45:1445] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 18:14:45:1445] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 18:15:05:155] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 18:15:05:155] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 18:15:11:1511] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 18:15:11:1511] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 18:15:20:1520] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 18:15:20:1520] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 18:15:30:1530] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 18:15:30:1530] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 18:15:47:1547] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 18:15:47:1547] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-05 18:15:55:1555] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-05 18:15:55:1555] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 13:24:52:2452] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 15:43:31:4331] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 15:43:31:4331] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 15:43:37:4337] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 15:43:37:4337] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 15:43:46:4346] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 15:43:46:4346] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 15:43:52:4352] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 15:43:52:4352] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 15:44:09:449] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 15:44:09:449] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 15:44:15:4415] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 15:44:15:4415] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 15:44:26:4426] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 15:44:26:4426] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 15:44:38:4438] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 15:44:38:4438] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 15:44:53:4453] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 15:44:53:4453] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 15:45:17:4517] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 15:45:17:4517] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:06:34:634] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:06:34:634] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:06:46:646] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:06:46:646] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:06:54:654] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:06:54:654] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:09:57:957] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:09:57:957] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:10:05:105] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:10:05:105] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:10:23:1023] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:10:23:1023] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:10:42:1042] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:10:42:1042] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:10:54:1054] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:10:54:1054] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:11:22:1122] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:11:22:1122] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:14:32:1432] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:14:32:1432] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:14:41:1441] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:14:41:1441] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:14:47:1447] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:14:47:1447] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:14:57:1457] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:14:57:1457] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:15:07:157] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:15:07:157] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:15:19:1519] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:15:19:1519] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:15:45:1545] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:15:45:1545] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:19:36:1936] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:19:36:1936] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:19:54:1954] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:19:54:1954] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:20:02:202] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:20:02:202] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:20:08:208] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:20:08:208] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:20:15:2015] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:20:15:2015] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:20:20:2020] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:20:20:2020] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:22:43:2243] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:22:43:2243] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:22:58:2258] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:22:58:2258] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:51:04:514] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 16:55:23:5523] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:55:23:5523] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:55:30:5530] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:55:30:5530] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:55:36:5536] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:55:36:5536] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:55:52:5552] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:55:52:5552] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 16:56:08:568] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 16:56:08:568] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 17:00:14:014] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 17:00:14:014] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 17:00:20:020] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 17:00:20:020] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 17:00:25:025] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 17:00:25:025] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 17:00:32:032] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 17:00:32:032] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 17:00:38:038] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 17:00:38:038] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 17:00:53:053] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 17:00:53:053] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 17:01:00:10] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 17:01:00:10] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 17:01:05:15] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 17:01:05:15] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 17:32:55:3255] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 17:36:46:3646] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 17:40:34:4034] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 17:44:21:4421] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 17:48:09:489] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 17:51:58:5158] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 17:55:47:5547] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 17:59:36:5936] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:03:24:324] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:07:12:712] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:10:59:1059] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:14:47:1447] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:18:35:1835] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:22:23:2223] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:26:11:2611] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:29:59:2959] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:33:47:3347] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:37:35:3735] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:41:24:4124] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:45:13:4513] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-06 18:49:51:4951] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 18:49:51:4951] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 18:50:06:506] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 18:50:06:506] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 18:50:13:5013] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 18:50:13:5013] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 18:50:18:5018] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 18:50:18:5018] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 18:50:24:5024] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 18:50:24:5024] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 18:50:29:5029] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 18:50:29:5029] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-06 18:50:35:5035] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-06 18:50:35:5035] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 10:06:48:648] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 10:08:33:833] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-07 10:08:33:833] [[32minfo[39m]: [32m🛑 Express server stopped.[39m
+[2026-08-07 10:08:33:833] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 10:08:43:843] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 10:08:43:843] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 10:10:17:1017] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 10:10:17:1017] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 10:21:06:216] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 10:21:06:216] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 10:35:01:351] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 10:35:01:351] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 10:46:58:4658] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 10:46:58:4658] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 10:48:02:482] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 10:48:02:482] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 10:54:12:5412] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-07 10:58:14:5814] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-07 10:59:19:5919] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 10:59:19:5919] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 11:00:06:06] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 11:00:06:06] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 11:00:52:052] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-07 11:01:29:129] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-07 11:03:07:37] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-07 11:04:10:410] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-07 11:04:33:433] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 11:04:33:433] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 11:30:54:3054] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 11:30:54:3054] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 11:32:38:3238] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 11:32:38:3238] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 11:46:09:469] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 11:46:09:469] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 11:46:19:4619] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 11:46:19:4619] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 11:46:47:4647] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 11:46:47:4647] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:16:52:1652] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 12:35:31:3531] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:35:31:3531] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:35:41:3541] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 12:35:42:3542] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 12:36:07:367] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:36:07:367] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:36:14:3614] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 12:36:15:3615] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 12:37:34:3734] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:37:34:3734] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:37:48:3748] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 12:37:49:3749] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 12:37:56:3756] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:37:56:3756] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:38:09:389] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 12:38:11:3811] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 12:38:21:3821] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 12:38:23:3823] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 12:38:55:3855] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:38:55:3855] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:39:06:396] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 12:39:07:397] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 12:39:32:3932] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:39:32:3932] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:39:42:3942] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 12:39:43:3943] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 12:45:26:4526] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:45:26:4526] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:45:56:4556] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 12:45:57:4557] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 12:46:13:4613] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:46:13:4613] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:46:19:4619] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:46:19:4619] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:46:33:4633] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 12:46:35:4635] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 12:47:16:4716] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:47:16:4716] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:47:26:4726] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 12:47:28:4728] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 12:48:11:4811] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:48:11:4811] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:48:20:4820] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 12:48:23:4823] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 12:52:32:5232] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:52:32:5232] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:52:41:5241] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:52:41:5241] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:52:59:5259] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:52:59:5259] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 12:53:14:5314] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 12:53:14:5314] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:05:04:54] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 13:05:05:55] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 13:09:24:924] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:09:24:924] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:11:52:1152] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 13:11:53:1153] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 13:23:19:2319] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:23:19:2319] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:24:39:2439] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:24:39:2439] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:24:55:2455] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:24:55:2455] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:24:58:2458] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:24:58:2458] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:27:20:2720] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:27:20:2720] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:28:46:2846] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:28:46:2846] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:29:44:2944] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:29:44:2944] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:30:48:3048] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 13:30:48:3048] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 13:30:50:3050] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 13:30:50:3050] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 13:34:44:3444] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:34:44:3444] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:37:16:3716] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:37:16:3716] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:37:37:3737] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:37:37:3737] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:37:47:3747] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:37:47:3747] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:37:54:3754] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:37:54:3754] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:38:13:3813] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 13:38:14:3814] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 13:45:40:4540] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:45:40:4540] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:49:43:4943] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:49:43:4943] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 13:50:00:500] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 13:50:00:500] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 14:47:42:4742] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 14:47:42:4742] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 14:48:46:4846] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 14:48:46:4846] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 14:51:09:519] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 14:51:09:519] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 14:52:09:529] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 14:52:09:529] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 14:52:58:5258] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 14:52:58:5258] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:05:02:52] [[31merror[39m]: [31m❌ MongoDB connection error: User: Index build failed: 38db82c5-da23-46ca-afc1-53891f67ceb2: Collection saloon_erp_test.users ( 9e61c53a-29f4-44ed-9712-c1d5cae2e699 ) :: caused by :: E11000 duplicate key error collection: saloon_erp_test.users index: organizationId_1_username_1 dup key: { organizationId: ObjectId('6a674eeb35f4849a26cab307'), username: null }[39m
+[2026-08-07 15:25:23:2523] [[31merror[39m]: [31m❌ MongoDB connection error: User: Error in specification { unique: true, partialFilterExpression: { username: { $exists: true, $ne: null } }, name: "organizationId_1_username_1", key: { organizationId: 1, username: 1 }, v: 2 } :: caused by :: Expression not supported in partial index: $not[39m
+[31m    username $eq null[39m
+[31m[39m
+[2026-08-07 15:25:45:2545] [[31merror[39m]: [31m❌ MongoDB connection error: Staff: Error in specification { unique: true, partialFilterExpression: { isDeleted: false, userId: { $exists: true, $ne: null } }, name: "organizationId_1_userId_1", key: { organizationId: 1, userId: 1 }, v: 2 } :: caused by :: Expression not supported in partial index: $not[39m
+[31m    userId $eq null[39m
+[31m[39m
+[2026-08-07 15:38:06:386] [[31merror[39m]: [31m❌ MongoDB connection error: Staff: Error in specification { unique: true, partialFilterExpression: { isDeleted: false, userId: { $exists: true, $ne: null } }, name: "organizationId_1_userId_1", key: { organizationId: 1, userId: 1 }, v: 2 } :: caused by :: Expression not supported in partial index: $not[39m
+[31m    userId $eq null[39m
+[31m[39m
+[2026-08-07 15:39:32:3932] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:39:32:3932] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:39:42:3942] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:39:43:3943] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:39:48:3948] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:39:48:3948] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:39:58:3958] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:39:59:3959] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:40:04:404] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:40:04:404] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:40:11:4011] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:40:12:4012] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:40:40:4040] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:40:41:4041] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:41:01:411] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:41:02:412] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:41:20:4120] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:41:20:4120] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:41:48:4148] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:41:48:4148] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:41:57:4157] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:41:57:4157] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:43:23:4323] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:43:24:4324] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:43:32:4332] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:43:32:4332] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:44:46:4446] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:44:47:4447] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:44:51:4451] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:44:51:4451] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:45:00:450] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:45:01:451] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:45:10:4510] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:45:10:4510] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:45:57:4557] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:45:58:4558] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:46:09:469] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:46:10:4610] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:46:15:4615] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:46:15:4615] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:47:16:4716] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:47:16:4716] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:47:50:4750] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:47:50:4750] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:47:57:4757] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:48:00:480] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:48:14:4814] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:48:14:4814] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:48:20:4820] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:48:20:4820] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:48:27:4827] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:48:27:4827] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:48:32:4832] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:48:32:4832] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:48:41:4841] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:48:44:4844] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:49:35:4935] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:49:36:4936] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 15:50:31:5031] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:50:31:5031] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:50:47:5047] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:50:47:5047] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:54:01:541] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:54:01:541] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:54:08:548] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 15:54:08:548] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 15:54:27:5427] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 15:54:29:5429] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 17:24:58:2458] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:24:58:2458] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:25:05:255] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:25:05:255] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:26:03:263] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 17:26:06:266] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 17:26:21:2621] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:26:21:2621] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:26:27:2627] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:26:27:2627] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:26:40:2640] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 17:26:43:2643] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 17:26:53:2653] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:26:53:2653] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:27:09:279] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 17:27:10:2710] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 17:27:40:2740] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:27:40:2740] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:27:54:2754] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:27:54:2754] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:28:05:285] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:28:05:285] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:28:21:2821] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 17:28:23:2823] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 17:28:24:2824] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75c86083323403753000a2, attempts: 1[39m
+[2026-08-07 17:29:00:290] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:29:00:290] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:29:18:2918] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 17:29:21:2921] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75c8975c46827abd1a3d98, attempts: 1[39m
+[2026-08-07 17:29:21:2921] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 17:29:22:2922] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75c89a16dd1434342b068c, attempts: 1[39m
+[2026-08-07 17:29:43:2943] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 17:29:45:2945] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75c8af2dc41b0c89eb2df6, attempts: 1[39m
+[2026-08-07 17:29:45:2945] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 17:29:46:2946] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75c8b28b18d578ee87d5a7, attempts: 1[39m
+[2026-08-07 17:40:47:4047] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 17:40:49:4049] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75cb483285ef8dad1f5bf3, attempts: 1[39m
+[2026-08-07 17:40:50:4050] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 17:40:51:4051] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75cb4b7b9716c402b32595, attempts: 1[39m
+[2026-08-07 17:41:05:415] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 17:41:09:419] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75cb5dd3e8bf4ee29d4f71, attempts: 1[39m
+[2026-08-07 17:41:12:4112] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 17:46:42:4642] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:46:42:4642] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:46:51:4651] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 17:46:57:4657] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 17:47:03:473] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75ccbfa672aa090f5e73eb, attempts: 1[39m
+[2026-08-07 17:55:16:5516] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:55:16:5516] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:55:34:5534] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:55:34:5534] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:57:38:5738] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:57:38:5738] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:59:05:595] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:59:05:595] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 17:59:13:5913] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 17:59:13:5913] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:01:46:146] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:01:46:146] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:03:08:38] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:03:08:38] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:09:17:917] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:09:17:917] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:12:28:1228] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:12:28:1228] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:12:38:1238] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:12:38:1238] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:12:47:1247] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 18:12:53:1253] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 18:12:59:1259] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75d2d389ae29798ea3411f, attempts: 1[39m
+[2026-08-07 18:13:28:1328] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75d2f0f960a017e9101048, attempts: 1[39m
+[2026-08-07 18:18:38:1838] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:18:38:1838] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:18:42:1842] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:18:42:1842] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:19:09:199] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:19:09:199] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:19:28:1928] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 18:19:34:1934] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 18:19:40:1940] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75d4649870abf8e92b09f4, attempts: 1[39m
+[2026-08-07 18:19:49:1949] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:19:49:1949] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:19:54:1954] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75d47245c2166fbae25654, attempts: 1[39m
+[2026-08-07 18:20:04:204] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 18:20:10:2010] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 18:20:16:2016] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75d488ea414d40d96ad75f, attempts: 1[39m
+[2026-08-07 18:20:26:2026] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:20:26:2026] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:20:35:2035] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 18:20:43:2043] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 18:20:53:2053] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75d4ada05d6173926a2a57, attempts: 1[39m
+[2026-08-07 18:26:03:263] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:26:03:263] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:26:07:267] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:26:07:267] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:26:14:2614] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:26:14:2614] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:26:19:2619] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:26:19:2619] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:26:24:2624] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:26:24:2624] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:26:34:2634] [[32minfo[39m]: [32m📧 EmailService initialized in Development Log mode (No SMTP_HOST configured). Emails will be logged to console.[39m
+[2026-08-07 18:26:34:2634] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:26:34:2634] [[32minfo[39m]: [32m⚙️ Skipping BullMQ notification workers start in TEST mode[39m
+[2026-08-07 18:26:34:2634] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:26:44:2644] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 18:26:51:2651] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 18:26:54:2654] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75d61628b4f5839655fe74, attempts: 1[39m
+[2026-08-07 18:27:20:2720] [[32minfo[39m]: [32m📧 EmailService initialized in Development Log mode (No SMTP_HOST configured). Emails will be logged to console.[39m
+[2026-08-07 18:27:20:2720] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:27:20:2720] [[32minfo[39m]: [32m⚙️ Skipping BullMQ notification workers start in TEST mode[39m
+[2026-08-07 18:27:20:2720] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:28:02:282] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 18:28:08:288] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 18:28:15:2815] [[32minfo[39m]: [32m📧 EmailService initialized in Development Log mode (No SMTP_HOST configured). Emails will be logged to console.[39m
+[2026-08-07 18:28:16:2816] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:28:16:2816] [[32minfo[39m]: [32m⚙️ Skipping BullMQ notification workers start in TEST mode[39m
+[2026-08-07 18:28:16:2816] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:28:27:2827] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 18:28:29:2829] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75d6740767410cadfa9159, attempts: 1[39m
+[2026-08-07 18:28:29:2829] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 18:28:32:2832] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75d678333e800b20aef731, attempts: 1[39m
+[2026-08-07 18:33:59:3359] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a75d7be9a22a6b8041b70aa (kushbhardwaj8800@gmail.com)[39m
+[2026-08-07 18:36:26:3626] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: gmail.com[39m
+[2026-08-07 18:36:26:3626] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:36:26:3626] [[32minfo[39m]: [32m⚙️ Skipping BullMQ notification workers start in TEST mode[39m
+[2026-08-07 18:36:26:3626] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:37:25:3725] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a75d88cd798f95a18f4ec37 (kushbhardwaj8800@gmail.com)[39m
+[2026-08-07 18:42:42:4242] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: gmail.com:587 (secure: false)[39m
+[2026-08-07 18:42:42:4242] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:42:42:4242] [[32minfo[39m]: [32m⚙️ Skipping BullMQ notification workers start in TEST mode[39m
+[2026-08-07 18:42:42:4242] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:42:52:4252] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 18:42:53:4253] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75d9d410cb7ba9c116345d, attempts: 1[39m
+[2026-08-07 18:42:54:4254] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 18:42:54:4254] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75d9d6f2717875871add2c, attempts: 1[39m
+[2026-08-07 18:44:04:444] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: gmail.com:587 (secure: false)[39m
+[2026-08-07 18:44:04:444] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:44:04:444] [[32minfo[39m]: [32m🚀 All BullMQ Notification Workers (Email, SMS, WhatsApp, Notification) initialized and active[39m
+[2026-08-07 18:44:04:444] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [test] mode on port 5000[39m
+[2026-08-07 18:45:01:451] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 18:45:03:453] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75da5653e216288ce858a3, attempts: 1[39m
+[2026-08-07 18:45:03:453] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 18:45:10:4510] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75da5ea90b973a27277ad2, attempts: 1[39m
+[2026-08-07 18:45:49:4549] [[31merror[39m]: [31m❌ [SMTP_VERIFY_FAILED] Could not connect to SMTP server: connect ETIMEDOUT 142.251.221.197:587[39m
+[2026-08-07 18:49:37:4937] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-07 18:50:12:5012] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-07 18:50:12:5012] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:12:5012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:12:5012] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:50:12:5012] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-07 18:50:12:5012] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-07 18:50:12:5012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:12:5012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:12:5012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:12:5012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:12:5012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:12:5012] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:12:5012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:12:5012] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:12:5012] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:12:5012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:12:5012] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:13:5013] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:13:5013] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:13:5013] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:13:5013] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:13:5013] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:13:5013] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:13:5013] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:13:5013] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:13:5013] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:13:5013] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:13:5013] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:13:5013] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:13:5013] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:13:5013] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:13:5013] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:14:5014] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:14:5014] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:14:5014] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:14:5014] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-07 18:50:14:5014] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:14:5014] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:14:5014] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:14:5014] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 18:50:14:5014] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:14:5014] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:14:5014] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:14:5014] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:15:5015] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:15:5015] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:15:5015] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:15:5015] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:15:5015] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:15:5015] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:15:5015] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:15:5015] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:15:5015] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:15:5015] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:16:5016] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:16:5016] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:16:5016] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:16:5016] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:16:5016] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:16:5016] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75db8f7d29160a83be79fb, attempts: 1[39m
+[2026-08-07 18:50:16:5016] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:17:5017] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:17:5017] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:17:5017] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:17:5017] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:17:5017] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:17:5017] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 18:50:17:5017] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:17:5017] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:17:5017] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:18:5018] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:18:5018] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:18:5018] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:18:5018] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:18:5018] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:18:5018] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:18:5018] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:18:5018] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:18:5018] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:18:5018] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:19:5019] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:19:5019] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:19:5019] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:19:5019] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:19:5019] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:19:5019] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:19:5019] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:19:5019] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:18:5018] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75db92270ae34b18d8392f, attempts: 1[39m
+[2026-08-07 18:50:19:5019] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:19:5019] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:20:5020] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:20:5020] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:20:5020] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:20:5020] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:20:5020] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:20:5020] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:20:5020] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:20:5020] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:21:5021] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:21:5021] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:22:5022] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:22:5022] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:22:5022] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:23:5023] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:23:5023] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:23:5023] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:23:5023] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:23:5023] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:23:5023] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:23:5023] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:50:23:5023] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:50:23:5023] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:23:5023] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:23:5023] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:24:5024] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:24:5024] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:24:5024] [[31merror[39m]: [31m🔌 Redis connection error: Reached the max retries per request limit (which is 20). Refer to "maxRetriesPerRequest" option for details.[39m
+[2026-08-07 18:50:25:5025] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:25:5025] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:25:5025] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:27:5027] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:27:5027] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:28:5028] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:28:5028] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:28:5028] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:29:5029] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:50:29:5029] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:30:5030] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-07 18:51:00:510] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-07 18:51:00:510] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:51:00:510] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-07 18:51:00:510] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-07 18:51:00:510] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:51:00:510] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:51:00:510] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:51:00:510] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:51:00:510] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:51:00:510] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:51:00:510] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:51:00:510] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:51:00:510] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:51:00:510] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:51:00:510] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:51:00:510] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:51:00:510] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:51:01:511] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:51:01:511] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:51:01:511] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:51:01:511] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:51:01:511] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:51:01:511] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:51:01:511] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:51:01:511] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:51:01:511] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:51:01:511] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:51:01:511] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:51:02:512] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:51:02:512] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:51:02:512] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:51:02:512] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-07 18:53:28:5328] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-07 18:53:30:5330] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75dc513edcb5140adbaa0b, attempts: 1[39m
+[2026-08-07 18:53:30:5330] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-07 18:53:31:5331] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a75dc538895178877ab6c14, attempts: 1[39m
+[2026-08-07 18:54:20:5420] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-07 18:54:20:5420] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:54:20:5420] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-07 18:54:20:5420] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-07 18:54:21:5421] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:54:22:5422] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:54:22:5422] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:22:5422] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:54:22:5422] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:22:5422] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-07 18:54:23:5423] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:54:23:5423] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:23:5423] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:54:23:5423] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-07 18:59:25:5925] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-07 18:59:25:5925] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:59:25:5925] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:25:5925] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 18:59:25:5925] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-07 18:59:25:5925] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-07 18:59:25:5925] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:59:25:5925] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:59:25:5925] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:25:5925] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:25:5925] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:59:25:5925] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:59:25:5925] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:25:5925] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:25:5925] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:59:25:5925] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:59:26:5926] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:59:26:5926] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:59:26:5926] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:59:26:5926] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:59:26:5926] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:59:27:5927] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:59:27:5927] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:59:27:5927] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:59:27:5927] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:27:5927] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:59:27:5927] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:27:5927] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:59:27:5927] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:27:5927] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:27:5927] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:27:5927] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:59:27:5927] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:59:28:5928] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:59:28:5928] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:59:28:5928] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:59:28:5928] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:28:5928] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:28:5928] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:59:28:5928] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:28:5928] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:59:28:5928] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:28:5928] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:59:28:5928] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: ERR max number of clients reached[39m
+[2026-08-07 18:59:28:5928] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker connection warning: read ECONNRESET[39m
+[2026-08-07 18:59:29:5929] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 18:59:29:5929] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:29:5929] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:59:29:5929] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-07 19:00:01:01] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-07 19:00:01:01] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 19:00:01:01] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:01:01] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 19:00:01:01] [[32minfo[39m]: [32m🚀 BullMQ Notification Workers initialized[39m
+[2026-08-07 19:00:01:01] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-07 19:00:01:01] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:01:01] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker: read ECONNRESET[39m
+[2026-08-07 19:00:01:01] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:01:01] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker: read ECONNRESET[39m
+[2026-08-07 19:00:01:01] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:01:01] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 19:00:01:01] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker: read ECONNRESET[39m
+[2026-08-07 19:00:01:01] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:01:01] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker: read ECONNRESET[39m
+[2026-08-07 19:00:01:01] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:01:01] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 19:00:01:01] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:02:02] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 19:00:02:02] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:02:02] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 19:00:02:02] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:02:02] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-07 19:00:11:011] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-07 19:00:11:011] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-07 19:00:11:011] [[32minfo[39m]: [32m🚀 BullMQ Notification Workers initialized[39m
+[2026-08-07 19:00:11:011] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-07 19:00:11:011] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 19:00:11:011] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker: read ECONNRESET[39m
+[2026-08-07 19:00:11:011] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:11:011] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:11:011] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:11:011] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker: read ECONNRESET[39m
+[2026-08-07 19:00:11:011] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 19:00:11:011] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:11:011] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:11:011] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 19:00:11:011] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:11:011] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:12:012] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:12:012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] Email Worker: read ECONNRESET[39m
+[2026-08-07 19:00:12:012] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 19:00:12:012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[33mwarn[39m]: [33m⚠️ [REDIS_WORKER_WARN] SMS Worker: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:12:012] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:13:013] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-08 10:25:05:255] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 10:25:07:257] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76b6a992cfbae82a8d2fb3, attempts: 1[39m
+[2026-08-08 10:25:07:257] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 10:25:10:2510] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76b6aea530f7ce3f27a5b6, attempts: 1[39m
+[2026-08-08 10:26:15:2615] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:16:2616] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m❌ Failed to connect to Redis at server startup: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m❌ Failed to start notification workers: connection is not defined[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:26:16:2616] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:16:2616] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:16:2616] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:16:2616] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:16:2616] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:16:2616] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:17:2617] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:17:2617] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:17:2617] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:17:2617] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:17:2617] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:17:2617] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:17:2617] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:17:2617] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:26:17:2617] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:18:2618] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:18:2618] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:18:2618] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:18:2618] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:18:2618] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:18:2618] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:18:2618] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:18:2618] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:18:2618] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:18:2618] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:18:2618] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:18:2618] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:18:2618] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:18:2618] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:18:2618] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:19:2619] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:19:2619] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:19:2619] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:19:2619] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:19:2619] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:19:2619] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:19:2619] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:19:2619] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:19:2619] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:19:2619] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:19:2619] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:19:2619] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:19:2619] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:19:2619] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:19:2619] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:19:2619] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:19:2619] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:19:2619] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:19:2619] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:19:2619] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:19:2619] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:19:2619] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:19:2619] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:20:2620] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:20:2620] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:20:2620] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:20:2620] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:20:2620] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:20:2620] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:20:2620] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:20:2620] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:20:2620] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:20:2620] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:20:2620] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:20:2620] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:20:2620] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:20:2620] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:20:2620] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:20:2620] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:20:2620] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:20:2620] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:20:2620] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:20:2620] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:26:20:2620] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:20:2620] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:20:2620] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:20:2620] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:21:2621] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:21:2621] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:21:2621] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:21:2621] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:21:2621] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:21:2621] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:21:2621] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:21:2621] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:21:2621] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:21:2621] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:26:21:2621] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] ERR max number of clients reached[39m
+[2026-08-08 10:26:21:2621] [[33mwarn[39m]: [33m⚠️ [REDIS_EVENT_WARN] read ECONNRESET[39m
+[2026-08-08 10:26:21:2621] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-08 10:26:56:2656] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:26:56:2656] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:26:58:2658] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:27:03:273] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-08 10:29:23:2923] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:29:23:2923] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:29:23:2923] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:29:23:2923] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:29:23:2923] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:29:23:2923] [[31merror[39m]: [31m❌ Failed to start notification workers: connection is not defined[39m
+[2026-08-08 10:29:23:2923] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:29:25:2925] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:29:27:2927] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-08 10:31:31:3131] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:31:31:3131] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:31:31:3131] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:31:31:3131] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:31:31:3131] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:31:31:3131] [[31merror[39m]: [31m❌ Failed to start notification workers: connection is not defined[39m
+[2026-08-08 10:31:31:3131] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:31:33:3133] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:31:34:3134] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-08 10:32:13:3213] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:32:14:3214] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:32:14:3214] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:32:14:3214] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:32:14:3214] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:32:14:3214] [[32minfo[39m]: [32m🚀 All BullMQ Notification Workers (Email, SMS, WhatsApp, Notification) initialized and active[39m
+[2026-08-08 10:32:14:3214] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:32:15:3215] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:32:55:3255] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:32:55:3255] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:32:55:3255] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:32:55:3255] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:32:55:3255] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:32:55:3255] [[32minfo[39m]: [32m🚀 All BullMQ Notification Workers (Email, SMS, WhatsApp, Notification) initialized and active[39m
+[2026-08-08 10:32:55:3255] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:32:57:3257] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:33:49:3349] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:33:49:3349] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:33:49:3349] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:33:49:3349] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:33:49:3349] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:33:49:3349] [[32minfo[39m]: [32m🚀 All BullMQ Notification Workers (Email, SMS, WhatsApp, Notification) initialized and active[39m
+[2026-08-08 10:33:49:3349] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:33:51:3351] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:33:57:3357] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:33:57:3357] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:33:57:3357] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:33:57:3357] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:33:57:3357] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:33:57:3357] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 10:33:57:3357] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:33:59:3359] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:36:51:3651] [[32minfo[39m]: [32m🚀 Queue initialized: email[39m
+[2026-08-08 10:36:51:3651] [[32minfo[39m]: [32m🚀 Queue initialized: sms[39m
+[2026-08-08 10:36:51:3651] [[32minfo[39m]: [32m📥 Processing Email Job [1] - sendWelcomeCredentialsEmail[39m
+[2026-08-08 10:36:52:3652] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a76b96ba43245a0393653d8 (kushbhardwaj8800@gmail.com)[39m
+[2026-08-08 10:36:52:3652] [[32minfo[39m]: [32m📥 Processing SMS Job [1] - sendWelcomeCredentialsSMS[39m
+[2026-08-08 10:36:52:3652] [[32minfo[39m]: [32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m
+[2026-08-08 10:36:52:3652] [[32minfo[39m]: [32m📱 [DEV_SMS_DISPATCH] Phone: 9654165886[39m
+[2026-08-08 10:36:52:3652] [[32minfo[39m]: [32mMessage: [Saloon ERP] Your account has been created. Username: kush.bhardwaj, Temp Password: 5168096f0e9d3df5. Please log in to complete activation.[39m
+[2026-08-08 10:36:52:3652] [[32minfo[39m]: [32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m
+[2026-08-08 10:36:52:3652] [[32minfo[39m]: [32m✅ SMS Job [1] sendWelcomeCredentialsSMS completed successfully[39m
+[2026-08-08 10:36:56:3656] [[32minfo[39m]: [32m📧 [EMAIL_SENT] MessageId: <755515aa-d0d1-28ef-8ef6-a9e334fe3cf0@saloonerp.com> to kushbhardwaj8800@gmail.com[39m
+[2026-08-08 10:36:56:3656] [[32minfo[39m]: [32m✅ Email Job [1] sendWelcomeCredentialsEmail completed successfully[39m
+[2026-08-08 10:38:32:3832] [[32minfo[39m]: [32m[SECURITY] OTP_SENT for user 6a76b96ba43245a0393653d8[39m
+[2026-08-08 10:38:32:3832] [[32minfo[39m]: [32m📥 Processing SMS Job [2] - sendOtpSMS[39m
+[2026-08-08 10:38:32:3832] [[32minfo[39m]: [32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m
+[2026-08-08 10:38:32:3832] [[32minfo[39m]: [32m📱 [DEV_SMS_DISPATCH] Phone: 9654165886[39m
+[2026-08-08 10:38:32:3832] [[32minfo[39m]: [32mMessage: [Saloon ERP] Your activation OTP is 239256. Valid for 5 minutes. Do not share this code with anyone.[39m
+[2026-08-08 10:38:32:3832] [[32minfo[39m]: [32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m
+[2026-08-08 10:38:32:3832] [[32minfo[39m]: [32m✅ SMS Job [2] sendOtpSMS completed successfully[39m
+[2026-08-08 10:44:44:4444] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 10:44:46:4446] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bb44943d0885aec94f42, attempts: 1[39m
+[2026-08-08 10:44:46:4446] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 10:45:03:453] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:45:03:453] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:45:03:453] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:45:03:453] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:45:04:454] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:45:04:454] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 10:45:04:454] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:45:05:455] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:46:20:4620] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 10:46:22:4622] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bba45df7d70030597962, attempts: 1[39m
+[2026-08-08 10:46:22:4622] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 10:46:56:4656] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bbc83c9a00d40a5e26af, attempts: NaN[39m
+[2026-08-08 10:46:56:4656] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bbc83c9a00d40a5e26b0, attempts: NaN[39m
+[2026-08-08 10:47:12:4712] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:47:13:4713] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:47:13:4713] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:47:13:4713] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:47:13:4713] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:47:13:4713] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 10:47:13:4713] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:47:14:4714] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:47:48:4748] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bbfc2028ec7453cb79da, attempts: NaN[39m
+[2026-08-08 10:47:48:4748] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bbfc2028ec7453cb79db, attempts: NaN[39m
+[2026-08-08 10:47:50:4750] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 10:47:52:4752] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bbfecd06168d3edfd6ea, attempts: 1[39m
+[2026-08-08 10:47:52:4752] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 10:48:45:4845] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:48:46:4846] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:48:46:4846] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:48:46:4846] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:48:46:4846] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:48:46:4846] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 10:48:46:4846] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:48:47:4847] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:48:50:4850] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:48:50:4850] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:48:51:4851] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:48:51:4851] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:48:51:4851] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:48:51:4851] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 10:48:51:4851] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:48:52:4852] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:48:52:4852] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc3c28edb33a3d033ff1, attempts: NaN[39m
+[2026-08-08 10:48:52:4852] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc3c28edb33a3d033ff2, attempts: NaN[39m
+[2026-08-08 10:48:54:4854] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 10:48:57:4857] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc3f316bf0018673e7b9, attempts: 1[39m
+[2026-08-08 10:48:57:4857] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 10:49:23:4923] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:49:23:4923] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:49:23:4923] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:49:23:4923] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:49:23:4923] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:49:23:4923] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 10:49:23:4923] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:49:25:4925] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:49:27:4927] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:49:27:4927] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:49:27:4927] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:49:28:4928] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:49:28:4928] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:49:28:4928] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 10:49:28:4928] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:49:27:4927] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc5f9aa21de3fa13ee19, attempts: NaN[39m
+[2026-08-08 10:49:27:4927] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc5f9aa21de3fa13ee1a, attempts: NaN[39m
+[2026-08-08 10:49:29:4929] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 10:49:29:4929] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:49:31:4931] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc6106986eb12cc99045, attempts: 1[39m
+[2026-08-08 10:49:31:4931] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 10:49:40:4940] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc6ccd15d8dd0989bc3c, attempts: NaN[39m
+[2026-08-08 10:49:40:4940] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc6ccd15d8dd0989bc3d, attempts: NaN[39m
+[2026-08-08 10:49:42:4942] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 10:49:44:4944] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc6eee1a5ec071d22fa4, attempts: 1[39m
+[2026-08-08 10:49:44:4944] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 10:50:04:504] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc84687e1a93ec92bb46, attempts: NaN[39m
+[2026-08-08 10:50:04:504] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc84687e1a93ec92bb47, attempts: NaN[39m
+[2026-08-08 10:50:11:5011] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:50:11:5011] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:50:12:5012] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:50:12:5012] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:50:12:5012] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:50:12:5012] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 10:50:12:5012] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:50:13:5013] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:50:15:5015] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 10:50:15:5015] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 10:50:15:5015] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 10:50:15:5015] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 10:50:15:5015] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 10:50:15:5015] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 10:50:15:5015] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 10:50:17:5017] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 10:50:28:5028] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc9cfe652ed41fd5e6c2, attempts: 1[39m
+[2026-08-08 10:50:28:5028] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc9cfe652ed41fd5e6c3, attempts: 1[39m
+[2026-08-08 10:50:29:5029] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 10:50:31:5031] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bc9e587a76a312ff86e9, attempts: 1[39m
+[2026-08-08 10:50:31:5031] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 10:50:51:5051] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 10:50:53:5053] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76bcb4230e188724006068, attempts: 1[39m
+[2026-08-08 10:50:53:5053] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 10:56:46:5646] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76be1646f7b6954dfc242d, attempts: 1[39m
+[2026-08-08 10:56:46:5646] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76be1646f7b6954dfc242e, attempts: 1[39m
+[2026-08-08 10:56:47:5647] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 10:56:49:5649] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76be184ec81b4f13c6f3dd, attempts: 1[39m
+[2026-08-08 10:56:49:5649] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 10:58:06:586] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76be66b7719c71addcc6f7, attempts: 1[39m
+[2026-08-08 10:58:06:586] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76be66b7719c71addcc6f8, attempts: 1[39m
+[2026-08-08 11:01:53:153] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:01:53:153] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:01:53:153] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:01:53:153] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:01:53:153] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:01:53:153] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:01:53:153] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:01:55:155] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:02:31:231] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:02:31:231] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:02:32:232] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:02:32:232] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:02:32:232] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:02:32:232] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:02:32:232] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:02:33:233] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:02:41:241] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:02:42:242] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:02:42:242] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:02:42:242] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:02:42:242] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:02:42:242] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:02:42:242] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:02:43:243] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:03:05:35] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:03:05:35] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:03:05:35] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:03:05:35] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:03:05:35] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:03:05:35] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:03:05:35] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:03:07:37] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:03:34:334] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:03:34:334] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:03:35:335] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:03:35:335] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:03:35:335] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:03:35:335] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:03:35:335] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:03:36:336] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:04:15:415] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:04:15:415] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:04:15:415] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:04:15:415] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:04:15:415] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:04:15:415] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:04:15:415] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:04:16:416] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:04:31:431] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:04:31:431] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:04:31:431] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:04:31:431] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:04:31:431] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:04:31:431] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:04:31:431] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:04:33:433] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:05:10:510] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:05:10:510] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:05:10:510] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:05:10:510] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:05:10:510] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:05:10:510] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:05:10:510] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:05:12:512] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:05:25:525] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c01d28d2fcaeb1cca202, attempts: 1[39m
+[2026-08-08 11:05:26:526] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 11:05:28:528] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c01f36b433149ae659ac, attempts: 1[39m
+[2026-08-08 11:05:28:528] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 11:06:30:630] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:06:30:630] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:06:31:631] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:06:31:631] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:06:31:631] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:06:31:631] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:06:31:631] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:06:32:632] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:06:44:644] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:06:44:644] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:06:44:644] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:06:44:644] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:06:44:644] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:06:44:644] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:06:44:644] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:06:46:646] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:07:01:71] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c07da0482aec05dfefc8, attempts: 1[39m
+[2026-08-08 11:07:03:73] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 11:07:04:74] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c07ff58b93a8c9202c34, attempts: 1[39m
+[2026-08-08 11:07:04:74] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 11:08:07:87] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:08:08:88] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:08:08:88] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:08:08:88] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:08:08:88] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:08:08:88] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:08:08:88] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:08:09:89] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:08:23:823] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:08:23:823] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:08:23:823] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:08:23:823] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:08:23:823] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:08:23:823] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:08:23:823] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:08:25:825] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:08:39:839] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c0df548523bdf52ba576, attempts: 1[39m
+[2026-08-08 11:08:41:841] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 11:08:42:842] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c0e1f2a9ed37ba017dc9, attempts: 1[39m
+[2026-08-08 11:08:42:842] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 11:09:17:917] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 11:09:18:918] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c1053858e2a09841cf6f, attempts: 1[39m
+[2026-08-08 11:09:18:918] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 11:09:49:949] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c12588cdc5ef17d7a77b, attempts: 1[39m
+[2026-08-08 11:09:50:950] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 11:09:51:951] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c1263724a37474eeb9eb, attempts: 1[39m
+[2026-08-08 11:09:51:951] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 11:10:35:1035] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:10:35:1035] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:10:35:1035] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:10:35:1035] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:10:35:1035] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:10:35:1035] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:10:35:1035] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:10:37:1037] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:10:52:1052] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c164f137c0838f7767f2, attempts: 1[39m
+[2026-08-08 11:10:53:1053] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 11:10:54:1054] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c1652ba593b57dc4ae21, attempts: 1[39m
+[2026-08-08 11:10:54:1054] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 11:27:45:2745] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:27:45:2745] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:27:46:2746] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:27:46:2746] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:27:46:2746] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:27:46:2746] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:27:46:2746] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:27:47:2747] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:29:22:2922] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:29:22:2922] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:29:22:2922] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:29:22:2922] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:29:22:2922] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:29:22:2922] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:29:22:2922] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:29:24:2924] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:29:26:2926] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:29:26:2926] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:29:27:2927] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:29:27:2927] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:29:27:2927] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:29:27:2927] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:29:27:2927] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:29:28:2928] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:29:32:2932] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 11:29:34:2934] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c5c50da035866abf3cbf, attempts: 1[39m
+[2026-08-08 11:29:34:2934] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 11:29:34:2934] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c5c669821f4597b85053, attempts: 1[39m
+[2026-08-08 11:34:41:3441] [[32minfo[39m]: [32m🚀 Queue initialized: sms[39m
+[2026-08-08 11:34:42:3442] [[32minfo[39m]: [32m[SECURITY] OTP_SENT for user 6a76b96ba43245a0393653d8[39m
+[2026-08-08 11:34:42:3442] [[32minfo[39m]: [32m📥 Processing SMS Job [3] - sendOtpSMS[39m
+[2026-08-08 11:34:44:3444] [[32minfo[39m]: [32m📱 [SMS_SENT] Sent SMS to 9654165886 via AutoBySMS API. Response: {"status":"1","type":"SUCCESS","sms_shoot_id":"luxecarwash1@gmail.com6a76c6fbd318d","message":"Sent Successfully"}[39m
+[2026-08-08 11:34:44:3444] [[32minfo[39m]: [32m✅ SMS Job [3] sendOtpSMS completed successfully[39m
+[2026-08-08 11:36:38:3638] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:36:38:3638] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:36:38:3638] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:36:38:3638] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:36:38:3638] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:36:38:3638] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:36:38:3638] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:36:40:3640] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:36:41:3641] [[32minfo[39m]: [32m🚀 Queue initialized: sms[39m
+[2026-08-08 11:36:41:3641] [[32minfo[39m]: [32m[SECURITY] OTP_SENT for user 6a76b96ba43245a0393653d8[39m
+[2026-08-08 11:36:41:3641] [[32minfo[39m]: [32m📥 Processing SMS Job [4] - sendOtpSMS[39m
+[2026-08-08 11:36:43:3643] [[32minfo[39m]: [32m📱 [SMS_SENT] Sent SMS to 9654165886 via AutoBySMS API. Response: {"status":"1","type":"SUCCESS","sms_shoot_id":"luxecarwash1@gmail.com6a76c77333b5c","message":"Sent Successfully"}[39m
+[2026-08-08 11:36:43:3643] [[32minfo[39m]: [32m✅ SMS Job [4] sendOtpSMS completed successfully[39m
+[2026-08-08 11:39:54:3954] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:39:54:3954] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:39:54:3954] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:39:54:3954] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:39:54:3954] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:39:54:3954] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:39:54:3954] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:39:56:3956] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:40:01:401] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 11:40:03:403] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c83adc6b229e5ccfa0f5, attempts: 1[39m
+[2026-08-08 11:40:03:403] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 11:40:03:403] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c83b0d0ae5fe53730342, attempts: 1[39m
+[2026-08-08 11:40:17:4017] [[32minfo[39m]: [32m🚀 Queue initialized: sms[39m
+[2026-08-08 11:40:18:4018] [[32minfo[39m]: [32m[SECURITY] OTP_SENT for user 6a76b96ba43245a0393653d8[39m
+[2026-08-08 11:40:18:4018] [[32minfo[39m]: [32m📥 Processing SMS Job [5] - sendOtpSMS[39m
+[2026-08-08 11:40:18:4018] [[32minfo[39m]: [32m📱 [SMS_REQUEST] Dispatching SMS to 9654165886 via AutoBySMS[39m
+[2026-08-08 11:40:19:4019] [[32minfo[39m]: [32m📱 [SMS_RESPONSE] Response from AutoBySMS for 9654165886: {"status":"1","type":"SUCCESS","sms_shoot_id":"luxecarwash1@gmail.com6a76c84b7829e","message":"Sent Successfully"}[39m
+[2026-08-08 11:40:19:4019] [[32minfo[39m]: [32m✅ SMS Job [5] sendOtpSMS completed successfully[39m
+[2026-08-08 11:42:03:423] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 11:42:04:424] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c8b337220d83abb1e140, attempts: 1[39m
+[2026-08-08 11:42:05:425] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 11:42:11:4211] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76c8bb5bfeed50033c293a, attempts: 1[39m
+[2026-08-08 11:42:32:4232] [[32minfo[39m]: [32m[SECURITY] OTP_SENT for user 6a76b96ba43245a0393653d8[39m
+[2026-08-08 11:42:32:4232] [[32minfo[39m]: [32m📥 Processing SMS Job [6] - sendOtpSMS[39m
+[2026-08-08 11:42:32:4232] [[32minfo[39m]: [32m📱 [SMS_REQUEST] Dispatching SMS to 9654165886 via AutoBySMS[39m
+[2026-08-08 11:42:33:4233] [[32minfo[39m]: [32m📱 [SMS_RESPONSE] Response from AutoBySMS for 9654165886: {"status":"1","type":"SUCCESS","sms_shoot_id":"luxecarwash1@gmail.com6a76c8d18a845","message":"Sent Successfully"}[39m
+[2026-08-08 11:42:33:4233] [[32minfo[39m]: [32m✅ SMS Job [6] sendOtpSMS completed successfully[39m
+[2026-08-08 11:42:53:4253] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76b96ba43245a0393653d8, attempts: 1[39m
+[2026-08-08 11:43:06:436] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-08 11:43:06:436] [[32minfo[39m]: [32m🛑 Express server stopped.[39m
+[2026-08-08 11:46:58:4658] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:46:58:4658] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:46:58:4658] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:46:58:4658] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:46:58:4658] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:46:58:4658] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:46:58:4658] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:47:00:470] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:47:25:4725] [[32minfo[39m]: [32m🚀 Queue initialized: sms[39m
+[2026-08-08 11:47:26:4726] [[32minfo[39m]: [32m[SECURITY] OTP_SENT for user 6a76b96ba43245a0393653d8[39m
+[2026-08-08 11:47:26:4726] [[32minfo[39m]: [32m📥 Processing SMS Job [7] - sendOtpSMS[39m
+[2026-08-08 11:47:26:4726] [[32minfo[39m]: [32m📱 [SMS_REQUEST] Dispatching SMS to 9654165886 via AutoBySMS[39m
+[2026-08-08 11:47:27:4727] [[32minfo[39m]: [32m📱 [SMS_RESPONSE] Response from AutoBySMS for 9654165886: {"status":"1","type":"SUCCESS","sms_shoot_id":"luxecarwash1@gmail.com6a76c9f775ac8","message":"Sent Successfully"}[39m
+[2026-08-08 11:47:27:4727] [[32minfo[39m]: [32m✅ SMS Job [7] sendOtpSMS completed successfully[39m
+[2026-08-08 11:58:44:5844] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 11:58:44:5844] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 11:58:44:5844] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 11:58:44:5844] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 11:58:44:5844] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 11:58:44:5844] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 11:58:44:5844] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 11:58:45:5845] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 11:58:48:5848] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 11:58:50:5850] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76cca1b36266c8a0e27235, attempts: 1[39m
+[2026-08-08 11:58:50:5850] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 11:58:51:5851] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76cca35aaa9d15a1778261, attempts: 1[39m
+[2026-08-08 11:59:54:5954] [[32minfo[39m]: [32m🚀 Queue initialized: sms[39m
+[2026-08-08 11:59:54:5954] [[32minfo[39m]: [32m[SECURITY] OTP_SENT for user 6a76b96ba43245a0393653d8[39m
+[2026-08-08 11:59:55:5955] [[32minfo[39m]: [32m📥 Processing SMS Job [8] - sendOtpSMS[39m
+[2026-08-08 11:59:55:5955] [[32minfo[39m]: [32m📱 [SMS_REQUEST] Dispatching SMS to 9654165886 via AutoBySMS[39m
+[2026-08-08 11:59:56:5956] [[32minfo[39m]: [32m📱 [SMS_RESPONSE] Response from AutoBySMS for 9654165886: {"status":"1","type":"SUCCESS","sms_shoot_id":"luxecarwash1@gmail.com6a76cce4410f7","message":"Sent Successfully"}[39m
+[2026-08-08 11:59:56:5956] [[32minfo[39m]: [32m✅ SMS Job [8] sendOtpSMS completed successfully[39m
+[2026-08-08 12:00:06:06] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76b96ba43245a0393653d8, attempts: 1[39m
+[2026-08-08 12:01:34:134] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 12:01:34:134] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 12:01:34:134] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 12:01:34:134] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 12:01:34:134] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 12:01:34:134] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 12:01:34:134] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 12:01:35:135] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 12:01:40:140] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 12:01:40:140] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 12:01:41:141] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 12:01:41:141] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 12:01:41:141] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 12:01:41:141] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 12:01:41:141] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 12:01:42:142] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 12:01:46:146] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 12:01:46:146] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 12:01:46:146] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 12:01:46:146] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 12:01:46:146] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 12:01:46:146] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 12:01:46:146] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 12:01:48:148] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 12:01:52:152] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 12:01:54:154] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76cd58eeaafad52a97f4b7, attempts: 1[39m
+[2026-08-08 12:01:54:154] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 12:01:55:155] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76cd5b6da997e3bd109486, attempts: 1[39m
+[2026-08-08 12:02:00:20] [[32minfo[39m]: [32m🚀 Queue initialized: sms[39m
+[2026-08-08 12:02:00:20] [[32minfo[39m]: [32m[SECURITY] OTP_SENT for user 6a76b96ba43245a0393653d8[39m
+[2026-08-08 12:02:00:20] [[32minfo[39m]: [32m📥 Processing SMS Job [9] - sendOtpSMS[39m
+[2026-08-08 12:02:00:20] [[32minfo[39m]: [32m📱 [SMS_REQUEST] Dispatching SMS to 9654165886 via AutoBySMS[39m
+[2026-08-08 12:02:02:22] [[32minfo[39m]: [32m📱 [SMS_RESPONSE] Response from AutoBySMS for 9654165886: {"status":"1","type":"SUCCESS","sms_shoot_id":"luxecarwash1@gmail.com6a76cd622be07","message":"Sent Successfully"}[39m
+[2026-08-08 12:02:02:22] [[32minfo[39m]: [32m✅ SMS Job [9] sendOtpSMS completed successfully[39m
+[2026-08-08 12:09:54:954] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 12:09:54:954] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 12:09:54:954] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 12:09:54:954] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 12:09:54:954] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 12:09:54:954] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 12:09:54:954] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 12:09:56:956] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 12:10:37:1037] [[32minfo[39m]: [32m🚀 Queue initialized: sms[39m
+[2026-08-08 12:10:38:1038] [[32minfo[39m]: [32m[SECURITY] OTP_SENT for user 6a76b96ba43245a0393653d8[39m
+[2026-08-08 12:10:38:1038] [[32minfo[39m]: [32m📥 Processing SMS Job [10] - sendOtpSMS[39m
+[2026-08-08 12:10:38:1038] [[32minfo[39m]: [32m📱 [SMS_REQUEST] Dispatching SMS to 9654165886 via AutoBySMS[39m
+[2026-08-08 12:10:40:1040] [[32minfo[39m]: [32m📱 [SMS_RESPONSE] Response from AutoBySMS for 9654165886: {"status":"1","type":"SUCCESS","sms_shoot_id":"luxecarwash1@gmail.com6a76cf681c1da","message":"Sent Successfully"}[39m
+[2026-08-08 12:10:40:1040] [[32minfo[39m]: [32m✅ SMS Job [10] sendOtpSMS completed successfully[39m
+[2026-08-08 12:10:51:1051] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76b96ba43245a0393653d8, attempts: 1[39m
+[2026-08-08 12:10:55:1055] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76b96ba43245a0393653d8, attempts: 2[39m
+[2026-08-08 12:11:01:111] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76b96ba43245a0393653d8, attempts: 3[39m
+[2026-08-08 12:12:23:1223] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 12:12:23:1223] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 12:12:23:1223] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 12:12:23:1223] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 12:12:24:1224] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 12:12:24:1224] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 12:12:24:1224] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 12:12:25:1225] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 12:12:26:1226] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 12:12:27:1227] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 12:12:27:1227] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 12:12:27:1227] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 12:12:27:1227] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 12:12:27:1227] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 12:12:27:1227] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 12:12:28:1228] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 12:12:47:1247] [[32minfo[39m]: [32m🚀 Queue initialized: sms[39m
+[2026-08-08 12:12:47:1247] [[32minfo[39m]: [32m[SECURITY] OTP_SENT for user 6a76b96ba43245a0393653d8[39m
+[2026-08-08 12:12:47:1247] [[32minfo[39m]: [32m📥 Processing SMS Job [11] - sendOtpSMS[39m
+[2026-08-08 12:12:47:1247] [[32minfo[39m]: [32m📱 [SMS_REQUEST] Dispatching SMS to 9654165886 via AutoBySMS[39m
+[2026-08-08 12:12:48:1248] [[32minfo[39m]: [32m📱 [SMS_RESPONSE] Response from AutoBySMS for 9654165886: {"status":"1","type":"SUCCESS","sms_shoot_id":"luxecarwash1@gmail.com6a76cfe8d2c19","message":"Sent Successfully"}[39m
+[2026-08-08 12:12:49:1249] [[32minfo[39m]: [32m✅ SMS Job [11] sendOtpSMS completed successfully[39m
+[2026-08-08 12:13:16:1316] [[32minfo[39m]: [32m[SECURITY] OTP_VERIFIED for user 6a76b96ba43245a0393653d8[39m
+[2026-08-08 12:14:37:1437] [[32minfo[39m]: [32m[SECURITY] PASSWORD_ACTIVATION_COMPLETED for user 6a76b96ba43245a0393653d8[39m
+[2026-08-08 12:15:19:1519] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 12:15:19:1519] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 12:15:19:1519] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 12:15:19:1519] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 12:15:19:1519] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 12:15:19:1519] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 12:15:19:1519] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 12:15:21:1521] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 12:40:13:4013] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 12:40:13:4013] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 12:40:13:4013] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 12:40:13:4013] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 12:40:13:4013] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 12:40:13:4013] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 12:40:13:4013] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 12:40:15:4015] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 12:40:19:4019] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 12:40:19:4019] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 12:40:19:4019] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 12:40:19:4019] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 12:40:19:4019] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 12:40:19:4019] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 12:40:19:4019] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 12:40:20:4020] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 12:40:23:4023] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 12:40:23:4023] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 12:40:23:4023] [[32minfo[39m]: [32mStarting permission synchronization...[39m
+[2026-08-08 12:40:23:4023] [[32minfo[39m]: [32mPermissions Sync Summary:[39m
+[32m   - Canonical Registry Count: 91[39m
+[32m   - Created: 0[39m
+[32m   - Updated metadata: 0[39m
+[32m   - Unchanged: 91[39m
+[2026-08-08 12:40:23:4023] [[32minfo[39m]: [32mOwner role updated with exactly 91 canonical permissions.[39m
+[2026-08-08 12:40:23:4023] [[32minfo[39m]: [32mManager role updated with 11 permissions.[39m
+[2026-08-08 12:40:23:4023] [[32minfo[39m]: [32mOwner & Manager role permissions cache invalidated.[39m
+[2026-08-08 12:40:23:4023] [[32minfo[39m]: [32mPermissions sync completed successfully![39m
+[2026-08-08 12:40:23:4023] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 12:40:29:4029] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-08 12:40:29:4029] [[33mwarn[39m]: [33mManager role not found in database. Creating a new one...[39m
+[2026-08-08 12:40:31:4031] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76d666062422b4ab2019ea, attempts: 1[39m
+[2026-08-08 12:40:31:4031] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-08 12:40:31:4031] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a76d667eb0017db7ae997e0, attempts: 1[39m
+[2026-08-08 15:30:55:3055] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 15:30:55:3055] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 15:30:55:3055] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 15:30:55:3055] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 15:30:55:3055] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 15:30:55:3055] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 15:30:55:3055] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 15:30:57:3057] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-08 15:37:02:372] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-08 15:37:02:372] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-08 15:37:02:372] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-08 15:37:02:372] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-08 15:37:02:372] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-08 15:37:03:373] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-08 15:37:03:373] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-08 15:37:04:374] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m

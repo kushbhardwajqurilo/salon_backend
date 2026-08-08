@@ -79,3 +79,139 @@
 [2026-08-05 15:19:41:1941] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
 [2026-08-05 15:26:01:261] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
 [2026-08-05 16:46:46:4646] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-07 10:54:12:5412] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-07 10:58:14:5814] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-07 11:00:52:052] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-07 11:01:29:129] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-07 11:03:07:37] [[31merror[39m]: [31mERROR 💥 This MongoDB deployment does not support retryable writes. Please add retryWrites=false to your connection string.[39m
+[2026-08-07 15:05:02:52] [[31merror[39m]: [31m❌ MongoDB connection error: User: Index build failed: 38db82c5-da23-46ca-afc1-53891f67ceb2: Collection saloon_erp_test.users ( 9e61c53a-29f4-44ed-9712-c1d5cae2e699 ) :: caused by :: E11000 duplicate key error collection: saloon_erp_test.users index: organizationId_1_username_1 dup key: { organizationId: ObjectId('6a674eeb35f4849a26cab307'), username: null }[39m
+[2026-08-07 15:25:23:2523] [[31merror[39m]: [31m❌ MongoDB connection error: User: Error in specification { unique: true, partialFilterExpression: { username: { $exists: true, $ne: null } }, name: "organizationId_1_username_1", key: { organizationId: 1, username: 1 }, v: 2 } :: caused by :: Expression not supported in partial index: $not[39m
+[31m    username $eq null[39m
+[31m[39m
+[2026-08-07 15:25:45:2545] [[31merror[39m]: [31m❌ MongoDB connection error: Staff: Error in specification { unique: true, partialFilterExpression: { isDeleted: false, userId: { $exists: true, $ne: null } }, name: "organizationId_1_userId_1", key: { organizationId: 1, userId: 1 }, v: 2 } :: caused by :: Expression not supported in partial index: $not[39m
+[31m    userId $eq null[39m
+[31m[39m
+[2026-08-07 15:38:06:386] [[31merror[39m]: [31m❌ MongoDB connection error: Staff: Error in specification { unique: true, partialFilterExpression: { isDeleted: false, userId: { $exists: true, $ne: null } }, name: "organizationId_1_userId_1", key: { organizationId: 1, userId: 1 }, v: 2 } :: caused by :: Expression not supported in partial index: $not[39m
+[31m    userId $eq null[39m
+[31m[39m
+[2026-08-07 18:45:49:4549] [[31merror[39m]: [31m❌ [SMTP_VERIFY_FAILED] Could not connect to SMTP server: connect ETIMEDOUT 142.251.221.197:587[39m
+[2026-08-07 18:50:12:5012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:12:5012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:12:5012] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:12:5012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:12:5012] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:13:5013] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:13:5013] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:13:5013] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:13:5013] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:13:5013] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:13:5013] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:14:5014] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:14:5014] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:14:5014] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:14:5014] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:15:5015] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:15:5015] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:15:5015] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:16:5016] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:16:5016] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:16:5016] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:17:5017] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:17:5017] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:18:5018] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:18:5018] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:19:5019] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:19:5019] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:20:5020] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:21:5021] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:22:5022] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:22:5022] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:23:5023] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:23:5023] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:24:5024] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:24:5024] [[31merror[39m]: [31m🔌 Redis connection error: Reached the max retries per request limit (which is 20). Refer to "maxRetriesPerRequest" option for details.[39m
+[2026-08-07 18:50:25:5025] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:25:5025] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:27:5027] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:28:5028] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:50:28:5028] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:50:29:5029] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:51:00:510] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:51:00:510] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:51:00:510] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:51:00:510] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:51:00:510] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:51:01:511] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:51:01:511] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:51:01:511] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:51:02:512] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:51:02:512] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:21:5421] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:22:5422] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:22:5422] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:54:22:5422] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:54:23:5423] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:59:25:5925] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:25:5925] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:25:5925] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:26:5926] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:59:26:5926] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:59:27:5927] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:59:27:5927] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:27:5927] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:59:28:5928] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 18:59:28:5928] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:29:5929] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 18:59:29:5929] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:01:01] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:01:01] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:01:01] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:02:02] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:02:02] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:11:011] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:11:011] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:11:011] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:11:011] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-07 19:00:12:012] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m❌ Failed to connect to Redis at server startup: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m❌ Failed to start notification workers: connection is not defined[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:16:2616] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:17:2617] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:17:2617] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:18:2618] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:18:2618] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:18:2618] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:18:2618] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:19:2619] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:19:2619] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:19:2619] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:19:2619] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:20:2620] [[31merror[39m]: [31m🔌 Redis connection error: ERR max number of clients reached[39m
+[2026-08-08 10:26:20:2620] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:26:20:2620] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-08 10:29:23:2923] [[31merror[39m]: [31m❌ Failed to start notification workers: connection is not defined[39m
+[2026-08-08 10:31:31:3131] [[31merror[39m]: [31m❌ Failed to start notification workers: connection is not defined[39m

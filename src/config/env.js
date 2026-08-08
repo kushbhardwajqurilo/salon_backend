@@ -25,6 +25,11 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().optional().default("Saloon ERP <no-reply@saloonerp.com>"),
   SMS_API_KEY: z.string().optional(),
   SMS_SENDER_ID: z.string().optional().default("SALOON"),
+  AUTOBYSMS_API_KEY: z.string().optional(),
+  AUTOBYSMS_SENDER_ID: z.string().optional().default("SALOON"),
+  AUTOBYSMS_TEMPLATE_ID: z.string().optional(),
+  AUTOBYSMS_ROUTE_ID: z.string().optional().default("9"),
+  AUTOBYSMS_CAMPAIGN: z.string().optional().default("0"),
 });
 
 const parsed = envSchema.safeParse(process.env);
