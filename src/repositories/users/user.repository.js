@@ -54,10 +54,13 @@ export class UserRepository extends BaseRepository {
     return query.exec();
   }
 
-  async find(filter = {}, options = {}, organizationId = null) {
+  async find(filter = {}, options = {}, organizationId = null, populate = []) {
     const queryFilter = { ...filter };
     if (organizationId) {
       queryFilter.organizationId = organizationId;
+    }
+    if (populate && populate.length > 0) {
+      return super.find(queryFilter, options, populate);
     }
     return super.find(queryFilter, options);
   }

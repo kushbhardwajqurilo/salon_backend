@@ -26,7 +26,7 @@ export const listUsers = asyncHandler(async (req, res) => {
     searchFields: ["name", "username", "email", "phone"],
   };
 
-  const result = await userRepo.find({}, options, organizationId);
+  const result = await userRepo.find({}, options, organizationId, ["role"]);
   const serializedUsers = result.data.map((user) => toUserResponseDTO(user));
 
   return sendResponse(

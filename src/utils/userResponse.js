@@ -13,7 +13,6 @@ export const toUserResponseDTO = (user) => {
     typeof user.toObject === "function"
       ? user.toObject({ depopulate: false })
       : user;
-
   const dto = {
     id: rawUser._id ? rawUser._id.toString() : rawUser.id,
     username: rawUser.username,
@@ -38,12 +37,15 @@ export const toUserResponseDTO = (user) => {
   };
 
   // Safe nested role serialization
-  if (rawUser.role && typeof rawUser.role === "object") {
-    dto.role = {
-      id: rawUser.role._id ? rawUser.role._id.toString() : rawUser.role.id,
-      name: rawUser.role.name,
-      description: rawUser.role.description,
-    };
+  if (rawUser.role) {
+    if (typeof rawUser.role === "object" && rawUser.role !== null) {
+      dto.role = {
+        id: rawUser.role._id ? rawUser.role._id.toString() : (rawUser.role.id || String(rawUser.role)),
+        name: rawUser.role.name || "",
+      };
+    } else {
+      dto.role = rawUser.role.toString();
+    }
   }
 
   return dto;
