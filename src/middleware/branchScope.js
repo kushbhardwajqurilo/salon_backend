@@ -8,6 +8,7 @@ import mongoose from "mongoose";
  * Obtains organization ID strictly from req.user context.
  */
 export const requireOrganizationScope = asyncHandler(async (req, res, next) => {
+  console.log("organization scope check", req.user)
   if (!req.user) {
     throw new AppError("User authentication required", 401);
   }
@@ -22,7 +23,7 @@ export const requireOrganizationScope = asyncHandler(async (req, res, next) => {
  */
 export const requireBranchScope = asyncHandler(async (req, res, next) => {
   const branchId = req.headers["x-branch-id"] || req.headers["X-Branch-Id"];
-  
+
   if (!req.user) {
     throw new AppError("User authentication required", 401);
   }

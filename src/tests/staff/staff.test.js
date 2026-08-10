@@ -105,6 +105,25 @@ describe("Staff Backend Module Unit & Lifecycle Tests", () => {
   });
 
   describe("A. Staff Validation & Creation", () => {
+    it("should enforce active branch visibility on getStaffById", async () => {
+      const mockStaff = { _id: "staff-1", organizationId: "org-1" };
+      jest.spyOn(staffService.staffRepo, "findById").mockResolvedValue(mockStaff);
+      jest.spyOn(staffService.staffBranchRepo, "findOne").mockResolvedValue(null);
+
+      await expect(
+        staffService.getStaffById("staff-1", "org-1", "branch-99")
+      ).rejects.toThrow("Access denied. Staff is not visible within your active branch scope.");
+    });
+
+    it("should allow getStaffById when active branch assignment exists", async () => {
+      const mockStaff = { _id: "staff-1", organizationId: "org-1" };
+      jest.spyOn(staffService.staffRepo, "findById").mockResolvedValue(mockStaff);
+      jest.spyOn(staffService.staffBranchRepo, "findOne").mockResolvedValue({ _id: "assignment-1" });
+
+      const result = await staffService.getStaffById("staff-1", "org-1", "branch-1");
+      expect(result).toEqual(mockStaff);
+    });
+
     it("should successfully generate a sequential STF-XXXX code and create Staff", async () => {
       Staff.findOne.mockReturnValue(createQueryMock(null));
       const mockStaff = {

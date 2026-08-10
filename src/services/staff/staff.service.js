@@ -109,11 +109,22 @@ export class StaffService {
     }
   }
 
-  async getStaffById(id, organizationId) {
+  async getStaffById(id, organizationId, activeBranchId = null) {
     const staff = await this.staffRepo.findById(id, organizationId);
     if (!staff) {
       throw new AppError("Staff not found", 404);
     }
+
+    if (activeBranchId) {
+      const isAssigned = await this.staffBranchRepo.findOne(
+        { staffId: id, branchId: activeBranchId, isActive: true },
+        organizationId
+      );
+      if (!isAssigned) {
+        throw new AppError("Access denied. Staff is not visible within your active branch scope.", 403);
+      }
+    }
+
     return staff;
   }
 

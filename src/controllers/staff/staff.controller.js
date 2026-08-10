@@ -1,8 +1,60 @@
+import mongoose from "mongoose";
 import { StaffService } from "../../services/staff/staff.service.js";
 import { sendResponse } from "../../utils/response.js";
-import { asyncHandler } from "../../utils/errors.js";
+import { asyncHandler, AppError } from "../../utils/errors.js";
 
 const staffService = new StaffService();
+
+/**
+ * Helper to retrieve and validate active branch context from request headers.
+ */
+const getActiveBranchContext = async (req) => {
+  const activeBranchId = req.headers
+    ? (req.headers["x-branch-id"] || req.headers["X-Branch-Id"] || req.branchId)
+    : req.branchId;
+  const { hasOrgWideAccess, branchAccess, organizationId } = req.user || {};
+
+  // Reject the frontend-only UI sentinel "all"
+  if (activeBranchId === "all") {
+    throw new AppError("Invalid branch ID format.", 400);
+  }
+
+  // Handle case where header is omitted
+  if (!activeBranchId) {
+    if (!hasOrgWideAccess) {
+      throw new AppError("X-Branch-Id header is required for this request.", 400);
+    }
+    return null; // Organization-wide scope
+  }
+
+  // Validate format
+  if (!mongoose.Types.ObjectId.isValid(activeBranchId)) {
+    throw new AppError("Invalid branch ID format.", 400);
+  }
+
+  // Validate active status and tenant ownership
+  const branch = await mongoose.model("Branch").findOne({
+    _id: activeBranchId,
+    organizationId,
+    isActive: true,
+  });
+
+  if (!branch) {
+    throw new AppError("Resource not found", 404);
+  }
+
+  // Validate user branch authorization
+  if (!hasOrgWideAccess) {
+    const isAuthorized = (branchAccess || []).some(
+      (b) => b.branchId.toString() === activeBranchId.toString() && b.isActive
+    );
+    if (!isAuthorized) {
+      throw new AppError("Access denied. You do not have access to this branch.", 403);
+    }
+  }
+
+  return activeBranchId;
+};
 
 export const createStaff = asyncHandler(async (req, res) => {
   const staff = await staffService.createStaff(req.body, req.organizationId, req.user.id);
@@ -15,7 +67,8 @@ export const listStaff = asyncHandler(async (req, res) => {
 });
 
 export const getStaff = asyncHandler(async (req, res) => {
-  const staff = await staffService.getStaffById(req.params.id, req.organizationId);
+  const activeBranchId = await getActiveBranchContext(req);
+  const staff = await staffService.getStaffById(req.params.id, req.organizationId, activeBranchId);
   return sendResponse(res, 200, "Staff retrieved successfully", staff);
 });
 
