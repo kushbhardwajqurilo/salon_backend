@@ -592,8 +592,8 @@ Expected response:
 
 | Role    | Email                | Password        | Access                     |
 |---------|----------------------|-----------------|----------------------------|
-| Owner   | `owner@parlour.com`  | `xyz`    | Organization-wide          |
-| Manager | `manager@parlour.com`| `xyz`  | Single branch (Koramangala)|
+| Owner   | `xyz@parlour.com`  | `xyz`    | Organization-wide          |
+| Manager | `xyz@parlour.com`| `xyz`  | Single branch (Koramangala)|
 
 ---
 
