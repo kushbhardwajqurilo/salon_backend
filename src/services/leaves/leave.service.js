@@ -7,7 +7,12 @@ import { RoleRepository } from "../../repositories/roles/role.repository.js";
 import { AuditLogService } from "../audit/auditLog.service.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { AppError } from "../../utils/errors.js";
-import { enumerateDates, toDateOnlyStr, toUTCDate, MAX_LEAVE_DAYS } from "../../utils/date.js";
+import {
+  enumerateDates,
+  toDateOnlyStr,
+  toUTCDate,
+  MAX_LEAVE_DAYS,
+} from "../../utils/date.js";
 
 const MANAGE_PERMISSION = "employees.leaves.manage";
 const ACTIVE_STAFF_STATUS = "active";
@@ -38,7 +43,24 @@ const isObjectIdEqual = (left, right) => {
   return left.toString() === right.toString();
 };
 
-const normalizeId = (value) => (value ? value.toString() : null);
+const normalizeId = (value) => {
+  if (!value) {
+    return null;
+  }
+  if (typeof value === "object" && value._id) {
+    return value._id.toString();
+  }
+  return value.toString();
+};
+const normalizeName = (value) => {
+  if (!value) {
+    return null;
+  }
+  if (typeof value === "object" && value.name) {
+    return value.name.toString();
+  }
+  return value.toString();
+};
 
 const normalizeDateTime = (value) => {
   if (!value) {
@@ -49,7 +71,8 @@ const normalizeDateTime = (value) => {
 };
 
 const isVersionConflict = (error) =>
-  error instanceof mongoose.Error.VersionError || error?.name === "VersionError";
+  error instanceof mongoose.Error.VersionError ||
+  error?.name === "VersionError";
 
 const isDuplicateKey = (error) => error?.code === 11000;
 
@@ -83,7 +106,10 @@ export class LeaveService {
 
   async runTransaction(operation) {
     let session = null;
-    if (mongoose.connection.db && typeof mongoose.connection.startSession === "function") {
+    if (
+      mongoose.connection.db &&
+      typeof mongoose.connection.startSession === "function"
+    ) {
       try {
         session = await mongoose.connection.startSession();
         session.startTransaction();
@@ -119,18 +145,33 @@ export class LeaveService {
     while (retries > 0) {
       try {
         return await this.runTransaction(async (session) => {
-          const actorUser = await this.getActorUser(actorId, organizationId, session);
-          const actorPermissions = await this.getActorPermissions(actorUser, session);
+          const actorUser = await this.getActorUser(
+            actorId,
+            organizationId,
+            session,
+          );
+          const actorPermissions = await this.getActorPermissions(
+            actorUser,
+            session,
+          );
           const { staffId, submittedFor } = await this.resolveTargetStaff(
             data.staffId,
             organizationId,
             actorId,
             actorPermissions,
-            session
+            session,
           );
 
-          await this.validateStaffEligibility(staffId, organizationId, branchId, session);
-          const { startDate, endDate, dates } = this.buildDateRange(data.startDate, data.endDate);
+          await this.validateStaffEligibility(
+            staffId,
+            organizationId,
+            branchId,
+            session,
+          );
+          const { startDate, endDate, dates } = this.buildDateRange(
+            data.startDate,
+            data.endDate,
+          );
 
           const overlap = await this.leaveRepo.findOverlapping(
             staffId,
@@ -138,13 +179,19 @@ export class LeaveService {
             endDate,
             organizationId,
             null,
-            session
+            session,
           );
           if (overlap) {
-            throw new AppError("Leave request overlaps with an existing leave", 400);
+            throw new AppError(
+              "Leave request overlaps with an existing leave",
+              400,
+            );
           }
 
-          const leaveCode = await this.generateLeaveCode(organizationId, session);
+          const leaveCode = await this.generateLeaveCode(
+            organizationId,
+            session,
+          );
           const leave = await this.leaveRepo.create(
             {
               branchId,
@@ -161,7 +208,7 @@ export class LeaveService {
             },
             organizationId,
             actorId,
-            session
+            session,
           );
 
           await this.auditLogService.createAuditLog(
@@ -184,16 +231,23 @@ export class LeaveService {
             },
             organizationId,
             actorId,
-            session
+            session,
           );
 
           return this.toLeaveDTO(leave);
         });
       } catch (error) {
         if (isDuplicateKey(error) && isOverlapDuplicate(error)) {
-          throw new AppError("Leave request overlaps with an existing leave", 400);
+          throw new AppError(
+            "Leave request overlaps with an existing leave",
+            400,
+          );
         }
-        if (isDuplicateKey(error) && isLeaveCodeDuplicate(error) && retries > 1) {
+        if (
+          isDuplicateKey(error) &&
+          isLeaveCodeDuplicate(error) &&
+          retries > 1
+        ) {
           retries -= 1;
           continue;
         }
@@ -213,10 +267,15 @@ export class LeaveService {
       queryFilter.branchId = branchId;
     }
 
+    const populate = options.populate || [{ path: "staffId", select: "name" }];
     const result = await this.leaveRepo.find(
       queryFilter,
-      { ...options, select: "-dates -__v -isDeleted -deletedAt -deletedBy" },
-      organizationId
+      {
+        ...options,
+        select: "-dates -__v -isDeleted -deletedAt -deletedBy",
+        populate,
+      },
+      organizationId,
     );
 
     return {
@@ -226,11 +285,12 @@ export class LeaveService {
   }
 
   async getLeaveById(id, organizationId, branchId) {
+    //
     const leave = await this.leaveRepo.findById(
       id,
       organizationId,
-      [],
-      "-dates -__v -isDeleted -deletedAt -deletedBy"
+      ["submittedBy"],
+      "-dates -__v -isDeleted -deletedAt -deletedBy",
     );
     if (!leave) {
       throw new AppError("Leave not found", 404);
@@ -246,7 +306,13 @@ export class LeaveService {
 
     try {
       return await this.runTransaction(async (session) => {
-        const leave = await this.leaveRepo.findById(id, organizationId, [], null, session);
+        const leave = await this.leaveRepo.findById(
+          id,
+          organizationId,
+          [],
+          null,
+          session,
+        );
         if (!leave) {
           throw new AppError("Leave not found", 404);
         }
@@ -254,13 +320,31 @@ export class LeaveService {
         this.assertLeaveBranchVisibility(leave, branchId);
         this.assertPendingStatus(leave, "Only pending leaves can be updated");
 
-        const actorUser = await this.getActorUser(actorId, organizationId, session);
-        const actorPermissions = await this.getActorPermissions(actorUser, session);
-        if (!isObjectIdEqual(leave.submittedBy, actorId) && !actorPermissions.includes(MANAGE_PERMISSION)) {
-          throw new AppError("Access denied. You do not have the required permissions.", 403);
+        const actorUser = await this.getActorUser(
+          actorId,
+          organizationId,
+          session,
+        );
+        const actorPermissions = await this.getActorPermissions(
+          actorUser,
+          session,
+        );
+        if (
+          !isObjectIdEqual(leave.submittedBy, actorId) &&
+          !actorPermissions.includes(MANAGE_PERMISSION)
+        ) {
+          throw new AppError(
+            "Access denied. You do not have the required permissions.",
+            403,
+          );
         }
 
-        await this.validateStaffEligibility(leave.staffId, organizationId, leave.branchId, session);
+        await this.validateStaffEligibility(
+          leave.staffId,
+          organizationId,
+          leave.branchId,
+          session,
+        );
 
         const merged = {
           leaveType: data.leaveType ?? leave.leaveType,
@@ -268,7 +352,10 @@ export class LeaveService {
           endDate: data.endDate ?? toDateOnlyStr(leave.endDate),
           reason: data.reason ?? leave.reason,
         };
-        const { startDate, endDate, dates } = this.buildDateRange(merged.startDate, merged.endDate);
+        const { startDate, endDate, dates } = this.buildDateRange(
+          merged.startDate,
+          merged.endDate,
+        );
 
         const overlap = await this.leaveRepo.findOverlapping(
           leave.staffId,
@@ -276,10 +363,13 @@ export class LeaveService {
           endDate,
           organizationId,
           leave._id,
-          session
+          session,
         );
         if (overlap) {
-          throw new AppError("Leave request overlaps with an existing leave", 400);
+          throw new AppError(
+            "Leave request overlaps with an existing leave",
+            400,
+          );
         }
 
         const updatedFields = [];
@@ -300,7 +390,7 @@ export class LeaveService {
           },
           organizationId,
           actorId,
-          session
+          session,
         );
 
         await this.auditLogService.createAuditLog(
@@ -318,14 +408,17 @@ export class LeaveService {
           },
           organizationId,
           actorId,
-          session
+          session,
         );
 
         return this.toLeaveDTO(updatedLeave);
       });
     } catch (error) {
       if (isDuplicateKey(error) && isOverlapDuplicate(error)) {
-        throw new AppError("Leave request overlaps with an existing leave", 400);
+        throw new AppError(
+          "Leave request overlaps with an existing leave",
+          400,
+        );
       }
       if (isVersionConflict(error)) {
         throw new AppError("Concurrent leave update conflict", 409);
@@ -337,18 +430,34 @@ export class LeaveService {
   async approveLeave(id, reviewNote, organizationId, actorId) {
     try {
       return await this.runTransaction(async (session) => {
-        const leave = await this.leaveRepo.findById(id, organizationId, [], null, session);
+        const leave = await this.leaveRepo.findById(
+          id,
+          organizationId,
+          [],
+          null,
+          session,
+        );
         if (!leave) {
           throw new AppError("Leave not found", 404);
         }
 
-        const actorUser = await this.getActorUser(actorId, organizationId, session);
-        const actorPermissions = await this.getActorPermissions(actorUser, session);
+        const actorUser = await this.getActorUser(
+          actorId,
+          organizationId,
+          session,
+        );
+        const actorPermissions = await this.getActorPermissions(
+          actorUser,
+          session,
+        );
         this.assertManagePermission(actorPermissions);
         this.assertPendingStatus(leave, "Only pending leaves can be approved");
 
         if (isObjectIdEqual(leave.submittedBy, actorId)) {
-          throw new AppError("You cannot approve/reject your own leave request", 403);
+          throw new AppError(
+            "You cannot approve/reject your own leave request",
+            403,
+          );
         }
 
         const now = new Date();
@@ -362,7 +471,7 @@ export class LeaveService {
           },
           organizationId,
           actorId,
-          session
+          session,
         );
 
         await this.auditLogService.createAuditLog(
@@ -381,7 +490,7 @@ export class LeaveService {
           },
           organizationId,
           actorId,
-          session
+          session,
         );
 
         return this.toLeaveDTO(updatedLeave);
@@ -397,18 +506,34 @@ export class LeaveService {
   async rejectLeave(id, reviewNote, organizationId, actorId) {
     try {
       return await this.runTransaction(async (session) => {
-        const leave = await this.leaveRepo.findById(id, organizationId, [], null, session);
+        const leave = await this.leaveRepo.findById(
+          id,
+          organizationId,
+          [],
+          null,
+          session,
+        );
         if (!leave) {
           throw new AppError("Leave not found", 404);
         }
 
-        const actorUser = await this.getActorUser(actorId, organizationId, session);
-        const actorPermissions = await this.getActorPermissions(actorUser, session);
+        const actorUser = await this.getActorUser(
+          actorId,
+          organizationId,
+          session,
+        );
+        const actorPermissions = await this.getActorPermissions(
+          actorUser,
+          session,
+        );
         this.assertManagePermission(actorPermissions);
         this.assertPendingStatus(leave, "Only pending leaves can be rejected");
 
         if (isObjectIdEqual(leave.submittedBy, actorId)) {
-          throw new AppError("You cannot approve/reject your own leave request", 403);
+          throw new AppError(
+            "You cannot approve/reject your own leave request",
+            403,
+          );
         }
         if (!reviewNote?.trim()) {
           throw new AppError("Review note is required", 400);
@@ -425,7 +550,7 @@ export class LeaveService {
           },
           organizationId,
           actorId,
-          session
+          session,
         );
 
         await this.auditLogService.createAuditLog(
@@ -444,7 +569,7 @@ export class LeaveService {
           },
           organizationId,
           actorId,
-          session
+          session,
         );
 
         return this.toLeaveDTO(updatedLeave);
@@ -460,13 +585,26 @@ export class LeaveService {
   async cancelLeave(id, cancelReason, organizationId, actorId) {
     try {
       return await this.runTransaction(async (session) => {
-        const leave = await this.leaveRepo.findById(id, organizationId, [], null, session);
+        const leave = await this.leaveRepo.findById(
+          id,
+          organizationId,
+          [],
+          null,
+          session,
+        );
         if (!leave) {
           throw new AppError("Leave not found", 404);
         }
 
-        const actorUser = await this.getActorUser(actorId, organizationId, session);
-        const actorPermissions = await this.getActorPermissions(actorUser, session);
+        const actorUser = await this.getActorUser(
+          actorId,
+          organizationId,
+          session,
+        );
+        const actorPermissions = await this.getActorPermissions(
+          actorUser,
+          session,
+        );
         const canManage = actorPermissions.includes(MANAGE_PERMISSION);
 
         if (!cancelReason?.trim()) {
@@ -475,11 +613,17 @@ export class LeaveService {
 
         if (leave.status === "pending") {
           if (!isObjectIdEqual(leave.submittedBy, actorId) && !canManage) {
-            throw new AppError("Access denied. You do not have the required permissions.", 403);
+            throw new AppError(
+              "Access denied. You do not have the required permissions.",
+              403,
+            );
           }
         } else if (leave.status === "approved") {
           if (!canManage) {
-            throw new AppError("Access denied. You do not have the required permissions.", 403);
+            throw new AppError(
+              "Access denied. You do not have the required permissions.",
+              403,
+            );
           }
         } else {
           throw new AppError("Invalid leave status transition", 400);
@@ -497,7 +641,7 @@ export class LeaveService {
           },
           organizationId,
           actorId,
-          session
+          session,
         );
 
         await this.auditLogService.createAuditLog(
@@ -516,7 +660,7 @@ export class LeaveService {
           },
           organizationId,
           actorId,
-          session
+          session,
         );
 
         return this.toLeaveDTO(updatedLeave);
@@ -530,7 +674,13 @@ export class LeaveService {
   }
 
   async getActorUser(actorId, organizationId, session) {
-    const actorUser = await this.userRepo.findById(actorId, organizationId, [], null, session);
+    const actorUser = await this.userRepo.findById(
+      actorId,
+      organizationId,
+      [],
+      null,
+      session,
+    );
     if (!actorUser) {
       throw new AppError("Access denied. Actor user not found.", 403);
     }
@@ -539,40 +689,61 @@ export class LeaveService {
 
   async getActorPermissions(actorUser, session) {
     const roleId = actorUser.role?._id || actorUser.role;
-    const role = await this.roleRepo.findOne({ _id: roleId }, ["permissions"], null, session);
+    const role = await this.roleRepo.findOne(
+      { _id: roleId },
+      ["permissions"],
+      null,
+      session,
+    );
     if (!role) {
       throw new AppError("Access denied. Role not found.", 403);
     }
     return (role.permissions || []).map((permission) => permission.name);
   }
 
-  async resolveTargetStaff(inputStaffId, organizationId, actorId, actorPermissions, session) {
+  async resolveTargetStaff(
+    inputStaffId,
+    organizationId,
+    actorId,
+    actorPermissions,
+    session,
+  ) {
     const actorStaff = await this.staffRepo.findOne(
       { userId: actorId, isDeleted: false },
       organizationId,
       [],
       null,
-      session
+      session,
     );
 
     if (!inputStaffId) {
       if (!actorStaff) {
         throw new AppError(
           "This account is not linked to an active staff profile. Please contact an administrator.",
-          403
+          403,
         );
       }
       return { staffId: actorStaff._id, submittedFor: "self" };
     }
 
-    const targetStaff = await this.staffRepo.findById(inputStaffId, organizationId, [], null, session);
+    const targetStaff = await this.staffRepo.findById(
+      inputStaffId,
+      organizationId,
+      [],
+      null,
+      session,
+    );
     if (!targetStaff) {
       throw new AppError("Staff not found", 404);
     }
 
-    const isSelf = actorStaff && isObjectIdEqual(actorStaff._id, targetStaff._id);
+    const isSelf =
+      actorStaff && isObjectIdEqual(actorStaff._id, targetStaff._id);
     if (!isSelf && !actorPermissions.includes(MANAGE_PERMISSION)) {
-      throw new AppError("Access denied. You do not have the required permissions.", 403);
+      throw new AppError(
+        "Access denied. You do not have the required permissions.",
+        403,
+      );
     }
 
     return {
@@ -582,7 +753,13 @@ export class LeaveService {
   }
 
   async validateStaffEligibility(staffId, organizationId, branchId, session) {
-    const staff = await this.staffRepo.findById(staffId, organizationId, [], null, session);
+    const staff = await this.staffRepo.findById(
+      staffId,
+      organizationId,
+      [],
+      null,
+      session,
+    );
     if (!staff) {
       throw new AppError("Staff not found", 404);
     }
@@ -592,7 +769,7 @@ export class LeaveService {
 
     const assignment = await this.staffBranchRepo.findOne(
       { staffId, branchId, isActive: true },
-      organizationId
+      organizationId,
     );
     if (!assignment) {
       throw new AppError("Staff is not assigned to this branch", 403);
@@ -606,7 +783,10 @@ export class LeaveService {
     const endDate = toUTCDate(endDateInput);
 
     if (endDate < startDate) {
-      throw new AppError("endDate must be greater than or equal to startDate", 400);
+      throw new AppError(
+        "endDate must be greater than or equal to startDate",
+        400,
+      );
     }
 
     const todayUtc = toDateOnlyStr(new Date());
@@ -618,11 +798,21 @@ export class LeaveService {
     try {
       dates = enumerateDates(startDateInput, endDateInput);
     } catch (error) {
-      if (error.message.includes("endDate must be greater than or equal to startDate")) {
-        throw new AppError("endDate must be greater than or equal to startDate", 400);
+      if (
+        error.message.includes(
+          "endDate must be greater than or equal to startDate",
+        )
+      ) {
+        throw new AppError(
+          "endDate must be greater than or equal to startDate",
+          400,
+        );
       }
       if (error.message.includes("MAX_LEAVE_DAYS")) {
-        throw new AppError(`Leave range cannot exceed ${MAX_LEAVE_DAYS} calendar days`, 400);
+        throw new AppError(
+          `Leave range cannot exceed ${MAX_LEAVE_DAYS} calendar days`,
+          400,
+        );
       }
       throw error;
     }
@@ -634,7 +824,7 @@ export class LeaveService {
     const seqDoc = await Sequence.findOneAndUpdate(
       { key: `leaveCode:${organizationId}` },
       { $inc: { seq: 1 } },
-      { new: true, upsert: true, session }
+      { new: true, upsert: true, session },
     );
     return `${LEAVE_CODE_PREFIX}${String(seqDoc.seq).padStart(4, "0")}`;
   }
@@ -647,13 +837,19 @@ export class LeaveService {
 
   assertLeaveBranchVisibility(leave, branchId) {
     if (branchId && !isObjectIdEqual(leave.branchId, branchId)) {
-      throw new AppError("Access denied. Leave is not visible within your active branch scope.", 403);
+      throw new AppError(
+        "Access denied. Leave is not visible within your active branch scope.",
+        403,
+      );
     }
   }
 
   assertManagePermission(permissions) {
     if (!permissions.includes(MANAGE_PERMISSION)) {
-      throw new AppError("Access denied. You do not have the required permissions.", 403);
+      throw new AppError(
+        "Access denied. You do not have the required permissions.",
+        403,
+      );
     }
   }
 
@@ -666,7 +862,10 @@ export class LeaveService {
   assertNoImmutableFieldChanges(data) {
     const forbidden = IMMUTABLE_FIELDS.filter((field) => field in data);
     if (forbidden.length > 0) {
-      throw new AppError(`Immutable fields cannot be updated: ${forbidden.join(", ")}`, 400);
+      throw new AppError(
+        `Immutable fields cannot be updated: ${forbidden.join(", ")}`,
+        400,
+      );
     }
   }
 
@@ -674,14 +873,15 @@ export class LeaveService {
     return {
       id: normalizeId(leave._id),
       branchId: normalizeId(leave.branchId),
-      staffId: normalizeId(leave.staffId),
+      staffId: normalizeName(leave.staffId),
+      name: leave.staffId?.name ?? null,
       leaveCode: leave.leaveCode,
       leaveType: leave.leaveType,
       startDate: leave.startDate ? toDateOnlyStr(leave.startDate) : null,
       endDate: leave.endDate ? toDateOnlyStr(leave.endDate) : null,
       reason: leave.reason,
       status: leave.status,
-      submittedBy: normalizeId(leave.submittedBy),
+      submittedBy: normalizeId(leave.submittedBy?.name),
       submittedFor: leave.submittedFor,
       reviewedBy: normalizeId(leave.reviewedBy),
       reviewedAt: normalizeDateTime(leave.reviewedAt),

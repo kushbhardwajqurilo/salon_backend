@@ -600,16 +600,21 @@ describe("LeaveService Phase 4", () => {
 
   it("returns list/get DTOs without dates and enforces branch isolation", async () => {
     leaveRepo.find.mockResolvedValue({
-      data: [baseLeave()],
+      data: [baseLeave({ staffId: { _id: actorStaffId, name: "Jane Staff" } })],
       meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
     });
     leaveRepo.findById.mockResolvedValue(baseLeave({ branchId: otherBranchId }));
 
     const listResult = await service.listLeaves({ status: "pending" }, { page: 1 }, orgId, branchId);
     expect(listResult.data[0].dates).toBeUndefined();
+    expect(listResult.data[0].staffId).toBe(actorStaffId.toString());
+    expect(listResult.data[0].name).toBe("Jane Staff");
     expect(leaveRepo.find).toHaveBeenCalledWith(
       expect.objectContaining({ status: "pending", branchId }),
-      expect.objectContaining({ select: "-dates -__v -isDeleted -deletedAt -deletedBy" }),
+      expect.objectContaining({
+        select: "-dates -__v -isDeleted -deletedAt -deletedBy",
+        populate: [{ path: "staffId", select: "name" }],
+      }),
       orgId
     );
 

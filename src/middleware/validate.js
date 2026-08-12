@@ -6,7 +6,6 @@ import { asyncHandler } from "../utils/errors.js";
  */
 export const validate = (schema) =>
   asyncHandler(async (req, res, next) => {
-    console.log("schema", req.body);
     const parsed = await schema.parseAsync({
       body: req.body,
       query: req.query,
@@ -14,8 +13,12 @@ export const validate = (schema) =>
     });
     // Reassign validated and stripped objects back to request
     for (const [key, value] of Object.entries(parsed)) {
-      if (req[key] && typeof req[key] === "object" && !Array.isArray(req[key])) {
-        Object.keys(req[key]).forEach(k => delete req[key][k]);
+      if (
+        req[key] &&
+        typeof req[key] === "object" &&
+        !Array.isArray(req[key])
+      ) {
+        Object.keys(req[key]).forEach((k) => delete req[key][k]);
         Object.assign(req[key], value);
       } else {
         req[key] = value;
