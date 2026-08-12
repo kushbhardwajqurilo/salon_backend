@@ -1,8 +1,7 @@
 import mongoose from "mongoose";
-import { AppError } from "../../utils/errors.js";
+import { AppError, asyncHandler } from "../../utils/errors.js";
 import { AuthService } from "../../services/auth/auth.service.js";
 import { sendResponse } from "../../utils/response.js";
-import { asyncHandler } from "../../utils/errors.js";
 
 const authService = new AuthService();
 
@@ -54,7 +53,7 @@ export const login = asyncHandler(async (req, res) => {
 
 export const sendActivationOTP = asyncHandler(async (req, res) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader?.startsWith("Bearer ")) {
     throw new AppError("Access denied. No token provided.", 401);
   }
   const token = authHeader.split(" ")[1];
@@ -64,7 +63,7 @@ export const sendActivationOTP = asyncHandler(async (req, res) => {
 
 export const verifyActivationOTP = asyncHandler(async (req, res) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader?.startsWith("Bearer ")) {
     throw new AppError("Access denied. No token provided.", 401);
   }
   const token = authHeader.split(" ")[1];
@@ -75,7 +74,7 @@ export const verifyActivationOTP = asyncHandler(async (req, res) => {
 
 export const activateChangePassword = asyncHandler(async (req, res) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader?.startsWith("Bearer ")) {
     throw new AppError("Access denied. No token provided.", 401);
   }
   const token = authHeader.split(" ")[1];
@@ -131,7 +130,7 @@ export const me = asyncHandler(async (req, res) => {
       .model("Role")
       .findById(user.role._id)
       .populate("permissions");
-    if (roleObj && roleObj.permissions) {
+    if (roleObj?.permissions) {
       permissions = roleObj.permissions.map((p) => p.name);
     }
   }

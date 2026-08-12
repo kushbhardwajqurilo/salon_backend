@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import crypto from "crypto";
+import crypto from "node:crypto";
 import { UserRepository } from "../../repositories/users/user.repository.js";
 import { UserService } from "../../services/users/user.service.js";
 import { Role } from "../../models/roles/role.model.js";
@@ -8,7 +8,7 @@ import { sendResponse } from "../../utils/response.js";
 import { asyncHandler, AppError } from "../../utils/errors.js";
 import { toUserResponseDTO } from "../../utils/userResponse.js";
 import { normalizeUsername } from "../../utils/userIdentity.js";
-import { emailQueue, smsQueue } from "../../queues/client.js";
+import { emailQueue } from "../../queues/client.js";
 import { logger } from "../../utils/logger.js";
 
 const userRepo = new UserRepository();
@@ -66,7 +66,7 @@ export const createUser = asyncHandler(async (req, res) => {
     branchAccess = [],
     hasOrgWideAccess = false,
   } = req.body;
-  console.log("branchAccess", branchAccess)
+  console.log("branchAccess", branchAccess);
   const normalizedUsername = normalizeUsername(username || name);
 
   if (!normalizedUsername) {
@@ -104,7 +104,9 @@ export const createUser = asyncHandler(async (req, res) => {
         400,
       );
     }
-    const branchMap = new Map(dbBranches.map((b) => [b._id.toString(), b.name]));
+    const branchMap = new Map(
+      dbBranches.map((b) => [b._id.toString(), b.name]),
+    );
     formattedBranchAccess = branchAccess.map((b) => ({
       branchId: b.branchId,
       branchName: b.branchName || branchMap.get(b.branchId.toString()) || "",
@@ -218,7 +220,9 @@ export const updateUser = asyncHandler(async (req, res) => {
           400,
         );
       }
-      const branchMap = new Map(dbBranches.map((b) => [b._id.toString(), b.name]));
+      const branchMap = new Map(
+        dbBranches.map((b) => [b._id.toString(), b.name]),
+      );
       updateData.branchAccess = branchAccess.map((b) => ({
         branchId: b.branchId,
         branchName: b.branchName || branchMap.get(b.branchId.toString()) || "",

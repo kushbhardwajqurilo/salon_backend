@@ -3706,3 +3706,51 @@
 [2026-08-12 15:30:13:3013] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
 [2026-08-12 15:30:13:3013] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
 [2026-08-12 15:30:15:3015] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-12 15:47:14:4714] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-12 15:47:14:4714] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-12 15:47:14:4714] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-12 15:47:14:4714] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-12 15:47:14:4714] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-12 15:47:14:4714] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-12 15:47:14:4714] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-12 15:47:16:4716] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-12 15:52:17:5217] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-12 15:52:17:5217] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-12 15:52:18:5218] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-12 15:52:18:5218] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-12 15:52:18:5218] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-12 15:52:18:5218] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-12 15:52:18:5218] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-12 15:52:19:5219] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-12 15:52:40:5240] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-12 15:52:41:5241] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-12 15:52:41:5241] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-12 15:52:41:5241] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-12 15:52:41:5241] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-12 15:52:41:5241] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-12 15:52:41:5241] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-12 15:52:42:5242] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-12 15:54:29:5429] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-12 15:54:29:5429] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-12 15:54:29:5429] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-12 15:54:29:5429] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-12 15:54:29:5429] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-12 15:54:29:5429] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-12 15:54:29:5429] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-12 15:54:31:5431] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-12 15:54:57:5457] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-12 15:54:57:5457] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-12 15:54:57:5457] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-12 15:54:57:5457] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-12 15:54:57:5457] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-12 15:54:57:5457] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-12 15:54:58:5458] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-12 15:54:59:5459] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-12 15:58:16:5816] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-12 15:58:16:5816] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-12 15:58:16:5816] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-12 15:58:16:5816] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-12 15:58:16:5816] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-12 15:58:16:5816] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-12 15:58:16:5816] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-12 15:58:18:5818] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m

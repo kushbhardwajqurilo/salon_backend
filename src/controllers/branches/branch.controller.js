@@ -1,7 +1,5 @@
-import mongoose from "mongoose";
-import { AppError } from "../../utils/errors.js";
+import { AppError, asyncHandler } from "../../utils/errors.js";
 import { sendResponse } from "../../utils/response.js";
-import { asyncHandler } from "../../utils/errors.js";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Organization } from "../../models/organizations/organization.model.js";
 
@@ -19,7 +17,10 @@ const mapBranchObj = (b) => ({
 export const getBranches = asyncHandler(async (req, res) => {
   const { organizationId, branchAccess, hasOrgWideAccess } = req.user;
 
-  const org = await Organization.findOne({ _id: organizationId, isActive: true });
+  const org = await Organization.findOne({
+    _id: organizationId,
+    isActive: true,
+  });
   if (!org) {
     throw new AppError("Organization not found", 404);
   }
@@ -68,15 +69,23 @@ export const getBranchById = asyncHandler(async (req, res) => {
     hasAccess = true;
   } else {
     hasAccess = branchAccess.some(
-      (b) => b.branchId.toString() === id.toString() && b.isActive
+      (b) => b.branchId.toString() === id.toString() && b.isActive,
     );
   }
 
   if (!hasAccess) {
-    throw new AppError("Access denied. You do not have access to this branch.", 403);
+    throw new AppError(
+      "Access denied. You do not have access to this branch.",
+      403,
+    );
   }
 
-  return sendResponse(res, 200, "Branch retrieved successfully", mapBranchObj(branch));
+  return sendResponse(
+    res,
+    200,
+    "Branch retrieved successfully",
+    mapBranchObj(branch),
+  );
 });
 
 export const createBranch = asyncHandler(async (req, res) => {
@@ -87,9 +96,15 @@ export const createBranch = asyncHandler(async (req, res) => {
     throw new AppError("Name is required", 400);
   }
 
-  const existingBranch = await Branch.findOne({ organizationId, name: name.trim() });
+  const existingBranch = await Branch.findOne({
+    organizationId,
+    name: name.trim(),
+  });
   if (existingBranch) {
-    throw new AppError("A branch with this name already exists in your organization.", 409);
+    throw new AppError(
+      "A branch with this name already exists in your organization.",
+      409,
+    );
   }
 
   const newBranch = await Branch.create({
@@ -99,7 +114,12 @@ export const createBranch = asyncHandler(async (req, res) => {
     phone,
   });
 
-  return sendResponse(res, 201, "Branch created successfully", mapBranchObj(newBranch));
+  return sendResponse(
+    res,
+    201,
+    "Branch created successfully",
+    mapBranchObj(newBranch),
+  );
 });
 
 export const updateBranch = asyncHandler(async (req, res) => {
@@ -119,7 +139,10 @@ export const updateBranch = asyncHandler(async (req, res) => {
       name: name.trim(),
     });
     if (existingBranch) {
-      throw new AppError("A branch with this name already exists in your organization.", 409);
+      throw new AppError(
+        "A branch with this name already exists in your organization.",
+        409,
+      );
     }
     branch.name = name.trim();
   }
@@ -129,7 +152,10 @@ export const updateBranch = asyncHandler(async (req, res) => {
   if (isActive !== undefined) {
     // If deactivating, make sure it's not the last active branch
     if (isActive === false && branch.isActive === true) {
-      const activeCount = await Branch.countDocuments({ organizationId, isActive: true });
+      const activeCount = await Branch.countDocuments({
+        organizationId,
+        isActive: true,
+      });
       if (activeCount <= 1) {
         throw new AppError("Cannot deactivate the last active branch", 400);
       }
@@ -139,7 +165,12 @@ export const updateBranch = asyncHandler(async (req, res) => {
 
   await branch.save();
 
-  return sendResponse(res, 200, "Branch updated successfully", mapBranchObj(branch));
+  return sendResponse(
+    res,
+    200,
+    "Branch updated successfully",
+    mapBranchObj(branch),
+  );
 });
 
 export const deleteBranch = asyncHandler(async (req, res) => {
@@ -152,7 +183,10 @@ export const deleteBranch = asyncHandler(async (req, res) => {
   }
 
   // Soft delete logic
-  const activeCount = await Branch.countDocuments({ organizationId, isActive: true });
+  const activeCount = await Branch.countDocuments({
+    organizationId,
+    isActive: true,
+  });
   if (branch.isActive && activeCount <= 1) {
     throw new AppError("Cannot deactivate the last active branch", 400);
   }
