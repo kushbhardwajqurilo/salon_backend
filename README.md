@@ -588,14 +588,7 @@ Expected response:
 }
 ```
 
-### Default Seeded Users
 
-| Role    | Email                | Password        | Access                     |
-|---------|----------------------|-----------------|----------------------------|
-| Owner   | `owner@parlour.com`  | `Admin@1234`    | Organization-wide          |
-| Manager | `manager@parlour.com`| `Manager@1234`  | Single branch (Koramangala)|
-
----
 
 ## 🔧 Environment Variables
 
