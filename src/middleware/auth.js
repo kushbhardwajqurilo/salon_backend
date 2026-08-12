@@ -22,7 +22,7 @@ export const authenticate = asyncHandler(async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, env.JWT_SECRET);
-    
+
     if (decoded.scope === "activation" || decoded.scope === "password-change") {
       throw new AppError("Access denied. Invalid token scope.", 401);
     }
