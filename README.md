@@ -589,6 +589,15 @@ Expected response:
 ```
 
 
+<<<<<<< HEAD
+=======
+| Role    | Email                | Password        | Access                     |
+|---------|----------------------|-----------------|----------------------------|
+| Owner   | `xyz@parlour.com`  | `xyz`    | Organization-wide          |
+| Manager | `xyz@parlour.com`| `xyz`  | Single branch (Koramangala)|
+
+---
+>>>>>>> 58c2bea3bd9427e790c3abf090b689eba2af3690
 
 ## 🔧 Environment Variables
 

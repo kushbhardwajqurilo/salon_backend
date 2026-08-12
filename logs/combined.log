@@ -3754,3 +3754,44 @@
 [2026-08-12 15:58:16:5816] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
 [2026-08-12 15:58:16:5816] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
 [2026-08-12 15:58:18:5818] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-12 16:07:25:725] [[32minfo[39m]: [32m🚀 Queue initialized: email[39m
+[2026-08-12 16:07:25:725] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a7c4ce4dd62ad1af89a692c (e2e_user_1786531028333@parlour.com)[39m
+[2026-08-12 16:07:25:725] [[32minfo[39m]: [32m📥 Processing Email Job [2] - sendWelcomeCredentialsEmail[39m
+[2026-08-12 16:07:29:729] [[32minfo[39m]: [32m📧 [EMAIL_SENT] MessageId: <8bb5a494-a847-f3ee-ab40-a98f43de8061@saloonerp.com> to e2e_user_1786531028333@parlour.com[39m
+[2026-08-12 16:07:29:729] [[32minfo[39m]: [32m✅ Email Job [2] sendWelcomeCredentialsEmail completed successfully[39m
+[2026-08-12 16:17:22:1722] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a7c4f3add62ad1af89a69f9 (e2e_user_1786531631189_362@parlour.com)[39m
+[2026-08-12 16:17:22:1722] [[32minfo[39m]: [32m📥 Processing Email Job [3] - sendWelcomeCredentialsEmail[39m
+[2026-08-12 16:17:27:1727] [[32minfo[39m]: [32m📧 [EMAIL_SENT] MessageId: <89d88524-b413-ce24-0481-34f2d1001848@saloonerp.com> to e2e_user_1786531631189_362@parlour.com[39m
+[2026-08-12 16:17:27:1727] [[32minfo[39m]: [32m✅ Email Job [3] sendWelcomeCredentialsEmail completed successfully[39m
+[2026-08-12 16:19:08:198] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a7c4fa4dd62ad1af89a6a4f (e2e_user_1786531722243_310@parlour.com)[39m
+[2026-08-12 16:19:08:198] [[32minfo[39m]: [32m📥 Processing Email Job [4] - sendWelcomeCredentialsEmail[39m
+[2026-08-12 16:19:12:1912] [[32minfo[39m]: [32m📧 [EMAIL_SENT] MessageId: <90a935e6-d9f4-f7f9-976f-c038b0595b1e@saloonerp.com> to e2e_user_1786531722243_310@parlour.com[39m
+[2026-08-12 16:19:12:1912] [[32minfo[39m]: [32m✅ Email Job [4] sendWelcomeCredentialsEmail completed successfully[39m
+[2026-08-12 16:20:05:205] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a7c4fdddd62ad1af89a6a75 (e2e_user_1786531772376_996@parlour.com)[39m
+[2026-08-12 16:20:05:205] [[32minfo[39m]: [32m📥 Processing Email Job [5] - sendWelcomeCredentialsEmail[39m
+[2026-08-12 16:20:09:209] [[32minfo[39m]: [32m📧 [EMAIL_SENT] MessageId: <beb5fa18-5fcc-1894-4a8f-22a5d5e2865d@saloonerp.com> to e2e_user_1786531772376_996@parlour.com[39m
+[2026-08-12 16:20:09:209] [[32minfo[39m]: [32m✅ Email Job [5] sendWelcomeCredentialsEmail completed successfully[39m
+[2026-08-12 16:21:42:2142] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a7c503edd62ad1af89a6aa5 (e2e_user_1786531859368_86@parlour.com)[39m
+[2026-08-12 16:21:42:2142] [[32minfo[39m]: [32m📥 Processing Email Job [6] - sendWelcomeCredentialsEmail[39m
+[2026-08-12 16:21:46:2146] [[32minfo[39m]: [32m📧 [EMAIL_SENT] MessageId: <cc401e60-31df-c48e-3384-5093c9a19acc@saloonerp.com> to e2e_user_1786531859368_86@parlour.com[39m
+[2026-08-12 16:21:46:2146] [[32minfo[39m]: [32m✅ Email Job [6] sendWelcomeCredentialsEmail completed successfully[39m
+[2026-08-12 16:22:49:2249] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a7c5081dd62ad1af89a6aed (e2e_user_1786531965407_752@parlour.com)[39m
+[2026-08-12 16:22:49:2249] [[32minfo[39m]: [32m📥 Processing Email Job [7] - sendWelcomeCredentialsEmail[39m
+[2026-08-12 16:22:54:2254] [[32minfo[39m]: [32m📧 [EMAIL_SENT] MessageId: <33cc7d05-1d52-7d22-1041-670c0220643b@saloonerp.com> to e2e_user_1786531965407_752@parlour.com[39m
+[2026-08-12 16:22:54:2254] [[32minfo[39m]: [32m✅ Email Job [7] sendWelcomeCredentialsEmail completed successfully[39m
+[2026-08-12 16:23:29:2329] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a7c50a8dd62ad1af89a6b80 (e2e_user_1786532001609_440@parlour.com)[39m
+[2026-08-12 16:23:29:2329] [[32minfo[39m]: [32m📥 Processing Email Job [8] - sendWelcomeCredentialsEmail[39m
+[2026-08-12 16:23:32:2332] [[32minfo[39m]: [32m📧 [EMAIL_SENT] MessageId: <25124218-d06b-ae3a-11db-35f5cc875969@saloonerp.com> to e2e_user_1786532001609_440@parlour.com[39m
+[2026-08-12 16:23:32:2332] [[32minfo[39m]: [32m✅ Email Job [8] sendWelcomeCredentialsEmail completed successfully[39m
+[2026-08-12 16:33:42:3342] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a7c530edd62ad1af89a6c0d (e2e_user_1786532588312_897@parlour.com)[39m
+[2026-08-12 16:33:42:3342] [[32minfo[39m]: [32m📥 Processing Email Job [9] - sendWelcomeCredentialsEmail[39m
+[2026-08-12 16:33:49:3349] [[32minfo[39m]: [32m📧 [EMAIL_SENT] MessageId: <b4cd448e-8bcc-b6f7-515b-136d71c7f913@saloonerp.com> to e2e_user_1786532588312_897@parlour.com[39m
+[2026-08-12 16:33:49:3349] [[32minfo[39m]: [32m✅ Email Job [9] sendWelcomeCredentialsEmail completed successfully[39m
+[2026-08-12 16:35:42:3542] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a7c5386dd62ad1af89a6c57 (e2e_user_1786532694938_564@parlour.com)[39m
+[2026-08-12 16:35:42:3542] [[32minfo[39m]: [32m📥 Processing Email Job [10] - sendWelcomeCredentialsEmail[39m
+[2026-08-12 16:35:46:3546] [[32minfo[39m]: [32m📧 [EMAIL_SENT] MessageId: <736f7358-889b-808d-f25d-6f798b74b846@saloonerp.com> to e2e_user_1786532694938_564@parlour.com[39m
+[2026-08-12 16:35:46:3546] [[32minfo[39m]: [32m✅ Email Job [10] sendWelcomeCredentialsEmail completed successfully[39m
+[2026-08-12 16:37:26:3726] [[32minfo[39m]: [32m[SECURITY] WELCOME_CREDENTIALS_QUEUED for user 6a7c53eedd62ad1af89a6c88 (e2e_user_1786532797623_683@parlour.com)[39m
+[2026-08-12 16:37:26:3726] [[32minfo[39m]: [32m📥 Processing Email Job [11] - sendWelcomeCredentialsEmail[39m
+[2026-08-12 16:37:30:3730] [[32minfo[39m]: [32m📧 [EMAIL_SENT] MessageId: <3b2a15b0-306c-cb5f-aabc-0d348816d6dd@saloonerp.com> to e2e_user_1786532797623_683@parlour.com[39m
+[2026-08-12 16:37:30:3730] [[32minfo[39m]: [32m✅ Email Job [11] sendWelcomeCredentialsEmail completed successfully[39m
