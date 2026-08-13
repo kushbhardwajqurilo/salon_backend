@@ -24,6 +24,11 @@ const branchSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    timezone: {
+      type: String,
+      default: "Asia/Kolkata",
+      trim: true,
+    },
   },
   {
     timestamps: true,

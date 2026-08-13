@@ -132,9 +132,9 @@ export const CANONICAL_PERMISSIONS = [
     description: "View calendar availability and appointment records."
   },
   {
-    name: "appointments.book",
+    name: "appointments.create",
     module: "Appointments",
-    action: "Book",
+    action: "Create",
     description: "Create standard advance bookings or walk-ins."
   },
   {
@@ -160,6 +160,24 @@ export const CANONICAL_PERMISSIONS = [
     module: "Appointments",
     action: "Cancel",
     description: "Cancel scheduled appointments."
+  },
+  {
+    name: "appointments.delete",
+    module: "Appointments",
+    action: "Delete",
+    description: "Permanently delete appointments."
+  },
+  {
+    name: "appointments.edit",
+    module: "Appointments",
+    action: "Edit",
+    description: "Edit scheduled appointments."
+  },
+  {
+    name: "appointments.reminders.send",
+    module: "Appointments",
+    action: "Send Reminder",
+    description: "Manually trigger or send appointment reminder notifications."
   },
   {
     name: "employees.view",

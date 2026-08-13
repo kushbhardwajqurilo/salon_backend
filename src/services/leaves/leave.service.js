@@ -873,7 +873,7 @@ export class LeaveService {
     return {
       id: normalizeId(leave._id),
       branchId: normalizeId(leave.branchId),
-      staffId: normalizeName(leave.staffId),
+      staffId: normalizeId(leave.staffId),
       name: leave.staffId?.name ?? null,
       leaveCode: leave.leaveCode,
       leaveType: leave.leaveType,

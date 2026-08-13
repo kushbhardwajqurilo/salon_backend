@@ -49,11 +49,19 @@ export const authenticate = asyncHandler(async (req, res, next) => {
       }));
     }
 
+    let roleName = "owner";
+    if (mongoose.Types.ObjectId.isValid(user.role)) {
+      const dbRole = await mongoose.model("Role").findById(user.role);
+      if (dbRole) roleName = dbRole.name;
+    } else if (typeof user.role === "string") {
+      roleName = user.role;
+    }
+
     // Attach user context to request
     req.user = {
       id: user._id,
       email: user.email,
-      role: decoded.role,
+      role: roleName,
       organizationId: user.organizationId,
       branchAccess,
       hasOrgWideAccess,

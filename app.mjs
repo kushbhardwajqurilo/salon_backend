@@ -18,9 +18,10 @@ import serviceRouter from "./src/routers/services/service.routes.js";
 import staffRouter from "./src/routers/staff/staff.routes.js";
 import userRouter from "./src/routers/users/user.routes.js";
 import leaveRouter from "./src/routers/leaves/leave.router.js";
+import appointmentRouter from "./src/routers/appointments/appointment.router.js";
 import { apiLimiter, speedLimiter, sanitizeData } from "./src/middleware/security.js";
 import { globalErrorHandler } from "./src/utils/errors.js";
-//
+
 const app = express();
 
 // for vps + nginx (1 means trust first proxy, e.g. Nginx, dev tunnels)
@@ -88,6 +89,7 @@ app.use("/api/v1/services", serviceRouter);
 app.use("/api/v1/staff", staffRouter);
 app.use("/api/v1/users", userRouter);
 app.use("/api/v1/leaves", leaveRouter);
+app.use("/api/v1/appointments", appointmentRouter);
 
 // health check endpoint for server
 app.get("/health", (req, res) => {
