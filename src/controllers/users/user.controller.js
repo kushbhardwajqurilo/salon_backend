@@ -11,6 +11,9 @@ import { normalizeUsername } from "../../utils/userIdentity.js";
 import { emailQueue } from "../../queues/client.js";
 import { logger } from "../../utils/logger.js";
 
+import { assertCanManageBranches } from "../../utils/branchAuthorization.js";
+import { validateUserUpdate } from "../../utils/userValidation.js";
+
 const userRepo = new UserRepository();
 const userService = new UserService();
 
@@ -55,7 +58,6 @@ export const getUserById = asyncHandler(async (req, res) => {
 });
 
 export const createUser = asyncHandler(async (req, res) => {
-  console.log("in create user");
   const organizationId = req.organizationId;
   const {
     name,
@@ -66,11 +68,18 @@ export const createUser = asyncHandler(async (req, res) => {
     branchAccess = [],
     hasOrgWideAccess = false,
   } = req.body;
-  console.log("branchAccess", branchAccess);
   const normalizedUsername = normalizeUsername(username || name);
 
   if (!normalizedUsername) {
     throw new AppError("Username is required", 400);
+  }
+
+  // 0. Prevent privilege escalation
+  if (hasOrgWideAccess === true && !req.user.hasOrgWideAccess) {
+    throw new AppError(
+      "Access denied. You cannot grant organization-wide access.",
+      403,
+    );
   }
 
   // 1. Verify identity uniqueness
@@ -90,10 +99,12 @@ export const createUser = asyncHandler(async (req, res) => {
     );
   }
 
-  // 2. Cross-tenant branch references protection and branchName resolution
+  // 2. Validate caller's branch management authority & resolve branch names
   let formattedBranchAccess = [];
   if (branchAccess.length > 0) {
     const branchIds = branchAccess.map((b) => b.branchId);
+    await assertCanManageBranches(req.user, branchIds, organizationId);
+
     const dbBranches = await Branch.find({
       _id: { $in: branchIds },
       organizationId,
@@ -195,6 +206,9 @@ export const updateUser = asyncHandler(async (req, res) => {
     throw new AppError("User not found", 404);
   }
 
+  // Validate user update for privilege escalation and branch authorization
+  await validateUserUpdate(req.user, existingUser, req.body);
+
   // Self-modification of hasOrgWideAccess protection
   if (hasOrgWideAccess !== undefined) {
     if (req.params.id === req.user.id.toString()) {
@@ -210,6 +224,7 @@ export const updateUser = asyncHandler(async (req, res) => {
   if (branchAccess !== undefined) {
     if (branchAccess.length > 0) {
       const branchIds = branchAccess.map((b) => b.branchId);
+      await assertCanManageBranches(req.user, branchIds, organizationId);
       const dbBranches = await mongoose.model("Branch").find({
         _id: { $in: branchIds },
         organizationId,

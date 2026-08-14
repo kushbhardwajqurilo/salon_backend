@@ -3,6 +3,8 @@ import { StaffService } from "../../services/staff/staff.service.js";
 import { sendResponse } from "../../utils/response.js";
 import { asyncHandler, AppError } from "../../utils/errors.js";
 
+import { assertCanManageBranches } from "../../utils/branchAuthorization.js";
+
 const staffService = new StaffService();
 
 /**
@@ -98,6 +100,7 @@ export const unlinkUser = asyncHandler(async (req, res) => {
 });
 
 export const assignBranch = asyncHandler(async (req, res) => {
+  await assertCanManageBranches(req.user, req.body.branchId, req.organizationId);
   const result = await staffService.assignBranch(
     req.params.id,
     req.body.branchId,
@@ -109,6 +112,7 @@ export const assignBranch = asyncHandler(async (req, res) => {
 });
 
 export const removeBranch = asyncHandler(async (req, res) => {
+  await assertCanManageBranches(req.user, req.params.branchId, req.organizationId);
   await staffService.removeBranch(req.params.id, req.params.branchId, req.organizationId, req.user.id);
   return sendResponse(res, 200, "Branch assignment removed successfully");
 });

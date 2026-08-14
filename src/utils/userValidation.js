@@ -1,8 +1,13 @@
+import mongoose from "mongoose";
 import { AppError } from "./errors.js";
-import { Branch } from "../models/branches/branch.model.js";
+import {
+  assertCanManageBranches,
+  assertStaffBranchSubsetOfUserAccess,
+} from "./branchAuthorization.js";
+import { Staff } from "../models/staff/staff.model.js";
 
 /**
- * Validates user modifications to prevent privilege escalation.
+ * Validates user modifications to prevent privilege escalation and enforce branch invariants.
  * @param {Object} reqUser - The authenticated user making the request (req.user)
  * @param {Object} targetUser - The current state of the user being modified (from DB, or null if creating)
  * @param {Object} updates - The requested updates (req.body)
@@ -25,30 +30,74 @@ export async function validateUserUpdate(reqUser, targetUser, updates) {
     targetUser.organizationId.toString() !== updates.organizationId.toString()
   ) {
     if (!reqUser.hasOrgWideAccess) {
-      throw new AppError("Access denied. You do not have permissions to modify organization assignments.", 403);
+      throw new AppError(
+        "Access denied. You do not have permissions to modify organization assignments.",
+        403,
+      );
     }
   }
 
   // 3. A user cannot assign themselves or another user hasOrgWideAccess: true unless they have hasOrgWideAccess
   if (updates.hasOrgWideAccess === true && !reqUser.hasOrgWideAccess) {
-    throw new AppError("Access denied. You cannot grant organization-wide access.", 403);
+    throw new AppError(
+      "Access denied. You cannot grant organization-wide access.",
+      403,
+    );
   }
 
-  // 4. Any branch assigned through branchAccess must belong to the target user's organization.
-  // 5. A user cannot grant branchAccess for a branch belonging to another organization.
-  if (updates.branchAccess && Array.isArray(updates.branchAccess)) {
-    const targetOrgId = updates.organizationId || (targetUser ? targetUser.organizationId : reqUser.organizationId);
-    
-    for (const access of updates.branchAccess) {
-      const branch = await Branch.findOne({ _id: access.branchId, organizationId: targetOrgId });
-      if (!branch) {
-        throw new AppError("Invalid branch assignment. Branch must belong to the target organization.", 403);
-      }
+  const targetOrgId =
+    updates.organizationId ||
+    (targetUser ? targetUser.organizationId : reqUser.organizationId);
+
+  // 4. Validate branch access management using total caller authorization
+  if (updates.branchAccess && Array.isArray(updates.branchAccess) && updates.branchAccess.length > 0) {
+    const targetBranchIds = updates.branchAccess.map(
+      (access) => access.branchId || access,
+    );
+
+    await assertCanManageBranches(reqUser, targetBranchIds, targetOrgId);
+  }
+
+  // 5. Enforce invariant: Staff assigned branches ⊆ User authorized branches
+  if (
+    targetUser &&
+    (updates.branchAccess !== undefined || updates.hasOrgWideAccess !== undefined) &&
+    mongoose.Types.ObjectId.isValid(targetUser._id) &&
+    mongoose.Types.ObjectId.isValid(targetOrgId)
+  ) {
+    const linkedStaff = await Staff.findOne({
+      userId: targetUser._id,
+      isDeleted: false,
+      organizationId: targetOrgId,
+    });
+
+    if (linkedStaff) {
+      const candidateUser = {
+        _id: targetUser._id,
+        hasOrgWideAccess:
+          updates.hasOrgWideAccess !== undefined
+            ? updates.hasOrgWideAccess
+            : targetUser.hasOrgWideAccess,
+        branchAccess:
+          updates.branchAccess !== undefined
+            ? updates.branchAccess
+            : targetUser.branchAccess,
+      };
+      await assertStaffBranchSubsetOfUserAccess(
+        candidateUser,
+        linkedStaff._id,
+        targetOrgId,
+      );
     }
   }
 
   // 6. A user cannot grant permissions that exceed their own administrative authority.
   if (updates.role && !reqUser.hasOrgWideAccess) {
-    throw new AppError("Access denied. You cannot modify roles or permissions beyond your authority.", 403);
+    throw new AppError(
+      "Access denied. You cannot modify roles or permissions beyond your authority.",
+      403,
+    );
   }
 }
+
+

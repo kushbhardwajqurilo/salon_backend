@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { AppError } from "../../utils/errors.js";
 import { Role } from "../../models/roles/role.model.js";
 import { User } from "../../models/users/user.model.js";
+import { Staff } from "../../models/staff/staff.model.js";
 import { UserRepository } from "../../repositories/users/user.repository.js";
 import { createUser, updateUser } from "../../controllers/users/user.controller.js";
 
@@ -12,6 +13,7 @@ UserRepository.prototype.findById = jest.fn();
 UserRepository.prototype.updateById = jest.fn();
 UserRepository.prototype.findByEmailOrPhone = jest.fn();
 UserRepository.prototype.findByUsername = jest.fn();
+Staff.findOne = jest.fn();
 
 describe("User Management RBAC & Delegation Protection (Phase 5)", () => {
   let req;
@@ -48,6 +50,7 @@ describe("User Management RBAC & Delegation Protection (Phase 5)", () => {
     // Mock global models
     Role.findById = jest.fn();
     Role.findOne = jest.fn();
+    Staff.findOne.mockResolvedValue(null);
   });
 
   describe("Role Delegation Checks", () => {
@@ -124,6 +127,7 @@ describe("User Management RBAC & Delegation Protection (Phase 5)", () => {
 
   describe("hasOrgWideAccess Modification Protection", () => {
     it("should allow modifying another User's hasOrgWideAccess", async () => {
+      req.user.hasOrgWideAccess = true;
       const targetUserId = new mongoose.Types.ObjectId().toString();
       req.params.id = targetUserId;
       req.body = { hasOrgWideAccess: true };
@@ -145,6 +149,7 @@ describe("User Management RBAC & Delegation Protection (Phase 5)", () => {
     });
 
     it("should reject modifying admin's own hasOrgWideAccess", async () => {
+      req.user.hasOrgWideAccess = true;
       const adminId = req.user.id;
       req.params.id = adminId; // Target is the requesting admin themselves
       req.body = { hasOrgWideAccess: true };

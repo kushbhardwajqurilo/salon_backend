@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { auditPlugin } from "../../database/plugins/audit.js";
 
 const staffSchema = new mongoose.Schema(
   {
@@ -90,5 +91,16 @@ staffSchema.index(
     },
   }
 );
+
+staffSchema.plugin(auditPlugin);
+
+staffSchema.methods.softDelete = async function (userId) {
+  this.isDeleted = true;
+  this.deletedAt = new Date();
+  if (userId) {
+    this.deletedBy = userId;
+  }
+  return this.save();
+};
 
 export const Staff = mongoose.model("Staff", staffSchema);

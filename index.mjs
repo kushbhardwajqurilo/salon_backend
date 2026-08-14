@@ -4,9 +4,9 @@ if (!globalThis.crypto) {
   globalThis.crypto = crypto;
 }
 
+import { connectDB } from "./src/database/db.js";
 import app from "./app.mjs";
 import { env } from "./src/config/env.js";
-import { connectDB } from "./src/database/db.js";
 import { connectRedis, disconnectRedis } from "./src/config/redis.js";
 import { logger } from "./src/utils/logger.js";
 import { startNotificationWorkers, stopNotificationWorkers } from "./src/workers/notification.worker.js";

@@ -7,6 +7,7 @@ import { AuditLogService } from "../audit/auditLog.service.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { AppError } from "../../utils/errors.js";
 import { normalizeUsername } from "../../utils/userIdentity.js";
+import { assertStaffBranchSubsetOfUserAccess } from "../../utils/branchAuthorization.js";
 
 export class StaffService {
   constructor() {
@@ -120,6 +121,10 @@ export class StaffService {
 
             if (existingLinkedStaff) {
               throw new AppError("User is already linked to another active Staff", 400);
+            }
+
+            if (data.branchId) {
+              await assertStaffBranchSubsetOfUserAccess(user, null, organizationId, data.branchId);
             }
 
             resolvedUserId = user._id;
@@ -282,6 +287,8 @@ export class StaffService {
           if (existingLinkedStaff && existingLinkedStaff._id.toString() !== id.toString()) {
             throw new AppError("User is already linked to another active Staff", 400);
           }
+
+          await assertStaffBranchSubsetOfUserAccess(user, id, organizationId);
 
           data.userId = resolvedUserId;
         } else {
@@ -518,6 +525,9 @@ export class StaffService {
         throw new AppError("User is already linked to another active Staff", 400);
       }
 
+      // 5. Enforce invariant: Staff assigned branches ⊆ User authorized branches
+      await assertStaffBranchSubsetOfUserAccess(user, id, organizationId);
+
       staff.userId = resolvedUserId;
       await staff.save({ session });
 
@@ -582,6 +592,14 @@ export class StaffService {
       const branch = await mongoose.model("Branch").findOne({ _id: branchId, organizationId });
       if (!branch) {
         throw new AppError("Branch not found", 404);
+      }
+
+      // Enforce invariant: Staff assigned branches ⊆ User authorized branches
+      if (staff.userId) {
+        const linkedUser = await this.userRepo.findById(staff.userId, organizationId, [], null, session);
+        if (linkedUser) {
+          await assertStaffBranchSubsetOfUserAccess(linkedUser, id, organizationId, branchId);
+        }
       }
 
       const existingAssignment = await this.staffBranchRepo.findOne(
