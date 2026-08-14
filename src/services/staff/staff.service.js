@@ -74,9 +74,67 @@ export class StaffService {
 
           const staffCode = `STF-${String(seqDoc.seq).padStart(4, "0")}`;
 
+          // If userId is provided during staff creation, validate & resolve user link
+          let resolvedUserId = null;
+          if (data.userId && (typeof data.userId === "string" ? data.userId.trim().length > 0 : true)) {
+            const rawUserId = data.userId;
+            let user;
+            const isObjectIdLike =
+              rawUserId instanceof mongoose.Types.ObjectId ||
+              (typeof rawUserId === "string" && mongoose.Types.ObjectId.isValid(rawUserId));
+
+            if (isObjectIdLike) {
+              user = await this.userRepo.findById(rawUserId, organizationId, [], null, session);
+            } else if (typeof rawUserId === "string") {
+              const normalizedUsername = normalizeUsername(rawUserId);
+              if (normalizedUsername && typeof this.userRepo.findOne === "function") {
+                user = await this.userRepo.findOne(
+                  { username: normalizedUsername },
+                  organizationId,
+                  [],
+                  null,
+                  session
+                );
+              }
+            }
+
+            if (!user) {
+              throw new AppError("User not found", 404);
+            }
+
+            if (user.status !== "active") {
+              throw new AppError(`User is ${user.status} and cannot be linked`, 400);
+            }
+
+            if (user.organizationId.toString() !== organizationId.toString()) {
+              throw new AppError("Cross-organization linkage is prohibited", 400);
+            }
+
+            const existingLinkedStaff = await this.staffRepo.findOne(
+              { userId: user._id, isDeleted: false },
+              organizationId,
+              [],
+              null,
+              session
+            );
+
+            if (existingLinkedStaff) {
+              throw new AppError("User is already linked to another active Staff", 400);
+            }
+
+            resolvedUserId = user._id;
+          }
+
+          const staffPayload = { ...data, staffCode };
+          if (resolvedUserId) {
+            staffPayload.userId = resolvedUserId;
+          } else {
+            delete staffPayload.userId;
+          }
+
           // Create staff record
           const staff = await this.staffRepo.create(
-            { ...data, staffCode },
+            staffPayload,
             organizationId,
             actorId,
             session
@@ -172,6 +230,67 @@ export class StaffService {
             }
           }
         }
+      }
+
+      // Handle User Link / Unlink based on userId in payload
+      if (data.userId && (typeof data.userId === "string" ? data.userId.trim().length > 0 : true)) {
+        const rawUserId = data.userId;
+        let user;
+        const isObjectIdLike =
+          rawUserId instanceof mongoose.Types.ObjectId ||
+          (typeof rawUserId === "string" && mongoose.Types.ObjectId.isValid(rawUserId));
+
+        if (isObjectIdLike) {
+          user = await this.userRepo.findById(rawUserId, organizationId, [], null, session);
+        } else if (typeof rawUserId === "string") {
+          const normalizedUsername = normalizeUsername(rawUserId);
+          if (normalizedUsername && typeof this.userRepo.findOne === "function") {
+            user = await this.userRepo.findOne(
+              { username: normalizedUsername },
+              organizationId,
+              [],
+              null,
+              session
+            );
+          }
+        }
+
+        if (!user) {
+          throw new AppError("User not found", 404);
+        }
+
+        const resolvedUserId = user._id;
+
+        // If staff is not already connected to this exact user, validate and link
+        if (!staff.userId || staff.userId.toString() !== resolvedUserId.toString()) {
+          if (user.status !== "active") {
+            throw new AppError(`User is ${user.status} and cannot be linked`, 400);
+          }
+
+          if (user.organizationId.toString() !== organizationId.toString()) {
+            throw new AppError("Cross-organization linkage is prohibited", 400);
+          }
+
+          const existingLinkedStaff = await this.staffRepo.findOne(
+            { userId: resolvedUserId, isDeleted: false },
+            organizationId,
+            [],
+            null,
+            session
+          );
+
+          if (existingLinkedStaff && existingLinkedStaff._id.toString() !== id.toString()) {
+            throw new AppError("User is already linked to another active Staff", 400);
+          }
+
+          data.userId = resolvedUserId;
+        } else {
+          // Already connected to this exact user - preserve existing link
+          data.userId = staff.userId;
+        }
+      } else if ("userId" in data || !data.userId) {
+        // userId is not in payload or explicitly falsy (null / "") -> unlink user
+        data.userId = null;
       }
 
       const updatedStaff = await this.staffRepo.updateById(id, data, organizationId, actorId, session);

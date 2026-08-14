@@ -14,7 +14,12 @@ export const createStaffSchema = z.object({
       (val) => (typeof val === "string" ? new Date(val) : val),
       z.date({ required_error: "Joining date is required" })
     ),
-    avatarUrl: z.string().url("Invalid URL format").nullable().optional(),
+    avatarUrl: z.string().url("Invalid URL format").or(z.literal("")).nullable().optional(),
+    status: z.enum(["active", "inactive", "suspended"]).optional(),
+    userId: z.union([
+      objectIdSchema,
+      z.string().trim().min(3).max(30).regex(usernameRegex),
+    ]).or(z.literal("")).nullable().optional(),
   }),
 });
 
@@ -28,9 +33,13 @@ export const updateStaffSchema = z.object({
       (val) => (typeof val === "string" ? new Date(val) : val),
       z.date().optional()
     ),
-    avatarUrl: z.string().url("Invalid URL format").nullable().optional(),
+    avatarUrl: z.string().nullable().optional(),
     status: z.enum(["active", "inactive", "suspended"]).optional(),
-  }).strict(),
+    userId: z.union([
+      objectIdSchema,
+      z.string().trim().min(3).max(30).regex(usernameRegex),
+    ]).or(z.literal("")).nullable().optional(),
+  }),
 });
 
 const allowedSortFields = ["name", "staffCode", "joiningDate", "createdAt", "updatedAt"];
