@@ -93,6 +93,37 @@ describe("CustomerService Unit Tests", () => {
         "user-123"
       );
     });
+
+    it("should throw HTTP 409 Conflict with existingCustomer metadata when active customer exists with phone", async () => {
+      const existingCustomer = {
+        _id: "existing-cust-id",
+        phone: "+919999988888",
+        name: "Existing Customer",
+        status: "active",
+        isDeleted: false,
+      };
+      mockCustomerRepo.findByPhone.mockResolvedValue(existingCustomer);
+
+      try {
+        await customerService.createCustomer(
+          { phone: "+91 99999 88888", name: "New Test", homeBranchId: "branch-123" },
+          "org-789",
+          "user-123"
+        );
+        fail("Should have thrown 409 error");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect(err.statusCode).toBe(409);
+        expect(err.message).toBe("A customer with this phone number already exists.");
+        expect(err.errors).toEqual({
+          existingCustomer: {
+            _id: "existing-cust-id",
+            name: "Existing Customer",
+            phone: "+919999988888",
+          },
+        });
+      }
+    });
   });
 
   describe("getCustomerById", () => {

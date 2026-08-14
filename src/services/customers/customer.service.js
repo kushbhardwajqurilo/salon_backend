@@ -30,7 +30,13 @@ export class CustomerService {
       if (existing.status === "inactive" || existing.status === "blocked") {
         return existing;
       }
-      throw new AppError("A customer with this phone number already exists.", 400);
+      throw new AppError("A customer with this phone number already exists.", 409, {
+        existingCustomer: {
+          _id: existing._id,
+          name: existing.name,
+          phone: existing.phone,
+        },
+      });
     }
 
     // 3. Validate homeBranchId and visitedBranchIds

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizePhone } from "../../utils/phone.js";
 
 const objectIdRegex = /^[0-9a-fA-F]{24}$/;
 const objectIdSchema = z.string().regex(objectIdRegex, "Invalid ObjectId format");
@@ -33,10 +34,16 @@ export const createCustomerSchema = z.object({
   body: z.object({
     name: z.string().min(2, "Name must be at least 2 characters").trim(),
     email: z.preprocess((val) => (val === "" ? null : val), z.string().email("Invalid email address").trim().toLowerCase().optional().nullable()),
-    phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format (E.164)"),
+    phone: z.preprocess(
+      (val) => (typeof val === "string" ? normalizePhone(val) : val),
+      z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format (E.164)")
+    ),
     gender: z.enum(["male", "female", "other", "prefer_not_to_say"]).optional().default("prefer_not_to_say"),
     dateOfBirth: z.preprocess((val) => (val === "" ? null : val), z.string().datetime("Invalid date format").or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)")).optional().nullable()),
-    alternatePhone: z.preprocess((val) => (val === "" ? null : val), z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid alternate phone number format (E.164)").optional().nullable()),
+    alternatePhone: z.preprocess(
+      (val) => (val === "" ? null : typeof val === "string" ? normalizePhone(val) : val),
+      z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid alternate phone number format (E.164)").optional().nullable()
+    ),
     address: addressSchema.optional(),
     preferences: preferencesSchema.optional(),
     marketingPreferences: marketingPreferencesSchema.optional(),
@@ -58,10 +65,16 @@ export const updateCustomerSchema = z.object({
     .object({
       name: z.string().min(2, "Name must be at least 2 characters").trim().optional(),
       email: z.preprocess((val) => (val === "" ? null : val), z.string().email("Invalid email address").trim().toLowerCase().optional().nullable()),
-      phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format (E.164)").optional(),
+      phone: z.preprocess(
+        (val) => (typeof val === "string" ? normalizePhone(val) : val),
+        z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format (E.164)").optional()
+      ),
       gender: z.enum(["male", "female", "other", "prefer_not_to_say"]).optional(),
       dateOfBirth: z.preprocess((val) => (val === "" ? null : val), z.string().datetime("Invalid date format").or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)")).optional().nullable()),
-      alternatePhone: z.preprocess((val) => (val === "" ? null : val), z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid alternate phone number format (E.164)").optional().nullable()),
+      alternatePhone: z.preprocess(
+        (val) => (val === "" ? null : typeof val === "string" ? normalizePhone(val) : val),
+        z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid alternate phone number format (E.164)").optional().nullable()
+      ),
       address: addressSchema.optional(),
       preferences: preferencesSchema.optional(),
       marketingPreferences: marketingPreferencesSchema.optional(),

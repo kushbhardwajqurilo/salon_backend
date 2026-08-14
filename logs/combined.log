@@ -5495,3 +5495,18 @@
 [2026-08-14 16:27:41:2741] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a7ef4a4c32f1b46e0bff3db, attempts: 1[39m
 [2026-08-14 16:27:41:2741] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
 [2026-08-14 16:27:47:2747] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a7ef4ab648c2f3182a87dd0, attempts: 1[39m
+[2026-08-14 17:21:32:2132] [[32minfo[39m]: [32m📧 EmailService initialized with SMTP host: smtp.gmail.com:587 (secure: false)[39m
+[2026-08-14 17:21:32:2132] [[32minfo[39m]: [32m💾 MongoDB Connected: 127.0.0.1[39m
+[2026-08-14 17:21:32:2132] [[32minfo[39m]: [32m🔌 Redis connected successfully at server startup[39m
+[2026-08-14 17:21:32:2132] [[32minfo[39m]: [32m🔌 Connected to Redis successfully[39m
+[2026-08-14 17:21:32:2132] [[32minfo[39m]: [32m⚡ [REDIS_READY] Connection verified with PING at server startup[39m
+[2026-08-14 17:21:32:2132] [[32minfo[39m]: [32m🚀 Active BullMQ Notification Workers (Email & SMS) initialized[39m
+[2026-08-14 17:21:32:2132] [[32minfo[39m]: [32m🚀 Unisex Parlour ERP Server running in [development] mode on port 5000[39m
+[2026-08-14 17:21:33:2133] [[32minfo[39m]: [32m✅ [SMTP_VERIFIED] Connection to SMTP server established successfully. Ready to send emails.[39m
+[2026-08-14 17:23:03:233] [[33mwarn[39m]: [33mOwner role not found in database. Creating a new one...[39m
+[2026-08-14 17:23:03:233] [[33mwarn[39m]: [33mManager role not found in database. Creating a new one...[39m
+[2026-08-14 17:23:04:234] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a7f019fccba925912426d7b, attempts: 1[39m
+[2026-08-14 17:23:04:234] [[33mwarn[39m]: [33m💾 MongoDB disconnected! Attempting to reconnect...[39m
+[2026-08-14 17:23:11:2311] [[33mwarn[39m]: [33m[SECURITY] OTP_VERIFICATION_FAILED for user 6a7f01a7600450b76f57d216, attempts: 1[39m
+[2026-08-14 17:40:47:4047] [[33mwarn[39m]: [33m⚠️ Received SIGINT. Starting graceful shutdown...[39m
+[2026-08-14 17:40:47:4047] [[32minfo[39m]: [32m🛑 Express server stopped.[39m
