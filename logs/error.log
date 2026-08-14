@@ -313,3 +313,35 @@
 [2026-08-12 15:22:36:2236] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
 [2026-08-12 15:23:11:2311] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
 [2026-08-12 15:24:17:2417] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
+[2026-08-12 19:07:27:727] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-12 19:07:27:727] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:07:28:728] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:07:28:728] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:07:28:728] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:07:28:728] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:07:29:729] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:07:29:729] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:07:29:729] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:07:30:730] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:07:30:730] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:07:31:731] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:07:32:732] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:17:30:1730] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-12 19:17:30:1730] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND magical-iron-megaprecise-91005.db.redis.io[39m
+[2026-08-13 10:01:00:10] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-08-14 12:28:57:2857] [[31merror[39m]: [31m❌ MongoDB connection error: Role: available disk space of 187305984 bytes is less than required minimum of 524288000[39m
+[2026-08-14 12:29:16:2916] [[31merror[39m]: [31m❌ MongoDB connection error: Role: available disk space of 185540608 bytes is less than required minimum of 524288000[39m
+[2026-08-14 12:29:36:2936] [[31merror[39m]: [31m❌ MongoDB connection error: Role: available disk space of 184324096 bytes is less than required minimum of 524288000[39m
+[2026-08-14 12:29:59:2959] [[31merror[39m]: [31m❌ MongoDB connection error: Role: available disk space of 176345088 bytes is less than required minimum of 524288000[39m
+[2026-08-14 12:30:26:3026] [[31merror[39m]: [31m❌ MongoDB connection error: Role: available disk space of 171909120 bytes is less than required minimum of 524288000[39m
+[2026-08-14 12:30:47:3047] [[31merror[39m]: [31m❌ MongoDB connection error: Role: available disk space of 171675648 bytes is less than required minimum of 524288000[39m
+[2026-08-14 12:31:03:313] [[31merror[39m]: [31m❌ MongoDB connection error: Role: available disk space of 174370816 bytes is less than required minimum of 524288000[39m
+[2026-08-14 12:31:23:3123] [[31merror[39m]: [31m❌ MongoDB connection error: Role: available disk space of 166780928 bytes is less than required minimum of 524288000[39m
+[2026-08-14 12:32:31:3231] [[31merror[39m]: [31m❌ MongoDB connection error: Role: available disk space of 174379008 bytes is less than required minimum of 524288000[39m
+[2026-08-14 12:32:55:3255] [[31merror[39m]: [31m❌ MongoDB connection error: Role: available disk space of 173936640 bytes is less than required minimum of 524288000[39m
+[2026-08-14 12:33:25:3325] [[31merror[39m]: [31m❌ MongoDB connection error: Role: available disk space of 172691456 bytes is less than required minimum of 524288000[39m
+[2026-08-14 12:49:04:494] [[31merror[39m]: [31m❌ [SMS_ERROR] Failed to send SMS to +919876543210 via AutoBySMS: fetch failed[39m
+[2026-08-14 12:49:23:4923] [[31merror[39m]: [31m❌ [SMS_ERROR] Failed to send SMS to +919876543210 via AutoBySMS: fetch failed[39m
+[2026-08-14 14:54:11:5411] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
+[2026-08-14 14:55:13:5513] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
+[2026-08-14 14:56:34:5634] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m

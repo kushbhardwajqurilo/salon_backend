@@ -12,6 +12,7 @@ export const connectDB = async () => {
     await mongoose.connection.syncIndexes();
     logger.info(`💾 MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
+    console.log("Databse Error", error)
     logger.error(`❌ MongoDB connection error: ${error.message}`);
     process.exit(1);
   }

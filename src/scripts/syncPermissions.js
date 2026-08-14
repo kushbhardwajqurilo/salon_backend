@@ -73,8 +73,11 @@ export const syncPermissionsLogic = async () => {
     logger.warn("Owner role not found in database. Creating a new one...");
     ownerRole = await Role.create({
       name: "owner",
-      description: "Full access to all branches and all permissions (Explicitly Synced)"
+      description: "Full access to all branches and all permissions (Explicitly Synced)",
+      isSystem: true
     });
+  } else {
+    ownerRole.isSystem = true;
   }
   
   // Assign ALL and ONLY canonical registry permission IDs
@@ -95,8 +98,11 @@ export const syncPermissionsLogic = async () => {
     logger.warn("Manager role not found in database. Creating a new one...");
     managerRole = await Role.create({
       name: "manager",
-      description: "Operational management role"
+      description: "Operational management role",
+      isSystem: true
     });
+  } else {
+    managerRole.isSystem = true;
   }
   const managerPermDocs = await Permission.find({ name: { $in: DEFAULT_MANAGER_PERM_NAMES } });
   managerRole.permissions = managerPermDocs.map(p => p._id);
@@ -106,7 +112,8 @@ export const syncPermissionsLogic = async () => {
   // 4. Invalidate Cache
   await redis.del("rbac:role:owner:permissions");
   await redis.del("rbac:role:manager:permissions");
-  logger.info("Owner & Manager role permissions cache invalidated.");
+  await redis.del("rbac:modules");
+  logger.info("Owner & Manager role permissions and modules cache invalidated.");
   
   // Return summary for testing/logs
   return {

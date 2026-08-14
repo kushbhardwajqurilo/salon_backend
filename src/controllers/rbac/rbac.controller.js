@@ -17,25 +17,49 @@ export const listPermissions = asyncHandler(async (req, res) => {
   return sendResponse(res, 200, "Permissions retrieved successfully", result.data, result.meta);
 });
 
+export const listModules = asyncHandler(async (req, res) => {
+  const modules = await permissionService.listModules();
+  return sendResponse(res, 200, "Permission modules retrieved successfully", modules);
+});
+
 export const createRole = asyncHandler(async (req, res) => {
-  const role = await roleService.createRole(req.body);
+  const role = await roleService.createRole(req.body, req.organizationId, req.user?.id);
   return sendResponse(res, 201, "Role created successfully", role);
 });
 
 export const listRoles = asyncHandler(async (req, res) => {
-  const result = await roleService.listRoles(req.query);
+  const result = await roleService.listRoles(req.organizationId, req.query);
   return sendResponse(res, 200, "Roles retrieved successfully", result.data, result.meta);
+});
+
+export const getRoleById = asyncHandler(async (req, res) => {
+  const { roleId } = req.params;
+  const role = await roleService.getRoleById(roleId, req.organizationId);
+  return sendResponse(res, 200, "Role details retrieved successfully", role);
 });
 
 export const assignPermissionsToRole = asyncHandler(async (req, res) => {
   const { roleId } = req.params;
   const { permissions } = req.body;
 
-  const role = await roleService.assignPermissionsToRole(roleId, permissions, req.user.id);
+  const role = await roleService.assignPermissionsToRole(roleId, permissions, req.organizationId, req.user?.id);
 
   // Invalidate Redis permissions cache for this role
   const cacheKey = `rbac:role:${role.name}:permissions`;
   await redis.del(cacheKey);
 
   return sendResponse(res, 200, `Permissions successfully assigned to role '${role.name}'`, role);
+});
+
+export const deleteRole = asyncHandler(async (req, res) => {
+  const { roleId } = req.params;
+  const role = await roleService.deleteRole(roleId, req.organizationId);
+
+  // Invalidate Redis permissions cache for this role
+  if (role) {
+    const cacheKey = `rbac:role:${role.name}:permissions`;
+    await redis.del(cacheKey);
+  }
+
+  return sendResponse(res, 200, "Role deleted successfully", null);
 });

@@ -17,15 +17,19 @@ export const createPermissionSchema = z.object({
   }),
 });
 
+export const roleIdParamSchema = z.object({
+  params: z.object({
+    roleId: objectIdSchema,
+  }),
+});
+
 export const createRoleSchema = z.object({
   body: z.object({
     name: z
       .string()
-      .min(3, "Role name must be at least 3 characters")
-      .regex(/^[a-z_]+$/, "Role name can only contain lowercase letters and underscores")
-      .trim()
-      .lowercase(),
-    description: z.string().min(5, "Description must be at least 5 characters").trim(),
+      .min(2, "Role name must be at least 2 characters")
+      .trim(),
+    description: z.string().min(3, "Description must be at least 3 characters").trim(),
   }),
 });
 
@@ -34,6 +38,21 @@ export const assignPermissionsSchema = z.object({
     roleId: objectIdSchema,
   }),
   body: z.object({
-    permissions: z.array(z.string()).min(1, "At least one permission name must be provided"),
+    permissions: z.array(z.string()),
+  }),
+});
+
+export const listPermissionsQuerySchema = z.object({
+  query: z.object({
+    page: z.union([z.string(), z.number()]).optional().transform((val) => {
+      const p = Number(val);
+      return isNaN(p) || p < 1 ? 1 : Math.floor(p);
+    }),
+    limit: z.union([z.string(), z.number()]).optional().transform((val) => {
+      const l = Number(val);
+      return isNaN(l) || l < 1 ? 10 : Math.min(Math.floor(l), 100);
+    }),
+    search: z.string().optional(),
+    module: z.string().optional(),
   }),
 });
