@@ -38,6 +38,12 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // app.use(sanitizeData);
 
+// Top-level HTTP Request Logger for debugging all incoming requests
+app.use((req, res, next) => {
+  console.log(`📥 [HTTP] ${req.method} ${req.originalUrl} | Auth: ${req.headers.authorization ? "Bearer token attached" : "NO AUTH HEADER"} | Origin: ${req.headers.origin || "no origin"}`);
+  next();
+});
+
 // block common attack paths(.env)
 app.use((req, res, next) => {
     if (req.url.includes(".env")) {

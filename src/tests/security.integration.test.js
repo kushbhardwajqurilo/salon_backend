@@ -406,7 +406,7 @@ describe("Security Scoping Middleware & Validation tests", () => {
       });
 
       it("should deny access for 'admin' or 'superadmin' in authorize middleware if they lack the required permission (no role-name bypass)", async () => {
-        const middleware = authorize("branches.manage");
+        const middleware = authorize("branches.create");
         branchReq.user.role = "admin";
         branchReq.user.hasOrgWideAccess = true;
 
@@ -421,20 +421,20 @@ describe("Security Scoping Middleware & Validation tests", () => {
       });
 
       it("should allow access for 'admin' or 'superadmin' if they are assigned the required permission", async () => {
-        const middleware = authorize("branches.manage");
+        const middleware = authorize("branches.create");
         branchReq.user.role = "admin";
         branchReq.user.hasOrgWideAccess = true;
 
         RoleRepository.prototype.findOne.mockResolvedValue({
           name: "admin",
-          permissions: [{ name: "branches.manage" }],
+          permissions: [{ name: "branches.create" }],
         });
 
         await expect(runMiddleware(middleware, branchReq, branchRes)).resolves.toBeUndefined();
       });
 
       it("should deny access for Owner if they lack the required permission (no role-name bypass)", async () => {
-        const middleware = authorize("branches.manage");
+        const middleware = authorize("branches.create");
         branchReq.user.role = "owner";
         branchReq.user.hasOrgWideAccess = false;
 
@@ -449,26 +449,26 @@ describe("Security Scoping Middleware & Validation tests", () => {
       });
 
       it("should allow access for Owner if they have the required permission", async () => {
-        const middleware = authorize("branches.manage");
+        const middleware = authorize("branches.create");
         branchReq.user.role = "owner";
         branchReq.user.hasOrgWideAccess = false;
 
         RoleRepository.prototype.findOne.mockResolvedValue({
           name: "owner",
-          permissions: [{ name: "branches.manage" }],
+          permissions: [{ name: "branches.create" }],
         });
 
         await expect(runMiddleware(middleware, branchReq, branchRes)).resolves.toBeUndefined();
       });
 
       it("should allow access for a non-owner with the same permission if scope permits", async () => {
-        const middleware = authorize("branches.manage");
+        const middleware = authorize("branches.create");
         branchReq.user.role = "manager";
         branchReq.user.hasOrgWideAccess = false;
 
         RoleRepository.prototype.findOne.mockResolvedValue({
           name: "manager",
-          permissions: [{ name: "branches.manage" }],
+          permissions: [{ name: "branches.create" }],
         });
 
         await expect(runMiddleware(middleware, branchReq, branchRes)).resolves.toBeUndefined();
@@ -532,7 +532,7 @@ describe("Security Scoping Middleware & Validation tests", () => {
               _id: "role-owner-id",
               name: "owner",
               permissions: [
-                { name: "branches.manage" },
+                { name: "branches.create" },
                 { name: "customer:view" }
               ]
             })
@@ -572,7 +572,7 @@ describe("Security Scoping Middleware & Validation tests", () => {
             success: true,
             data: expect.objectContaining({
               role: "Owner",
-              permissions: expect.arrayContaining(["branches.manage", "customer:view"]),
+              permissions: expect.arrayContaining(["branches.create", "customer:view"]),
               hasOrgWideAccess: true
             })
           }));

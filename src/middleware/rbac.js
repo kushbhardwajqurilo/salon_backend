@@ -14,6 +14,7 @@ const roleRepo = new RoleRepository();
  */
 export const authorize = (requiredPermission, checkBranchScope = false) => {
   return asyncHandler(async (req, res, next) => {
+    // console.log(`🔒 [RBAC AUTHORIZE ENTRY] ${req.method} ${req.originalUrl} | User: ${req.user?.email || req.user?.id} | Required: '${requiredPermission}'`);
     const { role: roleName, branchAccess } = req.user;
 
     const normalizedRole = roleName ? roleName.toLowerCase() : "";
@@ -23,16 +24,19 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
     try {
       const cachedPermissions = await redis.get(cacheKey);
       if (cachedPermissions) {
+
         permissions = JSON.parse(cachedPermissions);
       } else {
         // Cache miss: fetch role permissions from MongoDB
         const roleObj = await roleRepo.findOne({ name: normalizedRole }, ["permissions"]);
+        // console.log("roleObj", roleObj)
         if (!roleObj) {
           throw new AppError("Access denied. Role not found.", 403);
         }
 
         // Map populated permission documents to names list
         permissions = roleObj.permissions.map((p) => p.name);
+        // console.log("Permission loaded from DB", permissions)
 
         // Cache the permissions list in Redis for 24 hours (86400 seconds)
         await redis.setex(cacheKey, 86400, JSON.stringify(permissions));
@@ -49,7 +53,9 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
 
     // Verify permission exists
     const hasPermission = permissions.includes(requiredPermission);
+
     if (!hasPermission) {
+      // console.error(`⛔ [RBAC DENIED] User: ${req.user.email} (${req.user.id}) | Role: '${req.user.role}' | Missing Permission: '${requiredPermission}'`);
       throw new AppError("Access denied. You do not have the required permissions.", 403);
     }
 

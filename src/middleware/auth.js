@@ -8,6 +8,7 @@ import { asyncHandler } from "../utils/errors.js";
 const userRepo = new UserRepository();
 
 export const authenticate = asyncHandler(async (req, res, next) => {
+  console.log(`🔑 [AUTH ENTRY] ${req.method} ${req.originalUrl} | Header: ${req.headers.authorization ? "Present" : "Missing"}`);
   let token;
 
   if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
@@ -50,7 +51,9 @@ export const authenticate = asyncHandler(async (req, res, next) => {
     }
 
     let roleName = "owner";
-    if (mongoose.Types.ObjectId.isValid(user.role)) {
+    if (user.role && typeof user.role === "object" && user.role.name) {
+      roleName = user.role.name;
+    } else if (user.role && mongoose.Types.ObjectId.isValid(user.role)) {
       const dbRole = await mongoose.model("Role").findById(user.role);
       if (dbRole) roleName = dbRole.name;
     } else if (typeof user.role === "string") {

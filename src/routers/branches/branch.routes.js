@@ -7,10 +7,10 @@ const router = Router();
 
 router.use(authenticate);
 
-router.get("/", branchController.getBranches);
-router.get("/:id", branchController.getBranchById);
-router.post("/", authorize("branches.manage"), branchController.createBranch);
-router.patch("/:id", authorize("branches.manage"), branchController.updateBranch);
-router.delete("/:id", authorize("branches.manage"), branchController.deleteBranch);
+router.get("/", authorize("branches.view"), branchController.getBranches);
+router.get("/:id", authorize("branches.view"), branchController.getBranchById);
+router.post("/", authorize("branches.create"), branchController.createBranch);
+router.patch("/:id", authorize("branches.update"), branchController.updateBranch);
+router.delete("/:id", authorize("branches.delete"), branchController.deleteBranch);
 
 export default router;

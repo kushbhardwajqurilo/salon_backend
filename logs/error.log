@@ -345,3 +345,10 @@
 [2026-08-14 14:54:11:5411] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
 [2026-08-14 14:55:13:5513] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
 [2026-08-14 14:56:34:5634] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
+[2026-08-17 10:18:59:1859] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
+[2026-08-17 10:21:57:2157] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
+[2026-08-17 10:31:40:3140] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
+[2026-08-17 13:43:24:4324] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
+[2026-08-17 13:44:14:4414] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
+[2026-08-17 13:45:52:4552] [[31merror[39m]: [31m❌ MongoDB connection error: connect ECONNREFUSED 127.0.0.1:27017[39m
+[2026-08-17 16:22:50:2250] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
