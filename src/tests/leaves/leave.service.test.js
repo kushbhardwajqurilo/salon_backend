@@ -21,9 +21,9 @@ const baseLeave = (overrides = {}) => ({
   staffId: actorStaffId,
   leaveCode: "LV-0001",
   leaveType: "Casual",
-  startDate: new Date("2026-09-01T00:00:00.000Z"),
-  endDate: new Date("2026-09-03T00:00:00.000Z"),
-  dates: ["2026-09-01", "2026-09-02", "2026-09-03"],
+  startDate: new Date("2026-10-01T00:00:00.000Z"),
+  endDate: new Date("2026-10-03T00:00:00.000Z"),
+  dates: ["2026-10-01", "2026-10-02", "2026-10-03"],
   reason: "Family event",
   status: "pending",
   submittedBy: actorId,
@@ -141,8 +141,8 @@ describe("LeaveService Phase 4", () => {
     const result = await service.createLeave(
       {
         leaveType: "Casual",
-        startDate: "2026-09-01",
-        endDate: "2026-09-03",
+        startDate: "2026-10-01",
+        endDate: "2026-10-03",
         reason: "Family event",
       },
       orgId,
@@ -157,14 +157,14 @@ describe("LeaveService Phase 4", () => {
         leaveCode: "LV-0001",
         submittedBy: actorId,
         submittedFor: "self",
-        dates: ["2026-09-01", "2026-09-02", "2026-09-03"],
+        dates: ["2026-10-01", "2026-10-02", "2026-10-03"],
       }),
       orgId,
       actorId,
       "session-1"
     );
     expect(result.dates).toBeUndefined();
-    expect(result.startDate).toBe("2026-09-01");
+    expect(result.startDate).toBe("2026-10-01");
     expect(auditLogService.createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ action: "LEAVE_REQUESTED" }),
       orgId,
@@ -183,8 +183,8 @@ describe("LeaveService Phase 4", () => {
       {
         staffId: targetStaffId,
         leaveType: "Sick",
-        startDate: "2026-09-10",
-        endDate: "2026-09-10",
+        startDate: "2026-10-10",
+        endDate: "2026-10-10",
         reason: "Medical",
       },
       orgId,
@@ -210,8 +210,8 @@ describe("LeaveService Phase 4", () => {
         {
           staffId: targetStaffId,
           leaveType: "Casual",
-          startDate: "2026-09-01",
-          endDate: "2026-09-01",
+          startDate: "2026-10-01",
+          endDate: "2026-10-01",
           reason: "Test",
         },
         orgId,
@@ -229,8 +229,8 @@ describe("LeaveService Phase 4", () => {
         {
           staffId: targetStaffId,
           leaveType: "Casual",
-          startDate: "2026-09-01",
-          endDate: "2026-09-01",
+          startDate: "2026-10-01",
+          endDate: "2026-10-01",
           reason: "Test",
         },
         orgId,
@@ -251,8 +251,8 @@ describe("LeaveService Phase 4", () => {
       service.createLeave(
         {
           leaveType: "Casual",
-          startDate: "2026-09-01",
-          endDate: "2026-09-01",
+          startDate: "2026-10-01",
+          endDate: "2026-10-01",
           reason: "Test",
         },
         orgId,
@@ -269,8 +269,8 @@ describe("LeaveService Phase 4", () => {
       service.createLeave(
         {
           leaveType: "Casual",
-          startDate: "2026-09-01",
-          endDate: "2026-09-01",
+          startDate: "2026-10-01",
+          endDate: "2026-10-01",
           reason: "Test",
         },
         orgId,
@@ -287,8 +287,8 @@ describe("LeaveService Phase 4", () => {
       service.createLeave(
         {
           leaveType: "Casual",
-          startDate: "2026-09-03",
-          endDate: "2026-09-05",
+          startDate: "2026-10-03",
+          endDate: "2026-10-05",
           reason: "Overlap",
         },
         orgId,
@@ -302,17 +302,17 @@ describe("LeaveService Phase 4", () => {
     leaveRepo.findOverlapping.mockResolvedValue(null);
     leaveRepo.create.mockResolvedValue(
       baseLeave({
-        startDate: new Date("2026-09-04T00:00:00.000Z"),
-        endDate: new Date("2026-09-05T00:00:00.000Z"),
-        dates: ["2026-09-04", "2026-09-05"],
+        startDate: new Date("2026-10-04T00:00:00.000Z"),
+        endDate: new Date("2026-10-05T00:00:00.000Z"),
+        dates: ["2026-10-04", "2026-10-05"],
       })
     );
 
     const result = await service.createLeave(
       {
         leaveType: "Casual",
-        startDate: "2026-09-04",
-        endDate: "2026-09-05",
+        startDate: "2026-10-04",
+        endDate: "2026-10-05",
         reason: "Adjacent",
       },
       orgId,
@@ -320,11 +320,11 @@ describe("LeaveService Phase 4", () => {
       actorId
     );
 
-    expect(result.startDate).toBe("2026-09-04");
+    expect(result.startDate).toBe("2026-10-04");
     expect(leaveRepo.findOverlapping).toHaveBeenCalledWith(
       actorStaffId,
-      new Date("2026-09-04T00:00:00.000Z"),
-      new Date("2026-09-05T00:00:00.000Z"),
+      new Date("2026-10-04T00:00:00.000Z"),
+      new Date("2026-10-05T00:00:00.000Z"),
       orgId,
       null,
       "session-1"
@@ -347,8 +347,8 @@ describe("LeaveService Phase 4", () => {
     const result = await service.createLeave(
       {
         leaveType: "Casual",
-        startDate: "2026-09-01",
-        endDate: "2026-09-01",
+        startDate: "2026-10-01",
+        endDate: "2026-10-01",
         reason: "Retry",
       },
       orgId,
@@ -371,8 +371,8 @@ describe("LeaveService Phase 4", () => {
       service.createLeave(
         {
           leaveType: "Casual",
-          startDate: "2026-09-01",
-          endDate: "2026-09-03",
+          startDate: "2026-10-01",
+          endDate: "2026-10-03",
           reason: "Overlap",
         },
         orgId,
@@ -525,16 +525,16 @@ describe("LeaveService Phase 4", () => {
     leaveRepo.findOverlapping.mockResolvedValue(null);
     leaveRepo.updateById.mockResolvedValue(
       baseLeave({
-        startDate: new Date("2026-09-04T00:00:00.000Z"),
-        endDate: new Date("2026-09-06T00:00:00.000Z"),
-        dates: ["2026-09-04", "2026-09-05", "2026-09-06"],
+        startDate: new Date("2026-10-04T00:00:00.000Z"),
+        endDate: new Date("2026-10-06T00:00:00.000Z"),
+        dates: ["2026-10-04", "2026-10-05", "2026-10-06"],
         reason: "Updated reason",
       })
     );
 
     const result = await service.updateLeave(
       leaveId,
-      { startDate: "2026-09-04", endDate: "2026-09-06", reason: "Updated reason" },
+      { startDate: "2026-10-04", endDate: "2026-10-06", reason: "Updated reason" },
       orgId,
       branchId,
       actorId
@@ -542,8 +542,8 @@ describe("LeaveService Phase 4", () => {
 
     expect(leaveRepo.findOverlapping).toHaveBeenCalledWith(
       actorStaffId,
-      new Date("2026-09-04T00:00:00.000Z"),
-      new Date("2026-09-06T00:00:00.000Z"),
+      new Date("2026-10-04T00:00:00.000Z"),
+      new Date("2026-10-06T00:00:00.000Z"),
       orgId,
       leaveId,
       "session-1"
@@ -551,7 +551,7 @@ describe("LeaveService Phase 4", () => {
     expect(leaveRepo.updateById).toHaveBeenCalledWith(
       leaveId,
       expect.objectContaining({
-        dates: ["2026-09-04", "2026-09-05", "2026-09-06"],
+        dates: ["2026-10-04", "2026-10-05", "2026-10-06"],
       }),
       orgId,
       actorId,
@@ -630,8 +630,8 @@ describe("LeaveService Phase 4", () => {
     await service.createLeave(
       {
         leaveType: "Casual",
-        startDate: "2026-09-01",
-        endDate: "2026-09-01",
+        startDate: "2026-10-01",
+        endDate: "2026-10-01",
         reason: "Test",
       },
       orgId,

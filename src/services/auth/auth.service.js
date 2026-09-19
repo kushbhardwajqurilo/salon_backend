@@ -17,7 +17,13 @@ import { logger } from "../../utils/logger.js";
 import { AuditLogService } from "../audit/auditLog.service.js";
 
 export class AuthService {
-  constructor(userRepo = null, roleRepo = null, sessionRepo = null, auditLogService = null, staffRepo = null) {
+  constructor(
+    userRepo = null,
+    roleRepo = null,
+    sessionRepo = null,
+    auditLogService = null,
+    staffRepo = null,
+  ) {
     this.userRepo = userRepo || new UserRepository();
     this.roleRepo = roleRepo || new RoleRepository();
     this.sessionRepo = sessionRepo || new SessionRepository();
@@ -37,7 +43,7 @@ export class AuthService {
       try {
         staff = await this.staffRepo.findOne(
           { userId: user._id, isDeleted: false },
-          user.organizationId
+          user.organizationId,
         );
       } catch (err) {
         staff = null;
@@ -45,7 +51,10 @@ export class AuthService {
     }
 
     if (!staff || staff.status !== "active") {
-      throw new AppError("This account is not linked to an active staff profile. Please contact an administrator.", 403);
+      throw new AppError(
+        "This account is not linked to an active staff profile. Please contact an administrator.",
+        403,
+      );
     }
   }
 
@@ -237,19 +246,19 @@ export class AuthService {
 
   async refresh(token, ipAddress, deviceInfo) {
     if (!token) {
-      throw new AppError("Session not found or invalid", 401);
+      throw new AppError("Session not found or invalid 1", 401);
     }
 
     try {
       const session = await this.sessionRepo.findByToken(token);
       if (!session || !session.user || session.user.status !== "active") {
-        throw new AppError("Session not found or invalid", 401);
+        throw new AppError("Session not found or invalid 2", 401);
       }
 
       if (session.expiresAt && session.expiresAt < new Date()) {
         session.isValid = false;
         await session.save();
-        throw new AppError("Session not found or invalid", 401);
+        throw new AppError("Session not found or invalid 3", 401);
       }
 
       const user = session.user;
@@ -441,10 +450,7 @@ export class AuthService {
     }
 
     const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
-    const hashedOtp = crypto
-      .createHash("sha256")
-      .update(rawOtp)
-      .digest("hex");
+    const hashedOtp = crypto.createHash("sha256").update(rawOtp).digest("hex");
 
     user.otp = hashedOtp;
     user.otpExpires = new Date(Date.now() + 5 * 60 * 1000);
@@ -510,10 +516,7 @@ export class AuthService {
       );
     }
 
-    const candidateHash = crypto
-      .createHash("sha256")
-      .update(otp)
-      .digest("hex");
+    const candidateHash = crypto.createHash("sha256").update(otp).digest("hex");
 
     if (candidateHash !== user.otp) {
       user.otpAttempts = (user.otpAttempts || 0) + 1;
@@ -524,7 +527,9 @@ export class AuthService {
       }
       await user.save();
 
-      logger.warn(`[SECURITY] OTP_VERIFICATION_FAILED for user ${user._id}, attempts: ${user.otpAttempts}`);
+      logger.warn(
+        `[SECURITY] OTP_VERIFICATION_FAILED for user ${user._id}, attempts: ${user.otpAttempts}`,
+      );
 
       throw new AppError("Invalid or expired OTP", 400);
     }
@@ -554,7 +559,12 @@ export class AuthService {
     };
   }
 
-  async activateChangePassword(token, newPassword, ipAddress = "Unknown", deviceInfo = "Unknown") {
+  async activateChangePassword(
+    token,
+    newPassword,
+    ipAddress = "Unknown",
+    deviceInfo = "Unknown",
+  ) {
     const decoded = jwt.verify(token, env.JWT_SECRET);
     if (decoded.scope !== "password-change") {
       throw new AppError("Access denied. Invalid token scope.", 401);
@@ -590,7 +600,9 @@ export class AuthService {
     user.otpResendUntil = null;
     await user.save();
 
-    logger.info(`[SECURITY] PASSWORD_ACTIVATION_COMPLETED for user ${user._id}`);
+    logger.info(
+      `[SECURITY] PASSWORD_ACTIVATION_COMPLETED for user ${user._id}`,
+    );
 
     // Option A: Establish normal authenticated session
     const accessToken = this.generateAccessToken(user);

@@ -5,9 +5,7 @@ const appointmentServiceSnapshotSchema = new mongoose.Schema(
     serviceId: { type: mongoose.Schema.Types.ObjectId, ref: "Service", required: true },
     name: { type: String, required: true, trim: true },
     duration: { type: Number, required: true, min: 1 }, // positive integer in minutes
-    price: { type: Number, required: true, min: 0 },
-    taxRate: { type: Number, required: true, min: 0, default: 0 },
-    taxAmount: { type: Number, required: true, min: 0 }
+    price: { type: Number, required: true, min: 0 }
   },
   { _id: false }
 );
@@ -47,7 +45,6 @@ const appointmentSchema = new mongoose.Schema(
     pricing: {
       subtotal: { type: Number, required: true, min: 0 },
       discount: { type: Number, default: 0, min: 0 },
-      tax: { type: Number, required: true, min: 0 },
       total: { type: Number, required: true, min: 0 }
     },
     notes: { type: String, trim: true, maxlength: 1000, default: "" },

@@ -53,8 +53,6 @@ export const createServiceSchema = z.object({
     categoryId: objectIdSchema,
     duration: z.coerce.number().int().positive("Duration must be a positive integer"),
     basePrice: z.coerce.number().nonnegative("Base price must be a non-negative number"),
-    taxable: z.boolean().optional().default(false),
-    taxRate: z.coerce.number().nonnegative("Tax rate must be a non-negative number").optional().default(0),
     displayOrder: z.coerce.number().int().optional().default(0),
   }),
 });
@@ -68,10 +66,6 @@ export const updateServiceSchema = z.object({
     duration: z.coerce.number().int().positive("Duration must be a positive integer").optional(),
     pricing: z.object({
       basePrice: z.coerce.number().nonnegative("Base price must be a non-negative number"),
-    }).optional(),
-    taxConfiguration: z.object({
-      taxable: z.boolean().optional(),
-      taxRate: z.coerce.number().nonnegative("Tax rate must be a non-negative number").optional(),
     }).optional(),
     status: z.enum(["active", "inactive"]).optional(),
     displayOrder: z.coerce.number().int().optional(),

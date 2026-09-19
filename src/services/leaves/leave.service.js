@@ -122,7 +122,7 @@ export class LeaveService {
           try {
             await session.abortTransaction();
             session.endSession();
-          } catch (_) {}
+          } catch (_) { }
         }
         const isSessionErr =
           err.message?.includes("Transaction numbers") ||
@@ -289,7 +289,10 @@ export class LeaveService {
     const leave = await this.leaveRepo.findById(
       id,
       organizationId,
-      ["submittedBy"],
+      [
+        { path: "submittedBy", select: "name" },
+        { path: "cancelledBy", select: "name" },
+      ],
       "-dates -__v -isDeleted -deletedAt -deletedBy",
     );
     if (!leave) {
@@ -886,7 +889,7 @@ export class LeaveService {
       reviewedBy: normalizeId(leave.reviewedBy),
       reviewedAt: normalizeDateTime(leave.reviewedAt),
       reviewNote: leave.reviewNote ?? null,
-      cancelledBy: normalizeId(leave.cancelledBy),
+      cancelledBy: normalizeId(leave.cancelledBy?.name),
       cancelledAt: normalizeDateTime(leave.cancelledAt),
       cancelReason: leave.cancelReason ?? null,
       createdAt: normalizeDateTime(leave.createdAt),

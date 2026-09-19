@@ -159,11 +159,10 @@ describe("Services Module Unit Tests", () => {
   });
 
   describe("Service Operations", () => {
-    it("should successfully create a service and generate code", async () => {
+    it("should successfully create a service without branchId and generate code", async () => {
       mockCategoryRepo.findById.mockResolvedValue({
         _id: "cat-1",
         status: "active",
-        branchId: "branch-1",
         organizationId: "org-1",
       });
       mockServiceRepo.findOne.mockResolvedValue(null);
@@ -175,7 +174,6 @@ describe("Services Module Unit Tests", () => {
         categoryId: "cat-1",
         pricing: { basePrice: 500 },
         duration: 30,
-        branchId: "branch-1",
         organizationId: "org-1",
       };
       mockServiceRepo.create.mockResolvedValue(mockService);
@@ -186,7 +184,6 @@ describe("Services Module Unit Tests", () => {
           categoryId: "cat-1",
           pricing: { basePrice: 500 },
           duration: 30,
-          branchId: "branch-1",
         },
         "org-1",
         "user-1"
@@ -203,11 +200,15 @@ describe("Services Module Unit Tests", () => {
       );
     });
 
-    it("should reject service creation if category branch mismatch occurs", async () => {
+    it("should reject service creation if duplicate name exists in organization", async () => {
       mockCategoryRepo.findById.mockResolvedValue({
         _id: "cat-1",
         status: "active",
-        branchId: "branch-2",
+        organizationId: "org-1",
+      });
+      mockServiceRepo.findOne.mockResolvedValue({
+        _id: "srv-existing",
+        name: "Haircut",
         organizationId: "org-1",
       });
 
@@ -218,12 +219,11 @@ describe("Services Module Unit Tests", () => {
             categoryId: "cat-1",
             pricing: { basePrice: 500 },
             duration: 30,
-            branchId: "branch-1",
           },
           "org-1",
           "user-1"
         )
-      ).rejects.toThrow("Category branch must match service branch.");
+      ).rejects.toThrow("A service with this name already exists in this organization.");
     });
 
     it("should reject updates to immutable properties", async () => {
@@ -232,7 +232,6 @@ describe("Services Module Unit Tests", () => {
         name: "Haircut",
         serviceCode: "HAIR1234",
         status: "active",
-        branchId: "branch-1",
         organizationId: "org-1",
         categoryId: "cat-1",
       };
@@ -259,7 +258,6 @@ describe("Services Module Unit Tests", () => {
     it("should successfully reactivate service if category is active", async () => {
       mockServiceRepo.findByIdIncludeDeleted.mockResolvedValue({
         _id: "srv-1",
-        branchId: "branch-1",
         categoryId: "cat-1",
       });
       mockCategoryRepo.findById.mockResolvedValue({

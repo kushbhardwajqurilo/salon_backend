@@ -41,7 +41,7 @@ const auditLogSchema = new mongoose.Schema(
     branchId: {
       type: mongoose.Schema.Types.Mixed,
       ref: "Branch",
-      required: true,
+      default: null,
     },
     actorId: {
       type: mongoose.Schema.Types.Mixed,

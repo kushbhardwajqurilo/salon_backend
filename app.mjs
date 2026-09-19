@@ -1,7 +1,7 @@
 import crypto from "crypto";
 // Polyfill global crypto for Node.js versions < 19
 if (!globalThis.crypto) {
-    globalThis.crypto = crypto;
+  globalThis.crypto = crypto;
 }
 
 import express from "express";
@@ -19,7 +19,11 @@ import staffRouter from "./src/routers/staff/staff.routes.js";
 import userRouter from "./src/routers/users/user.routes.js";
 import leaveRouter from "./src/routers/leaves/leave.router.js";
 import appointmentRouter from "./src/routers/appointments/appointment.router.js";
-import { apiLimiter, speedLimiter, sanitizeData } from "./src/middleware/security.js";
+import {
+  apiLimiter,
+  speedLimiter,
+  sanitizeData,
+} from "./src/middleware/security.js";
 import { globalErrorHandler } from "./src/utils/errors.js";
 
 const app = express();
@@ -40,36 +44,47 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Top-level HTTP Request Logger for debugging all incoming requests
 app.use((req, res, next) => {
-  console.log(`📥 [HTTP] ${req.method} ${req.originalUrl} | Auth: ${req.headers.authorization ? "Bearer token attached" : "NO AUTH HEADER"} | Origin: ${req.headers.origin || "no origin"}`);
+  console.log(
+    `📥 [HTTP] ${req.method} ${req.originalUrl} | Auth: ${req.headers.authorization ? "Bearer token attached" : "NO AUTH HEADER"} | Origin: ${req.headers.origin || "no origin"}`,
+  );
   next();
 });
 
 // block common attack paths(.env)
 app.use((req, res, next) => {
-    if (req.url.includes(".env")) {
-        return res.status(403).send("Forbidden");
-    }
-    next();
+  if (req.url.includes(".env")) {
+    return res.status(403).send("Forbidden");
+  }
+  next();
 });
 
 // CORS
 const allowOrigins = [
-    process.env.NODE_ENV === "production" ? "https://theglamup.in" : "http://localhost:3000",
-    process.env.NODE_ENV === "production" ? "https://theglamup.in" : "https://l3zz8htl-3000.inc1.devtunnels.ms"
+  process.env.NODE_ENV === "production"
+    ? "https://theglamup.in"
+    : "http://localhost:3000",
+  process.env.NODE_ENV === "production"
+    ? "https://theglamup.in"
+    : "https://l3zz8htl-3000.inc1.devtunnels.ms",
 ];
 
 const corsOptions = {
-    origin: function (origin, callback) {
-        if (!origin || allowOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            console.warn(`Cors Blocked: ${origin}`);
-            callback(new Error("Not allowed by CORS"));
-        }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Branch-Id", "x-branch-id"]
+  origin: function (origin, callback) {
+    if (!origin || allowOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`Cors Blocked: ${origin}`);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Branch-Id",
+    "x-branch-id",
+  ],
 };
 
 app.use(cors(corsOptions));
@@ -80,10 +95,10 @@ app.use("/api", apiLimiter);
 
 // DEBUG Logger for non-production
 if (process.env.NODE_ENV !== "production") {
-    app.use((req, res, next) => {
-        console.log("🔥", req.method, req.url);
-        next();
-    });
+  app.use((req, res, next) => {
+    console.log("🔥", req.method, req.url);
+    next();
+  });
 }
 
 // Routes
@@ -99,11 +114,11 @@ app.use("/api/v1/appointments", appointmentRouter);
 
 // health check endpoint for server
 app.get("/health", (req, res) => {
-    res.status(200).json({
-        status: "OK",
-        uptime: process.uptime(),
-        timestamp: new Date().toISOString(),
-    });
+  res.status(200).json({
+    status: "OK",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Global Error Handler

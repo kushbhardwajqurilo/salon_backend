@@ -34,17 +34,6 @@ const serviceSchema = new mongoose.Schema(
         min: 0,
       },
     },
-    taxConfiguration: {
-      taxable: {
-        type: Boolean,
-        default: false,
-      },
-      taxRate: {
-        type: Number,
-        min: 0,
-        default: 0,
-      },
-    },
     status: {
       type: String,
       enum: ["active", "inactive"],
@@ -72,7 +61,7 @@ const serviceSchema = new mongoose.Schema(
     branchId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Branch",
-      required: true,
+      default: null,
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -86,19 +75,19 @@ const serviceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Enforce unique service name per branch (for active services)
+// Enforce unique service name per organization (for active services)
 serviceSchema.index(
-  { branchId: 1, name: 1 },
+  { organizationId: 1, name: 1 },
   { unique: true, partialFilterExpression: { isDeleted: false } }
 );
 
-// Enforce unique serviceCode per branch (for active services with a code)
+// Enforce unique serviceCode per organization (for active services with a code)
 serviceSchema.index(
-  { branchId: 1, serviceCode: 1 },
+  { organizationId: 1, serviceCode: 1 },
   { unique: true, partialFilterExpression: { isDeleted: false, serviceCode: { $type: "string" } } }
 );
 
-serviceSchema.index({ organizationId: 1, branchId: 1 });
+serviceSchema.index({ organizationId: 1 });
 serviceSchema.index({ categoryId: 1 });
 
 export const Service = mongoose.model("Service", serviceSchema);

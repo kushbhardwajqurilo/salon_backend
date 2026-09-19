@@ -14,6 +14,7 @@ const roleRepo = new RoleRepository();
  */
 export const authorize = (requiredPermission, checkBranchScope = false) => {
   return asyncHandler(async (req, res, next) => {
+    console.log("reqriued permissions", requiredPermission);
     // console.log(`🔒 [RBAC AUTHORIZE ENTRY] ${req.method} ${req.originalUrl} | User: ${req.user?.email || req.user?.id} | Required: '${requiredPermission}'`);
     const { role: roleName, branchAccess } = req.user;
 
@@ -24,11 +25,12 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
     try {
       const cachedPermissions = await redis.get(cacheKey);
       if (cachedPermissions) {
-
         permissions = JSON.parse(cachedPermissions);
       } else {
         // Cache miss: fetch role permissions from MongoDB
-        const roleObj = await roleRepo.findOne({ name: normalizedRole }, ["permissions"]);
+        const roleObj = await roleRepo.findOne({ name: normalizedRole }, [
+          "permissions",
+        ]);
         // console.log("roleObj", roleObj)
         if (!roleObj) {
           throw new AppError("Access denied. Role not found.", 403);
@@ -44,7 +46,9 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
     } catch (err) {
       logger.error(`Error resolving permissions from cache/db: ${err.message}`);
       // Fallback directly to DB if Redis fails
-      const roleObj = await roleRepo.findOne({ name: normalizedRole }, ["permissions"]);
+      const roleObj = await roleRepo.findOne({ name: normalizedRole }, [
+        "permissions",
+      ]);
       if (!roleObj) {
         throw new AppError("Access denied. Role not found.", 403);
       }
@@ -54,20 +58,33 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
     // Verify permission exists
     const hasPermission = permissions.includes(requiredPermission);
 
+    console.log(
+      "hashPermission",
+      hasPermission,
+      "permissions",
+      requiredPermission,
+    );
     if (!hasPermission) {
       // console.error(`⛔ [RBAC DENIED] User: ${req.user.email} (${req.user.id}) | Role: '${req.user.role}' | Missing Permission: '${requiredPermission}'`);
-      throw new AppError("Access denied. You do not have the required permissions.", 403);
+      throw new AppError(
+        "Access denied. You do not have the required permissions.",
+        403,
+      );
     }
 
     // Check branch scope if required
     if (checkBranchScope) {
-      const branchId = req.params.branchId || req.query.branchId || req.body.branchId;
+      const branchId =
+        req.params.branchId || req.query.branchId || req.body.branchId;
       if (branchId) {
         const isBranchAuthorized = (branchAccess || []).some(
-          (b) => b.branchId.toString() === branchId.toString() && b.isActive
+          (b) => b.branchId.toString() === branchId.toString() && b.isActive,
         );
         if (!isBranchAuthorized) {
-          throw new AppError("Access denied. You do not have access to this branch.", 403);
+          throw new AppError(
+            "Access denied. You do not have access to this branch.",
+            403,
+          );
         }
       }
     }
@@ -89,7 +106,9 @@ export const requirePermission = (requiredPermission) => {
       if (cachedPermissions) {
         permissions = JSON.parse(cachedPermissions);
       } else {
-        const roleObj = await roleRepo.findOne({ name: normalizedRole }, ["permissions"]);
+        const roleObj = await roleRepo.findOne({ name: normalizedRole }, [
+          "permissions",
+        ]);
         if (!roleObj) {
           throw new AppError("Access denied. Role not found.", 403);
         }
@@ -98,7 +117,9 @@ export const requirePermission = (requiredPermission) => {
       }
     } catch (err) {
       logger.error(`Error resolving permissions from cache/db: ${err.message}`);
-      const roleObj = await roleRepo.findOne({ name: normalizedRole }, ["permissions"]);
+      const roleObj = await roleRepo.findOne({ name: normalizedRole }, [
+        "permissions",
+      ]);
       if (!roleObj) {
         throw new AppError("Access denied. Role not found.", 403);
       }
@@ -107,7 +128,10 @@ export const requirePermission = (requiredPermission) => {
 
     const hasPermission = permissions.includes(requiredPermission);
     if (!hasPermission) {
-      throw new AppError("Access denied. You do not have the required permissions.", 403);
+      throw new AppError(
+        "Access denied. You do not have the required permissions.",
+        403,
+      );
     }
 
     next();

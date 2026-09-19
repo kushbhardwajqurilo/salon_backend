@@ -160,4 +160,160 @@ describe("AppointmentService Unit & Domain Tests", () => {
       smsSpy.mockRestore();
     });
   });
+
+  describe("assignStaff Elapsed Walk-in Floor Queue Handling", () => {
+    it("advances startTime and recalculates slotMinutes for elapsed walk-in appointments on current date", async () => {
+      const { Branch } = await import("../../models/branches/branch.model.js");
+      const { Staff } = await import("../../models/staff/staff.model.js");
+      const { Leave } = await import("../../models/leaves/leave.model.js");
+      const { AppointmentRepository } = await import("../../repositories/appointments/appointment.repository.js");
+
+      const orgId = new mongoose.Types.ObjectId();
+      const branchId = new mongoose.Types.ObjectId();
+      const staffId = new mongoose.Types.ObjectId();
+      const aptId = new mongoose.Types.ObjectId();
+
+      const branchTz = "Asia/Kolkata";
+      jest.spyOn(Branch, "findOne").mockResolvedValue({ _id: branchId, organizationId: orgId, isActive: true, timezone: branchTz });
+      jest.spyOn(Staff, "findOne").mockResolvedValue({ _id: staffId, organizationId: orgId, isDeleted: false, status: "active" });
+      jest.spyOn(Leave, "findOne").mockResolvedValue(null);
+
+      const currentBranchTime = formatUTCToLocal(new Date(), branchTz);
+      // Create a walk-in appointment with earlier startTime today (e.g. 08:00)
+      const walkInApt = {
+        _id: aptId,
+        organizationId: orgId,
+        branchId,
+        appointmentCode: "APT-WALK-001",
+        customerId: new mongoose.Types.ObjectId(),
+        staffId: null,
+        bookingType: "walk_in",
+        status: "scheduled",
+        appointmentDate: currentBranchTime.dateStr,
+        startTime: "06:00",
+        endTime: "06:30",
+        totalDuration: 30,
+        startAt: parseLocalToUTC(currentBranchTime.dateStr, "06:00", branchTz),
+        endAt: parseLocalToUTC(currentBranchTime.dateStr, "06:30", branchTz),
+        slotMinutes: [],
+        services: [{ serviceId: new mongoose.Types.ObjectId(), name: "Haircut", duration: 30, price: 500, taxRate: 0, taxAmount: 0 }],
+      };
+
+      let updatedData = null;
+      jest.spyOn(AppointmentRepository.prototype, "findById").mockImplementation(async () => {
+        if (updatedData) {
+          return { ...walkInApt, ...updatedData, staffId: { _id: staffId, name: "Rahul" } };
+        }
+        return walkInApt;
+      });
+
+      jest.spyOn(AppointmentRepository.prototype, "update").mockImplementation(async (id, data) => {
+        updatedData = data;
+        return { ...walkInApt, ...data };
+      });
+
+      const result = await appointmentService.assignStaff(
+        aptId,
+        { branchId: branchId.toString(), staffId: staffId.toString() },
+        orgId
+      );
+
+      expect(result.staffId).toBeDefined();
+      expect(updatedData).toBeDefined();
+      expect(updatedData.startTime).toBe(currentBranchTime.timeStr);
+      expect(updatedData.slotMinutes.length).toBe(30);
+    });
+  });
+
+  describe("Reschedule Grace Period Buffer", () => {
+    it("allows rescheduling within 5-minute buffer of the past without throwing 400 error", async () => {
+      const { Branch } = await import("../../models/branches/branch.model.js");
+      const { AppointmentRepository } = await import("../../repositories/appointments/appointment.repository.js");
+
+      const orgId = new mongoose.Types.ObjectId();
+      const branchId = new mongoose.Types.ObjectId();
+      const aptId = new mongoose.Types.ObjectId();
+      const branchTz = "Asia/Kolkata";
+
+      jest.spyOn(Branch, "findOne").mockResolvedValue({ _id: branchId, organizationId: orgId, isActive: true, timezone: branchTz });
+
+      const now = new Date();
+      // Current time minus 2 minutes (within 5-min grace window)
+      const twoMinsAgo = new Date(now.getTime() - 2 * 60 * 1000);
+      const localTwoMinsAgo = formatUTCToLocal(twoMinsAgo, branchTz);
+
+      const existingApt = {
+        _id: aptId,
+        organizationId: orgId,
+        branchId,
+        status: "scheduled",
+        totalDuration: 30,
+        appointmentDate: localTwoMinsAgo.dateStr,
+        startTime: localTwoMinsAgo.timeStr,
+        staffId: null,
+      };
+
+      jest.spyOn(AppointmentRepository.prototype, "findById").mockResolvedValue(existingApt);
+      jest.spyOn(AppointmentRepository.prototype, "update").mockImplementation(async (id, data) => ({
+        ...existingApt,
+        ...data,
+      }));
+
+      const result = await appointmentService.rescheduleAppointment(
+        aptId,
+        {
+          branchId: branchId.toString(),
+          appointmentDate: localTwoMinsAgo.dateStr,
+          startTime: localTwoMinsAgo.timeStr,
+        },
+        orgId
+      );
+
+      expect(result).toBeDefined();
+      expect(result.startTime).toBe(localTwoMinsAgo.timeStr);
+    });
+
+    it("throws 400 when rescheduling more than 5 minutes in the past", async () => {
+      const { Branch } = await import("../../models/branches/branch.model.js");
+      const { AppointmentRepository } = await import("../../repositories/appointments/appointment.repository.js");
+
+      const orgId = new mongoose.Types.ObjectId();
+      const branchId = new mongoose.Types.ObjectId();
+      const aptId = new mongoose.Types.ObjectId();
+      const branchTz = "Asia/Kolkata";
+
+      jest.spyOn(Branch, "findOne").mockResolvedValue({ _id: branchId, organizationId: orgId, isActive: true, timezone: branchTz });
+
+      const now = new Date();
+      // Current time minus 10 minutes (beyond 5-min grace window)
+      const tenMinsAgo = new Date(now.getTime() - 10 * 60 * 1000);
+      const localTenMinsAgo = formatUTCToLocal(tenMinsAgo, branchTz);
+
+      const existingApt = {
+        _id: aptId,
+        organizationId: orgId,
+        branchId,
+        status: "scheduled",
+        totalDuration: 30,
+        appointmentDate: localTenMinsAgo.dateStr,
+        startTime: localTenMinsAgo.timeStr,
+        staffId: null,
+      };
+
+      jest.spyOn(AppointmentRepository.prototype, "findById").mockResolvedValue(existingApt);
+
+      await expect(
+        appointmentService.rescheduleAppointment(
+          aptId,
+          {
+            branchId: branchId.toString(),
+            appointmentDate: localTenMinsAgo.dateStr,
+            startTime: localTenMinsAgo.timeStr,
+          },
+          orgId
+        )
+      ).rejects.toThrow("Cannot reschedule appointment to a past time");
+    });
+  });
 });
+

@@ -27,7 +27,7 @@ export class LeaveRepository extends BaseRepository {
       query = query.session(session);
     }
     if (populate.length > 0) {
-      query = query.populate(populate, "name");
+      query = query.populate(populate);
     }
     if (select) {
       query = query.select(select);

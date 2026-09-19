@@ -34,13 +34,19 @@ const getTimezoneOffsetMs = (date, timezone = DEFAULT_TIMEZONE) => {
 /**
  * Converts local date string ("YYYY-MM-DD") and time string ("HH:mm") to canonical UTC Date timestamp
  */
-export const parseLocalToUTC = (dateStr, timeStr, timezone = DEFAULT_TIMEZONE) => {
+export const parseLocalToUTC = (
+  dateStr,
+  timeStr,
+  timezone = DEFAULT_TIMEZONE,
+) => {
   const tz = timezone || DEFAULT_TIMEZONE;
   const [year, month, day] = dateStr.split("-").map(Number);
   const [hours, minutes] = timeStr.split(":").map(Number);
 
   // Construct nominal UTC instant assuming input was UTC
-  const nominalUtc = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0, 0));
+  const nominalUtc = new Date(
+    Date.UTC(year, month - 1, day, hours, minutes, 0, 0),
+  );
   const offsetMs = getTimezoneOffsetMs(nominalUtc, tz);
   return new Date(nominalUtc.getTime() - offsetMs);
 };
@@ -100,13 +106,19 @@ export class AppointmentService {
     } else if (channel === "both") {
       if (emailStatus === "sent" && smsStatus === "sent") {
         reminder.status = "sent";
-        reminder.sentAt = reminder.email.sentAt > reminder.sms.sentAt ? reminder.email.sentAt : reminder.sms.sentAt;
+        reminder.sentAt =
+          reminder.email.sentAt > reminder.sms.sentAt
+            ? reminder.email.sentAt
+            : reminder.sms.sentAt;
         reminder.failureReason = null;
       } else if (emailStatus === "sent" || smsStatus === "sent") {
         reminder.status = "partial_delivery";
         reminder.sentAt = reminder.email.sentAt || reminder.sms.sentAt;
-        const failedReason = reminder.email.failureReason || reminder.sms.failureReason;
-        reminder.failureReason = failedReason ? `Partial delivery: ${failedReason}` : null;
+        const failedReason =
+          reminder.email.failureReason || reminder.sms.failureReason;
+        reminder.failureReason = failedReason
+          ? `Partial delivery: ${failedReason}`
+          : null;
       } else if (emailStatus === "failed" && smsStatus === "failed") {
         reminder.status = "failed";
         reminder.failedAt = reminder.email.failedAt || reminder.sms.failedAt;
@@ -125,13 +137,17 @@ export class AppointmentService {
   async scheduleReminders(appointment) {
     if (!appointment.reminder?.enabled || appointment.status !== "scheduled") {
       if (appointment.reminder?.enabled === false) {
-        await appointmentRepo.update(appointment._id, {
-          "reminder.status": "cancelled",
-          "reminder.sendAt": null,
-          "reminder.failureReason": "Reminder disabled by configuration",
-          "reminder.email.status": "cancelled",
-          "reminder.sms.status": "cancelled",
-        }, appointment.organizationId);
+        await appointmentRepo.update(
+          appointment._id,
+          {
+            "reminder.status": "cancelled",
+            "reminder.sendAt": null,
+            "reminder.failureReason": "Reminder disabled by configuration",
+            "reminder.email.status": "cancelled",
+            "reminder.sms.status": "cancelled",
+          },
+          appointment.organizationId,
+        );
       }
       return;
     }
@@ -147,15 +163,19 @@ export class AppointmentService {
 
     // If sendAt is in the past, mark non-delivery state without queueing
     if (triggerMs <= Date.now()) {
-      await appointmentRepo.update(appointment._id, {
-        "reminder.sendAt": sendAt,
-        "reminder.status": "cancelled",
-        "reminder.failureReason": "sendAt is in the past",
-        "reminder.email.status": "cancelled",
-        "reminder.email.failureReason": "sendAt is in the past",
-        "reminder.sms.status": "cancelled",
-        "reminder.sms.failureReason": "sendAt is in the past",
-      }, appointment.organizationId);
+      await appointmentRepo.update(
+        appointment._id,
+        {
+          "reminder.sendAt": sendAt,
+          "reminder.status": "cancelled",
+          "reminder.failureReason": "sendAt is in the past",
+          "reminder.email.status": "cancelled",
+          "reminder.email.failureReason": "sendAt is in the past",
+          "reminder.sms.status": "cancelled",
+          "reminder.sms.failureReason": "sendAt is in the past",
+        },
+        appointment.organizationId,
+      );
       return;
     }
 
@@ -198,15 +218,23 @@ export class AppointmentService {
         updates["reminder.sms.failureReason"] = null;
       }
 
-      await appointmentRepo.update(appointment._id, updates, appointment.organizationId);
+      await appointmentRepo.update(
+        appointment._id,
+        updates,
+        appointment.organizationId,
+      );
     } catch (err) {
       console.error("Failed to enqueue reminder job:", err.message);
-      await appointmentRepo.update(appointment._id, {
-        "reminder.sendAt": sendAt,
-        "reminder.status": "failed",
-        "reminder.failedAt": new Date(),
-        "reminder.failureReason": `Enqueue error: ${err.message}`,
-      }, appointment.organizationId);
+      await appointmentRepo.update(
+        appointment._id,
+        {
+          "reminder.sendAt": sendAt,
+          "reminder.status": "failed",
+          "reminder.failedAt": new Date(),
+          "reminder.failureReason": `Enqueue error: ${err.message}`,
+        },
+        appointment.organizationId,
+      );
     }
   }
 
@@ -221,7 +249,9 @@ export class AppointmentService {
     const smsJobId = `apt_reminder_${aptIdStr}_sms_${offset}`;
 
     try {
-      const emailJob = emailQueue?.getJob ? await emailQueue.getJob(emailJobId) : null;
+      const emailJob = emailQueue?.getJob
+        ? await emailQueue.getJob(emailJobId)
+        : null;
       if (emailJob) await emailJob.remove();
 
       const smsJob = smsQueue?.getJob ? await smsQueue.getJob(smsJobId) : null;
@@ -240,20 +270,35 @@ export class AppointmentService {
       throw new AppError("Appointment not found", 404);
     }
 
-    const aptBranchId = appointment.branchId?._id ? appointment.branchId._id.toString() : appointment.branchId.toString();
+    const aptBranchId = appointment.branchId?._id
+      ? appointment.branchId._id.toString()
+      : appointment.branchId.toString();
     if (aptBranchId !== branchId.toString()) {
-      throw new AppError("Target branchId does not match appointment branch", 400);
+      throw new AppError(
+        "Target branchId does not match appointment branch",
+        400,
+      );
     }
 
     if (["completed", "cancelled", "no_show"].includes(appointment.status)) {
-      throw new AppError(`Cannot trigger reminder for appointment with status '${appointment.status}'`, 400);
+      throw new AppError(
+        `Cannot trigger reminder for appointment with status '${appointment.status}'`,
+        400,
+      );
     }
 
     if (appointment.reminder?.status === "sent") {
-      throw new AppError("Reminder has already been delivered across all configured channels", 400);
+      throw new AppError(
+        "Reminder has already been delivered across all configured channels",
+        400,
+      );
     }
 
-    const customer = await Customer.findOne({ _id: appointment.customerId, organizationId, isDeleted: false });
+    const customer = await Customer.findOne({
+      _id: appointment.customerId,
+      organizationId,
+      isDeleted: false,
+    });
     if (!customer) {
       throw new AppError("Customer record not found", 404);
     }
@@ -275,9 +320,16 @@ export class AppointmentService {
     // 1. Process Email Channel if requested and not already sent
     if (channel === "email" || channel === "both") {
       if (appointment.reminder?.email?.status === "sent") {
-        channelResults.email = { status: "sent", sentAt: appointment.reminder.email.sentAt };
+        channelResults.email = {
+          status: "sent",
+          sentAt: appointment.reminder.email.sentAt,
+        };
       } else if (!customer.email) {
-        channelResults.email = { status: "failed", failedAt: now, failureReason: "Customer has no email address configured" };
+        channelResults.email = {
+          status: "failed",
+          failedAt: now,
+          failureReason: "Customer has no email address configured",
+        };
       } else {
         try {
           await emailService.sendMail({
@@ -286,9 +338,17 @@ export class AppointmentService {
             text: `Hello ${customer.name}, this is a reminder for your upcoming salon appointment on ${formattedStart.dateStr} at ${formattedStart.timeStr}.`,
             html: `<p>Hello <strong>${customer.name}</strong>,</p><p>This is a reminder for your upcoming salon appointment (Code: <code>${appointment.appointmentCode}</code>) scheduled on <strong>${formattedStart.dateStr}</strong> at <strong>${formattedStart.timeStr}</strong>.</p>`,
           });
-          channelResults.email = { status: "sent", sentAt: now, failureReason: null };
+          channelResults.email = {
+            status: "sent",
+            sentAt: now,
+            failureReason: null,
+          };
         } catch (err) {
-          channelResults.email = { status: "failed", failedAt: now, failureReason: `Email dispatch failed: ${err.message}` };
+          channelResults.email = {
+            status: "failed",
+            failedAt: now,
+            failureReason: `Email dispatch failed: ${err.message}`,
+          };
         }
       }
     }
@@ -296,18 +356,33 @@ export class AppointmentService {
     // 2. Process SMS Channel if requested and not already sent
     if (channel === "sms" || channel === "both") {
       if (appointment.reminder?.sms?.status === "sent") {
-        channelResults.sms = { status: "sent", sentAt: appointment.reminder.sms.sentAt };
+        channelResults.sms = {
+          status: "sent",
+          sentAt: appointment.reminder.sms.sentAt,
+        };
       } else if (!customer.phone) {
-        channelResults.sms = { status: "failed", failedAt: now, failureReason: "Customer has no phone number configured" };
+        channelResults.sms = {
+          status: "failed",
+          failedAt: now,
+          failureReason: "Customer has no phone number configured",
+        };
       } else {
         try {
           await smsService.sendSms({
             phone: customer.phone,
             message: `Reminder: Your appointment ${appointment.appointmentCode} is scheduled for ${formattedStart.dateStr} at ${formattedStart.timeStr}.`,
           });
-          channelResults.sms = { status: "sent", sentAt: now, failureReason: null };
+          channelResults.sms = {
+            status: "sent",
+            sentAt: now,
+            failureReason: null,
+          };
         } catch (err) {
-          channelResults.sms = { status: "failed", failedAt: now, failureReason: `SMS dispatch failed: ${err.message}` };
+          channelResults.sms = {
+            status: "failed",
+            failedAt: now,
+            failureReason: `SMS dispatch failed: ${err.message}`,
+          };
         }
       }
     }
@@ -316,18 +391,22 @@ export class AppointmentService {
     const updateObj = {};
     if (channelResults.email) {
       updateObj["reminder.email.status"] = channelResults.email.status;
-      if (channelResults.email.status === "sent") updateObj["reminder.email.sentAt"] = channelResults.email.sentAt;
+      if (channelResults.email.status === "sent")
+        updateObj["reminder.email.sentAt"] = channelResults.email.sentAt;
       if (channelResults.email.status === "failed") {
         updateObj["reminder.email.failedAt"] = channelResults.email.failedAt;
-        updateObj["reminder.email.failureReason"] = channelResults.email.failureReason;
+        updateObj["reminder.email.failureReason"] =
+          channelResults.email.failureReason;
       }
     }
     if (channelResults.sms) {
       updateObj["reminder.sms.status"] = channelResults.sms.status;
-      if (channelResults.sms.status === "sent") updateObj["reminder.sms.sentAt"] = channelResults.sms.sentAt;
+      if (channelResults.sms.status === "sent")
+        updateObj["reminder.sms.sentAt"] = channelResults.sms.sentAt;
       if (channelResults.sms.status === "failed") {
         updateObj["reminder.sms.failedAt"] = channelResults.sms.failedAt;
-        updateObj["reminder.sms.failureReason"] = channelResults.sms.failureReason;
+        updateObj["reminder.sms.failureReason"] =
+          channelResults.sms.failureReason;
       }
     }
 
@@ -350,7 +429,10 @@ export class AppointmentService {
 
     const updated = await appointmentRepo.update(id, updateObj, organizationId);
     if (aggregateStatus === "failed") {
-      const errDetail = channelResults.email?.failureReason || channelResults.sms?.failureReason || "Provider delivery failed";
+      const errDetail =
+        channelResults.email?.failureReason ||
+        channelResults.sms?.failureReason ||
+        "Provider delivery failed";
       throw new AppError(`Reminder delivery failed: ${errDetail}`, 400);
     }
 
@@ -360,9 +442,16 @@ export class AppointmentService {
   /**
    * Helper to check staff availability and leave status
    */
-  async validateStaffAvailability(staffId, organizationId, branchId, dateStr, startAt, endAt, excludeAppointmentId = null) {
+  async validateStaffAvailability(
+    staffId,
+    organizationId,
+    branchId,
+    dateStr,
+    startAt,
+    endAt,
+    excludeAppointmentId = null,
+  ) {
     if (!staffId) return;
-    console.log("staffId", { staffId, organizationId })
     // 1. Verify staff exists, belongs to organization, and is active
     const staff = await Staff.findOne({
       _id: staffId,
@@ -370,13 +459,15 @@ export class AppointmentService {
       isDeleted: false,
     });
 
-    console.log("staff", staff)
     if (!staff) {
       throw new AppError("Staff member not found", 404);
     }
 
     if (staff.status !== "active") {
-      throw new AppError(`Cannot assign staff with status '${staff.status}'`, 400);
+      throw new AppError(
+        `Cannot assign staff with status '${staff.status}'`,
+        400,
+      );
     }
 
     // 2. Leave check (using existing Leave model rules)
@@ -400,7 +491,7 @@ export class AppointmentService {
     const seq = await Sequence.findOneAndUpdate(
       { key: sequenceKey },
       { $inc: { seq: 1 } },
-      { new: true, upsert: true }
+      { new: true, upsert: true },
     );
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -419,6 +510,7 @@ export class AppointmentService {
       customerId,
       staffId = null,
       serviceIds,
+      services,
       date,
       appointmentDate,
       startTime,
@@ -430,63 +522,116 @@ export class AppointmentService {
 
     const targetDate = date || appointmentDate;
     if (!targetDate) {
-      throw new AppError("Appointment date is required (appointmentDate or date)", 400);
+      throw new AppError(
+        "Appointment date is required (appointmentDate or date)",
+        400,
+      );
     }
 
     // 1. Validate Target Branch
-    const branch = await Branch.findOne({ _id: branchId, organizationId, isActive: true });
+    const branch = await Branch.findOne({
+      _id: branchId,
+      organizationId,
+      isActive: true,
+    });
     if (!branch) {
       throw new AppError("Target branch not found or inactive", 404);
     }
 
     // 2. Validate Customer
-    const customer = await Customer.findOne({ _id: customerId, organizationId, isDeleted: false });
+    const customer = await Customer.findOne({
+      _id: customerId,
+      organizationId,
+      isDeleted: false,
+    });
     if (!customer) {
-      throw new AppError("Customer not found or belongs to another organization", 404);
+      throw new AppError(
+        "Customer not found or belongs to another organization",
+        404,
+      );
     }
 
     if (customer.status !== "active") {
-      throw new AppError(`Cannot book appointment for customer with status '${customer.status}'`, 400);
+      throw new AppError(
+        `Cannot book appointment for customer with status '${customer.status}'`,
+        400,
+      );
     }
+
+    // Normalize incoming service selections (supporting services array with customPrice or serviceIds array)
+    let normalizedServiceInputs = [];
+    if (Array.isArray(services) && services.length > 0) {
+      normalizedServiceInputs = services.map((item) => {
+        if (typeof item === "string") {
+          return { serviceId: item, customPrice: undefined };
+        }
+        return {
+          serviceId: item.serviceId
+            ? item.serviceId.toString()
+            : item.toString(),
+          customPrice:
+            item.customPrice !== undefined && item.customPrice !== null
+              ? Number(item.customPrice)
+              : undefined,
+        };
+      });
+    } else if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+      normalizedServiceInputs = serviceIds.map((id) => ({
+        serviceId: id.toString(),
+        customPrice: undefined,
+      }));
+    }
+
+    const extractedIds = normalizedServiceInputs.map((item) => item.serviceId);
 
     // 3. Validate & Snapshot Services
     const dbServices = await Service.find({
-      _id: { $in: serviceIds },
+      _id: { $in: extractedIds },
       organizationId,
-      branchId,
       isDeleted: false,
       status: "active",
     });
 
-    if (dbServices.length !== serviceIds.length) {
-      throw new AppError("One or more selected services are invalid, inactive, or belong to a different branch", 400);
+    if (dbServices.length !== extractedIds.length) {
+      throw new AppError(
+        "One or more selected services are invalid, inactive, or belong to a different organization",
+        400,
+      );
     }
 
     let totalDuration = 0;
     let subtotal = 0;
-    let totalTax = 0;
 
-    const serviceSnapshots = serviceIds.map((id) => {
-      const s = dbServices.find((serv) => serv._id.toString() === id.toString());
-      const basePrice = s.pricing?.basePrice || 0;
-      const taxRate = s.taxConfiguration?.taxable ? s.taxConfiguration.taxRate || 0 : 0;
-      const taxAmount = Number(((basePrice * taxRate) / 100).toFixed(2));
+    const serviceSnapshots = normalizedServiceInputs.map((item) => {
+      const s = dbServices.find(
+        (serv) => serv._id.toString() === item.serviceId.toString(),
+      );
+      const resolvedPrice =
+        item.customPrice !== undefined
+          ? item.customPrice
+          : (s.pricing?.basePrice ?? 0);
 
       totalDuration += s.duration;
-      subtotal += basePrice;
-      totalTax += taxAmount;
+      subtotal += resolvedPrice;
 
       return {
         serviceId: s._id,
         name: s.name,
         duration: s.duration,
-        price: basePrice,
-        taxRate,
-        taxAmount,
+        price: resolvedPrice,
       };
     });
 
     const tz = branch.timezone || "Asia/Kolkata";
+    const currentBranchTime = formatUTCToLocal(new Date(), tz);
+
+    // 1. Walk-in Date/Time Locking: Walk-ins strictly belong to today's date in branch timezone
+    if (bookingType === "walk_in" && targetDate !== currentBranchTime.dateStr) {
+      throw new AppError(
+        "Walk-in appointments must be scheduled for today's date",
+        400,
+      );
+    }
 
     // 4. Calculate Time & Canonical Instants
     const startAt = parseLocalToUTC(targetDate, startTime, tz);
@@ -497,27 +642,55 @@ export class AppointmentService {
 
     // Same-day operating window enforcement
     if (formattedStart.dateStr !== formattedEnd.dateStr) {
-      throw new AppError("Overnight appointments across calendar midnight boundaries are not supported", 400);
+      throw new AppError(
+        "Overnight appointments across calendar midnight boundaries are not supported",
+        400,
+      );
     }
 
     // Past booking check for advance bookings
     if (bookingType === "advance" && startAt.getTime() < Date.now()) {
-      throw new AppError("Cannot schedule advance appointments in the past", 400);
+      throw new AppError(
+        "Cannot schedule advance appointments in the past",
+        400,
+      );
     }
 
     // 5. Staff Availability & Leave Validation
     if (staffId) {
-      await this.validateStaffAvailability(staffId, organizationId, branchId, targetDate, startAt, endAt);
+      await this.validateStaffAvailability(
+        staffId,
+        organizationId,
+        branchId,
+        targetDate,
+        startAt,
+        endAt,
+      );
     }
 
     // 6. Calculate Pricing
-    const total = Math.max(0, Number((subtotal - discount + totalTax).toFixed(2)));
+    const total = Math.max(0, Number((subtotal - discount).toFixed(2)));
 
     // 7. Generate Code & Minute Buckets
     const appointmentCode = await this.generateAppointmentCode(organizationId);
     const slotMinutes = staffId ? generateSlotMinutes(startAt, endAt) : [];
 
-    const initialStatus = bookingType === "walk_in" ? "in_progress" : "scheduled";
+    // Floor Queue & Status: If walk-in without staff (floor queue), status is 'scheduled'. Only if staff is assigned does it start as 'in_progress'.
+    const initialStatus =
+      bookingType === "walk_in"
+        ? staffId
+          ? "in_progress"
+          : "scheduled"
+        : "scheduled";
+
+    // Reminders: Walk-in clients are physically at the parlour today, skip automated reminders.
+    const isWalkIn = bookingType === "walk_in";
+    const reminderConfig = {
+      enabled: isWalkIn ? false : (reminder.enabled ?? true),
+      channel: reminder.channel || "sms",
+      offsetMinutes: reminder.offsetMinutes || 60,
+      status: isWalkIn ? "cancelled" : "pending",
+    };
 
     try {
       const appointment = await appointmentRepo.create({
@@ -539,27 +712,30 @@ export class AppointmentService {
         pricing: {
           subtotal: Number(subtotal.toFixed(2)),
           discount: Number(discount.toFixed(2)),
-          tax: Number(totalTax.toFixed(2)),
           total,
         },
         notes,
-        reminder: {
-          enabled: reminder.enabled ?? true,
-          channel: reminder.channel || "sms",
-          offsetMinutes: reminder.offsetMinutes || 60,
-          status: "pending",
-        },
+        reminder: reminderConfig,
       });
 
-      // Schedule reminders
-      if (initialStatus === "scheduled") {
+      // Schedule reminders for scheduled advance appointments
+      if (initialStatus === "scheduled" && reminderConfig.enabled) {
         await this.scheduleReminders(appointment);
       }
+
+      // Record interaction: automatically track visited branch for the customer
+      await Customer.updateOne(
+        { _id: customerId, organizationId },
+        { $addToSet: { visitedBranchIds: branchId } }
+      );
 
       return appointment;
     } catch (err) {
       if (err.code === 11000 && err.keyPattern?.slotMinutes) {
-        throw new AppError("The assigned staff member already has an overlapping appointment during this time slot.", 409);
+        throw new AppError(
+          "The assigned staff member already has an overlapping appointment during this time slot.",
+          409,
+        );
       }
       throw err;
     }
@@ -568,8 +744,18 @@ export class AppointmentService {
   /**
    * LIST APPOINTMENTS
    */
-  async listAppointments(filter = {}, pagination = {}, organizationId, branchId = null) {
-    return await appointmentRepo.find(filter, pagination, organizationId, branchId);
+  async listAppointments(
+    filter = {},
+    pagination = {},
+    organizationId,
+    branchId = null,
+  ) {
+    return await appointmentRepo.find(
+      filter,
+      pagination,
+      organizationId,
+      branchId,
+    );
   }
 
   /**
@@ -587,62 +773,107 @@ export class AppointmentService {
    * UPDATE GENERAL METADATA / SERVICES / DISCOUNT
    */
   async updateAppointment(id, data, organizationId) {
-    const { branchId, serviceIds, staffId, notes, discount, reminder } = data;
+    const {
+      branchId,
+      serviceIds,
+      services,
+      staffId,
+      notes,
+      discount,
+      reminder,
+    } = data;
 
     const appointment = await appointmentRepo.findById(id, organizationId);
     if (!appointment) {
       throw new AppError("Appointment not found", 404);
     }
 
-    const aptBranchId = appointment.branchId?._id ? appointment.branchId._id.toString() : appointment.branchId.toString();
+    const aptBranchId = appointment.branchId?._id
+      ? appointment.branchId._id.toString()
+      : appointment.branchId.toString();
     if (aptBranchId !== branchId.toString()) {
-      throw new AppError("Target branchId does not match the appointment branch", 400);
+      throw new AppError(
+        "Target branchId does not match the appointment branch",
+        400,
+      );
     }
 
     if (["completed", "cancelled", "no_show"].includes(appointment.status)) {
-      throw new AppError(`Cannot modify appointment with terminal status '${appointment.status}'`, 400);
+      throw new AppError(
+        `Cannot modify appointment with terminal status '${appointment.status}'`,
+        400,
+      );
     }
 
     const updates = {};
 
     if (notes !== undefined) updates.notes = notes;
-    if (reminder !== undefined) updates.reminder = { ...appointment.reminder.toObject(), ...reminder };
+    if (reminder !== undefined)
+      updates.reminder = { ...appointment.reminder.toObject(), ...reminder };
+
+    // Normalize incoming service selections if provided
+    let normalizedServiceInputs = null;
+    if (Array.isArray(services) && services.length > 0) {
+      normalizedServiceInputs = services.map((item) => {
+        if (typeof item === "string") {
+          return { serviceId: item, customPrice: undefined };
+        }
+        return {
+          serviceId: item.serviceId
+            ? item.serviceId.toString()
+            : item.toString(),
+          customPrice:
+            item.customPrice !== undefined && item.customPrice !== null
+              ? Number(item.customPrice)
+              : undefined,
+        };
+      });
+    } else if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+      normalizedServiceInputs = serviceIds.map((id) => ({
+        serviceId: id.toString(),
+        customPrice: undefined,
+      }));
+    }
 
     // If services changed, recalculate snapshot, duration, endAt, and pricing
-    if (serviceIds && serviceIds.length > 0) {
+    if (normalizedServiceInputs && normalizedServiceInputs.length > 0) {
+      const extractedIds = normalizedServiceInputs.map(
+        (item) => item.serviceId,
+      );
       const dbServices = await Service.find({
-        _id: { $in: serviceIds },
+        _id: { $in: extractedIds },
         organizationId,
-        branchId,
         isDeleted: false,
         status: "active",
       });
 
-      if (dbServices.length !== serviceIds.length) {
-        throw new AppError("One or more selected services are invalid or inactive for this branch", 400);
+      if (dbServices.length !== extractedIds.length) {
+        throw new AppError(
+          "One or more selected services are invalid or inactive for this organization",
+          400,
+        );
       }
 
       let totalDuration = 0;
       let subtotal = 0;
-      let totalTax = 0;
 
-      const serviceSnapshots = serviceIds.map((sId) => {
-        const s = dbServices.find((serv) => serv._id.toString() === sId.toString());
-        const basePrice = s.pricing?.basePrice || 0;
-        const taxRate = s.taxConfiguration?.taxable ? s.taxConfiguration.taxRate || 0 : 0;
-        const taxAmount = Number(((basePrice * taxRate) / 100).toFixed(2));
+      const serviceSnapshots = normalizedServiceInputs.map((item) => {
+        const s = dbServices.find(
+          (serv) => serv._id.toString() === item.serviceId.toString(),
+        );
+        const resolvedPrice =
+          item.customPrice !== undefined
+            ? item.customPrice
+            : (s.pricing?.basePrice ?? 0);
 
         totalDuration += s.duration;
-        subtotal += basePrice;
-        totalTax += taxAmount;
+        subtotal += resolvedPrice;
 
         return {
           serviceId: s._id,
           name: s.name,
           duration: s.duration,
-          price: basePrice,
-          taxRate,
-          taxAmount,
+          price: resolvedPrice,
         };
       });
 
@@ -650,8 +881,12 @@ export class AppointmentService {
       const endAt = new Date(startAt.getTime() + totalDuration * 60000);
       const formattedEnd = formatUTCToLocal(endAt);
 
-      const effectiveDiscount = discount !== undefined ? discount : appointment.pricing.discount;
-      const total = Math.max(0, Number((subtotal - effectiveDiscount + totalTax).toFixed(2)));
+      const effectiveDiscount =
+        discount !== undefined ? discount : appointment.pricing.discount;
+      const total = Math.max(
+        0,
+        Number((subtotal - effectiveDiscount).toFixed(2)),
+      );
 
       updates.services = serviceSnapshots;
       updates.totalDuration = totalDuration;
@@ -660,18 +895,17 @@ export class AppointmentService {
       updates.pricing = {
         subtotal: Number(subtotal.toFixed(2)),
         discount: Number(effectiveDiscount.toFixed(2)),
-        tax: Number(totalTax.toFixed(2)),
         total,
       };
 
-      const targetStaffId = staffId !== undefined ? staffId : appointment.staffId;
+      const targetStaffId =
+        staffId !== undefined ? staffId : appointment.staffId;
       if (targetStaffId) {
         updates.slotMinutes = generateSlotMinutes(startAt, endAt);
       }
     } else if (discount !== undefined) {
       const subtotal = appointment.pricing.subtotal;
-      const tax = appointment.pricing.tax;
-      const total = Math.max(0, Number((subtotal - discount + tax).toFixed(2)));
+      const total = Math.max(0, Number((subtotal - discount).toFixed(2)));
       updates.pricing = {
         ...appointment.pricing.toObject(),
         discount: Number(discount.toFixed(2)),
@@ -688,10 +922,13 @@ export class AppointmentService {
           appointment.appointmentDate,
           appointment.startAt,
           updates.endAt || appointment.endAt,
-          id
+          id,
         );
         updates.staffId = staffId;
-        updates.slotMinutes = generateSlotMinutes(appointment.startAt, updates.endAt || appointment.endAt);
+        updates.slotMinutes = generateSlotMinutes(
+          appointment.startAt,
+          updates.endAt || appointment.endAt,
+        );
       } else {
         updates.staffId = null;
         updates.slotMinutes = [];
@@ -703,7 +940,10 @@ export class AppointmentService {
       return updated;
     } catch (err) {
       if (err.code === 11000 && err.keyPattern?.slotMinutes) {
-        throw new AppError("The assigned staff member already has an overlapping appointment during this time slot.", 409);
+        throw new AppError(
+          "The assigned staff member already has an overlapping appointment during this time slot.",
+          409,
+        );
       }
       throw err;
     }
@@ -717,7 +957,10 @@ export class AppointmentService {
 
     const targetDate = date || appointmentDate;
     if (!targetDate) {
-      throw new AppError("Reschedule date is required (appointmentDate or date)", 400);
+      throw new AppError(
+        "Reschedule date is required (appointmentDate or date)",
+        400,
+      );
     }
 
     const appointment = await appointmentRepo.findById(id, organizationId);
@@ -726,31 +969,44 @@ export class AppointmentService {
     }
 
     // Helper to get branch ID string safely regardless of whether branchId is populated
-    const getAptBranchId = (apt) => (apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString());
+    const getAptBranchId = (apt) =>
+      apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString();
 
     // Invariant 5: Same-branch rescheduling only
     if (getAptBranchId(appointment) !== branchId.toString()) {
-      throw new AppError("Cross-branch rescheduling is not supported. Target branch must match existing appointment branch.", 400);
+      throw new AppError(
+        "Cross-branch rescheduling is not supported. Target branch must match existing appointment branch.",
+        400,
+      );
     }
 
     if (["completed", "cancelled", "no_show"].includes(appointment.status)) {
-      throw new AppError(`Cannot reschedule appointment with terminal status '${appointment.status}'`, 400);
+      throw new AppError(
+        `Cannot reschedule appointment with terminal status '${appointment.status}'`,
+        400,
+      );
     }
 
     const branch = await Branch.findOne({ _id: branchId, organizationId });
     const tz = branch?.timezone || "Asia/Kolkata";
 
     const startAt = parseLocalToUTC(targetDate, startTime, tz);
-    const endAt = new Date(startAt.getTime() + appointment.totalDuration * 60000);
+    const endAt = new Date(
+      startAt.getTime() + appointment.totalDuration * 60000,
+    );
 
     const formattedStart = formatUTCToLocal(startAt, tz);
     const formattedEnd = formatUTCToLocal(endAt, tz);
 
     if (formattedStart.dateStr !== formattedEnd.dateStr) {
-      throw new AppError("Overnight appointments across calendar midnight boundaries are not supported", 400);
+      throw new AppError(
+        "Overnight appointments across calendar midnight boundaries are not supported",
+        400,
+      );
     }
 
-    if (startAt.getTime() < Date.now()) {
+    const GRACE_PERIOD_MS = 5 * 60 * 1000; // 5-minute buffer
+    if (startAt.getTime() < Date.now() - GRACE_PERIOD_MS) {
       throw new AppError("Cannot reschedule appointment to a past time", 400);
     }
 
@@ -762,11 +1018,13 @@ export class AppointmentService {
         targetDate,
         startAt,
         endAt,
-        id
+        id,
       );
     }
 
-    const slotMinutes = appointment.staffId ? generateSlotMinutes(startAt, endAt) : [];
+    const slotMinutes = appointment.staffId
+      ? generateSlotMinutes(startAt, endAt)
+      : [];
 
     // Cancel old reminders
     await this.cancelReminders(appointment);
@@ -782,7 +1040,7 @@ export class AppointmentService {
           endTime: formattedEnd.timeStr,
           slotMinutes,
         },
-        organizationId
+        organizationId,
       );
 
       // Schedule new reminders
@@ -793,7 +1051,10 @@ export class AppointmentService {
       return updated;
     } catch (err) {
       if (err.code === 11000 && err.keyPattern?.slotMinutes) {
-        throw new AppError("The assigned staff member already has an overlapping appointment during this time slot.", 409);
+        throw new AppError(
+          "The assigned staff member already has an overlapping appointment during this time slot.",
+          409,
+        );
       }
       throw err;
     }
@@ -810,38 +1071,100 @@ export class AppointmentService {
       throw new AppError("Appointment not found", 404);
     }
 
-    const getAptBranchId = (apt) => (apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString());
+    const getAptBranchId = (apt) =>
+      apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString();
     if (getAptBranchId(appointment) !== branchId.toString()) {
-      throw new AppError("Target branchId does not match appointment branch", 400);
+      throw new AppError(
+        "Target branchId does not match appointment branch",
+        400,
+      );
     }
 
     if (["completed", "cancelled", "no_show"].includes(appointment.status)) {
-      throw new AppError(`Cannot assign staff on appointment with terminal status '${appointment.status}'`, 400);
+      throw new AppError(
+        `Cannot assign staff on appointment with terminal status '${appointment.status}'`,
+        400,
+      );
     }
 
     let slotMinutes = [];
+    let updatedStartAt = appointment.startAt;
+    let updatedEndAt = appointment.endAt;
+    let updatedAppointmentDate = appointment.appointmentDate;
+    let updatedStartTime = appointment.startTime;
+    let updatedEndTime = appointment.endTime;
+
+    // Fetch branch to get timezone
+    const branch = await Branch.findOne({
+      _id: branchId,
+      organizationId,
+      isActive: true,
+    });
+    const tz = branch?.timezone || DEFAULT_TIMEZONE;
+
+    // Check if walk-in appointment on today whose startTime is in the past needs time advance
+    const currentBranchTime = formatUTCToLocal(new Date(), tz);
+    const isToday = appointment.appointmentDate === currentBranchTime.dateStr;
+    const isElapsed = appointment.startTime < currentBranchTime.timeStr;
+    const isUnassignedOrElapsedWalkIn =
+      appointment.bookingType === "walk_in" && isToday && isElapsed;
+
+    if (isUnassignedOrElapsedWalkIn) {
+      updatedStartTime = currentBranchTime.timeStr;
+      updatedStartAt = parseLocalToUTC(
+        updatedAppointmentDate,
+        updatedStartTime,
+        tz,
+      );
+      const totalDuration =
+        appointment.totalDuration ||
+        (appointment.services || []).reduce(
+          (acc, s) => acc + (s.duration || 0),
+          0,
+        ) ||
+        15;
+      updatedEndAt = new Date(updatedStartAt.getTime() + totalDuration * 60000);
+      const formattedEnd = formatUTCToLocal(updatedEndAt, tz);
+      updatedEndTime = formattedEnd.timeStr;
+    }
+
     if (staffId) {
       await this.validateStaffAvailability(
         staffId,
         organizationId,
         branchId,
-        appointment.appointmentDate,
-        appointment.startAt,
-        appointment.endAt,
-        id
+        updatedAppointmentDate,
+        updatedStartAt,
+        updatedEndAt,
+        id,
       );
-      slotMinutes = generateSlotMinutes(appointment.startAt, appointment.endAt);
+      slotMinutes = generateSlotMinutes(updatedStartAt, updatedEndAt);
     }
 
     try {
-      return await appointmentRepo.update(
+      const updatedAppointment = await appointmentRepo.update(
         id,
-        { staffId, slotMinutes },
-        organizationId
+        {
+          staffId,
+          slotMinutes,
+          startAt: updatedStartAt,
+          endAt: updatedEndAt,
+          appointmentDate: updatedAppointmentDate,
+          startTime: updatedStartTime,
+          endTime: updatedEndTime,
+          status: "in_progress",
+        },
+        organizationId,
       );
+
+      // Return fully populated appointment (including staff)
+      return await appointmentRepo.findById(id, organizationId);
     } catch (err) {
       if (err.code === 11000 && err.keyPattern?.slotMinutes) {
-        throw new AppError("The assigned staff member already has an overlapping appointment during this time slot.", 409);
+        throw new AppError(
+          "The assigned staff member already has an overlapping appointment during this time slot.",
+          409,
+        );
       }
       throw err;
     }
@@ -858,29 +1181,45 @@ export class AppointmentService {
       throw new AppError("Appointment not found", 404);
     }
 
-    const getAptBranchId = (apt) => (apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString());
+    const getAptBranchId = (apt) =>
+      apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString();
     if (getAptBranchId(appointment) !== branchId.toString()) {
-      throw new AppError("Target branchId does not match appointment branch", 400);
+      throw new AppError(
+        "Target branchId does not match appointment branch",
+        400,
+      );
     }
 
     const currentStatus = appointment.status;
 
     // Terminal state checks
     if (["completed", "cancelled", "no_show"].includes(currentStatus)) {
-      throw new AppError(`Appointment is in terminal status '${currentStatus}' and cannot be modified`, 400);
+      throw new AppError(
+        `Appointment is in terminal status '${currentStatus}' and cannot be modified`,
+        400,
+      );
     }
 
     // Status transition rules
     if (status === "in_progress") {
       if (!appointment.staffId) {
-        throw new AppError("Cannot start service without an assigned staff member", 400);
+        throw new AppError(
+          "Cannot start service without an assigned staff member",
+          400,
+        );
       }
       if (currentStatus !== "scheduled") {
-        throw new AppError(`Invalid status transition from '${currentStatus}' to 'in_progress'`, 400);
+        throw new AppError(
+          `Invalid status transition from '${currentStatus}' to 'in_progress'`,
+          400,
+        );
       }
     } else if (status === "completed") {
       if (currentStatus !== "in_progress") {
-        throw new AppError(`Invalid status transition from '${currentStatus}' to 'completed'`, 400);
+        throw new AppError(
+          `Invalid status transition from '${currentStatus}' to 'completed'`,
+          400,
+        );
       }
     }
 
@@ -915,9 +1254,13 @@ export class AppointmentService {
       throw new AppError("Appointment not found", 404);
     }
 
-    const getAptBranchId = (apt) => (apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString());
+    const getAptBranchId = (apt) =>
+      apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString();
     if (getAptBranchId(appointment) !== branchId.toString()) {
-      throw new AppError("Target branchId does not match appointment branch", 400);
+      throw new AppError(
+        "Target branchId does not match appointment branch",
+        400,
+      );
     }
 
     await this.cancelReminders(appointment);

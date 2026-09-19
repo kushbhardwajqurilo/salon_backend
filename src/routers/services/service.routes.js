@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.js";
-import { requireBranchScope, requireOrganizationScope } from "../../middleware/branchScope.js";
+import {
+  requireBranchScope,
+  requireOrganizationScope,
+} from "../../middleware/branchScope.js";
 import { authorize } from "../../middleware/rbac.js";
 import { validate } from "../../middleware/validate.js";
 import * as serviceController from "../../controllers/services/service.controller.js";
@@ -18,7 +21,7 @@ router.post(
   requireBranchScope,
   authorize("services.create"),
   validate(serviceValidation.createServiceCategorySchema),
-  categoryController.createCategory
+  categoryController.createCategory,
 );
 
 router.get(
@@ -26,82 +29,82 @@ router.get(
   requireBranchScope,
   authorize("services.view"),
   validate(serviceValidation.queryServiceCategorySchema),
-  categoryController.listCategories
+  categoryController.listCategories,
 );
 
 router.get(
   "/categories/:id",
   requireOrganizationScope,
   authorize("services.view"),
-  categoryController.getCategoryById
+  categoryController.getCategoryById,
 );
 
 router.put(
   "/categories/:id",
   requireOrganizationScope,
-  authorize("services.edit"),
+  authorize("services.update"),
   validate(serviceValidation.updateServiceCategorySchema),
-  categoryController.updateCategory
+  categoryController.updateCategory,
 );
 
 router.delete(
   "/categories/:id",
   requireOrganizationScope,
   authorize("services.delete"),
-  categoryController.deleteCategory
+  categoryController.deleteCategory,
 );
 
 router.patch(
   "/categories/:id/reactivate",
   requireOrganizationScope,
-  authorize("services.edit"),
-  categoryController.reactivateCategory
+  authorize("services.update"),
+  categoryController.reactivateCategory,
 );
 
 // --- Service Routes ---
 router.post(
   "/",
-  requireBranchScope,
+  requireOrganizationScope,
   authorize("services.create"),
   validate(serviceValidation.createServiceSchema),
-  serviceController.createService
+  serviceController.createService,
 );
 
 router.get(
   "/",
-  requireBranchScope,
+  requireOrganizationScope,
   authorize("services.view"),
   validate(serviceValidation.queryServiceSchema),
-  serviceController.listServices
+  serviceController.listServices,
 );
 
 router.get(
   "/:id",
   requireOrganizationScope,
   authorize("services.view"),
-  serviceController.getServiceById
+  serviceController.getServiceById,
 );
 
 router.put(
   "/:id",
   requireOrganizationScope,
-  authorize("services.edit"),
+  authorize("services.update"),
   validate(serviceValidation.updateServiceSchema),
-  serviceController.updateService
+  serviceController.updateService,
 );
 
 router.patch(
   "/:id/reactivate",
   requireOrganizationScope,
-  authorize("services.edit"),
-  serviceController.reactivateService
+  authorize("services.update"),
+  serviceController.reactivateService,
 );
 
 router.delete(
   "/:id",
   requireOrganizationScope,
   authorize("services.delete"),
-  serviceController.deleteService
+  serviceController.deleteService,
 );
 
 export default router;

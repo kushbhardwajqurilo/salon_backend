@@ -59,12 +59,22 @@ const getActiveBranchContext = async (req) => {
 };
 
 export const createStaff = asyncHandler(async (req, res) => {
-  const staff = await staffService.createStaff(req.body, req.organizationId, req.user.id);
+  const activeBranchId = req.body.branchId || req.branchId || req.headers["x-branch-id"] || req.headers["X-Branch-Id"] || null;
+  const staff = await staffService.createStaff(
+    { ...req.body, branchId: activeBranchId },
+    req.organizationId,
+    req.user.id
+  );
   return sendResponse(res, 201, "Staff created successfully", staff);
 });
 
 export const listStaff = asyncHandler(async (req, res) => {
-  const result = await staffService.listStaff(req.query, req.query, req.organizationId);
+  const activeBranchId = req.query.branchId || req.branchId || req.headers["x-branch-id"] || req.headers["X-Branch-Id"] || null;
+  const options = { ...req.query };
+  if (activeBranchId && !options.branchId) {
+    options.branchId = activeBranchId;
+  }
+  const result = await staffService.listStaff(req.query, options, req.organizationId);
   return sendResponse(res, 200, "Staff listed successfully", result.data, result.meta);
 });
 

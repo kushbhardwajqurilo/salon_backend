@@ -143,6 +143,15 @@ customerSchema.pre("save", function () {
   if (this.alternatePhone) {
     this.alternatePhone = normalizePhone(this.alternatePhone);
   }
+  if (this.homeBranchId) {
+    if (!this.visitedBranchIds) {
+      this.visitedBranchIds = [];
+    }
+    const homeStr = this.homeBranchId.toString();
+    if (!this.visitedBranchIds.some((id) => id && id.toString() === homeStr)) {
+      this.visitedBranchIds.push(this.homeBranchId);
+    }
+  }
 });
 
 // Enforce unique phone number per organization for active customers

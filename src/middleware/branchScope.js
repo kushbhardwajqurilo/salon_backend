@@ -3,12 +3,11 @@ import { asyncHandler } from "../utils/errors.js";
 import { Branch } from "../models/branches/branch.model.js";
 import mongoose from "mongoose";
 
-/**
- * Middleware to enforce organization-wide scope.
- * Obtains organization ID strictly from req.user context.
+/*
+  Middleware to enforce organization-wide scope.
+  Obtains organization ID strictly from req.user context.
  */
 export const requireOrganizationScope = asyncHandler(async (req, res, next) => {
-  console.log("organization scope check", req.user)
   if (!req.user) {
     throw new AppError("User authentication required", 401);
   }
@@ -17,9 +16,9 @@ export const requireOrganizationScope = asyncHandler(async (req, res, next) => {
   next();
 });
 
-/**
- * Middleware to enforce branch-scoped operations.
- * Requires and validates the X-Branch-Id header against organization and authorization constraints.
+/*
+  Middleware to enforce branch-scoped operations.
+  Requires and validates the X-Branch-Id header against organization and authorization constraints.
  */
 export const requireBranchScope = asyncHandler(async (req, res, next) => {
   const branchId = req.headers["x-branch-id"] || req.headers["X-Branch-Id"];
@@ -29,14 +28,12 @@ export const requireBranchScope = asyncHandler(async (req, res, next) => {
   }
 
   const { organizationId, hasOrgWideAccess, branchAccess } = req.user;
-
   // If X-Branch-Id is omitted and user has organization-wide access, proceed organization-wide
   if (!branchId && hasOrgWideAccess === true) {
     req.organizationId = organizationId;
     req.branchId = undefined;
     return next();
   }
-
   if (!branchId) {
     throw new AppError("X-Branch-Id header is required for this request.", 400);
   }
@@ -64,16 +61,18 @@ export const requireBranchScope = asyncHandler(async (req, res, next) => {
     isAuthorized = true;
   } else {
     isAuthorized = branchAccess.some(
-      (b) => b.branchId.toString() === branchId.toString() && b.isActive
+      (b) => b.branchId.toString() === branchId.toString() && b.isActive,
     );
   }
 
   if (!isAuthorized) {
-    throw new AppError("Access denied. You do not have access to this branch.", 403);
+    throw new AppError(
+      "Access denied. You do not have access to this branch.",
+      403,
+    );
   }
 
   req.organizationId = organizationId;
   req.branchId = branchId;
   next();
 });
-

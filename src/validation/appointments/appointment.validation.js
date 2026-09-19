@@ -8,32 +8,67 @@ const objectIdSchema = z.string().refine((val) => objectIdRegex.test(val), {
 const dateStringRegex = /^\d{4}-\d{2}-\d{2}$/;
 const timeStringRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+const appointmentServiceItemSchema = z.object({
+  serviceId: objectIdSchema,
+  customPrice: z.coerce
+    .number()
+    .min(0, "Custom price must be a non-negative number")
+    .optional(),
+});
+
 export const createAppointmentSchema = z.object({
-  body: z.object({
-    branchId: objectIdSchema,
-    customerId: objectIdSchema,
-    staffId: objectIdSchema.optional().nullable(),
-    serviceIds: z.array(objectIdSchema).min(1, "At least one service must be selected"),
-    appointmentDate: z.string().regex(dateStringRegex, "Invalid date format (YYYY-MM-DD)").optional(),
-    date: z.string().regex(dateStringRegex, "Invalid date format (YYYY-MM-DD)").optional(),
-    startTime: z.string().regex(timeStringRegex, "Invalid time format (HH:mm 24-hr)"),
-    bookingType: z.enum(["advance", "walk_in"]),
-    notes: z.string().max(1000).optional(),
-    discount: z.number().min(0).optional().default(0),
-    reminder: z
-      .object({
-        enabled: z.boolean().optional().default(true),
-        channel: z.enum(["email", "sms", "both"]).optional().default("sms"),
-        offsetMinutes: z.number().min(5).max(1440).optional().default(60),
-      })
-      .optional(),
-  }),
+  body: z
+    .object({
+      branchId: objectIdSchema,
+      customerId: objectIdSchema,
+      staffId: objectIdSchema.optional().nullable(),
+      serviceIds: z
+        .array(objectIdSchema)
+        .min(1, "At least one service must be selected")
+        .optional(),
+      services: z
+        .array(appointmentServiceItemSchema)
+        .min(1, "At least one service must be selected")
+        .optional(),
+      appointmentDate: z
+        .string()
+        .regex(dateStringRegex, "Invalid date format (YYYY-MM-DD)")
+        .optional(),
+      date: z
+        .string()
+        .regex(dateStringRegex, "Invalid date format (YYYY-MM-DD)")
+        .optional(),
+      startTime: z
+        .string()
+        .regex(timeStringRegex, "Invalid time format (HH:mm 24-hr)"),
+      bookingType: z.enum(["advance", "walk_in"]),
+      notes: z.string().max(1000).optional(),
+      discount: z.number().min(0).optional().default(0),
+      reminder: z
+        .object({
+          enabled: z.boolean().optional().default(true),
+          channel: z.enum(["email", "sms", "both"]).optional().default("sms"),
+          offsetMinutes: z.number().min(5).max(1440).optional().default(60),
+        })
+        .optional(),
+    })
+    .refine(
+      (data) =>
+        (data.services && data.services.length > 0) ||
+        (data.serviceIds && data.serviceIds.length > 0),
+      {
+        message:
+          "At least one service must be selected (provide services or serviceIds)",
+        path: ["services"],
+      },
+    ),
 });
 
 export const updateAppointmentSchema = z.object({
   body: z.object({
     branchId: objectIdSchema,
     serviceIds: z.array(objectIdSchema).min(1).optional(),
+    services: z.array(appointmentServiceItemSchema).min(1).optional(),
     staffId: objectIdSchema.optional().nullable(),
     notes: z.string().max(1000).optional(),
     discount: z.number().min(0).optional(),
@@ -50,16 +85,30 @@ export const updateAppointmentSchema = z.object({
 export const rescheduleAppointmentSchema = z.object({
   body: z.object({
     branchId: objectIdSchema,
-    appointmentDate: z.string().regex(dateStringRegex, "Invalid date format (YYYY-MM-DD)").optional(),
-    date: z.string().regex(dateStringRegex, "Invalid date format (YYYY-MM-DD)").optional(),
-    startTime: z.string().regex(timeStringRegex, "Invalid time format (HH:mm 24-hr)"),
+    appointmentDate: z
+      .string()
+      .regex(dateStringRegex, "Invalid date format (YYYY-MM-DD)")
+      .optional(),
+    date: z
+      .string()
+      .regex(dateStringRegex, "Invalid date format (YYYY-MM-DD)")
+      .optional(),
+    startTime: z
+      .string()
+      .regex(timeStringRegex, "Invalid time format (HH:mm 24-hr)"),
   }),
 });
 
 export const updateAppointmentStatusSchema = z.object({
   body: z.object({
     branchId: objectIdSchema,
-    status: z.enum(["in_progress", "completed", "cancelled", "no_show"]),
+    status: z.enum([
+      "in_progress",
+      "completed",
+      "cancelled",
+      "no_show",
+      "scheduled",
+    ]),
     reason: z.string().max(1000).optional(),
   }),
 });

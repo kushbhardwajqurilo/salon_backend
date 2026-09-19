@@ -20,7 +20,10 @@ export class StaffService {
 
   async runTransaction(operation) {
     let session = null;
-    if (mongoose.connection.db && typeof mongoose.connection.startSession === "function") {
+    if (
+      mongoose.connection.db &&
+      typeof mongoose.connection.startSession === "function"
+    ) {
       try {
         session = await mongoose.connection.startSession();
         session.startTransaction();
@@ -33,7 +36,7 @@ export class StaffService {
           try {
             await session.abortTransaction();
             session.endSession();
-          } catch (_) {}
+          } catch (_) { }
         }
         const isSessionErr =
           err.message?.includes("Transaction numbers") ||
@@ -56,45 +59,72 @@ export class StaffService {
       try {
         return await this.runTransaction(async (session) => {
           // Validate uniqueness of phone and email
-          const existingEmail = await this.staffRepo.findByEmail(data.email, organizationId);
+          const existingEmail = await this.staffRepo.findByEmail(
+            data.email,
+            organizationId,
+          );
           if (existingEmail) {
-            throw new AppError("Duplicate email address. Please use another value!", 400);
+            throw new AppError(
+              "Duplicate email address. Please use another value!",
+              400,
+            );
           }
 
-          const existingPhone = await this.staffRepo.findByPhone(data.phone, organizationId);
+          const existingPhone = await this.staffRepo.findByPhone(
+            data.phone,
+            organizationId,
+          );
           if (existingPhone) {
-            throw new AppError("Duplicate phone number. Please use another value!", 400);
+            throw new AppError(
+              "Duplicate phone number. Please use another value!",
+              400,
+            );
           }
 
           // Atomic sequence increment
           const seqDoc = await Sequence.findOneAndUpdate(
             { key: `staffCode:${organizationId}` },
             { $inc: { seq: 1 } },
-            { new: true, upsert: true, session }
+            { new: true, upsert: true, session },
           );
 
           const staffCode = `STF-${String(seqDoc.seq).padStart(4, "0")}`;
 
           // If userId is provided during staff creation, validate & resolve user link
           let resolvedUserId = null;
-          if (data.userId && (typeof data.userId === "string" ? data.userId.trim().length > 0 : true)) {
+          if (
+            data.userId &&
+            (typeof data.userId === "string"
+              ? data.userId.trim().length > 0
+              : true)
+          ) {
             const rawUserId = data.userId;
             let user;
             const isObjectIdLike =
               rawUserId instanceof mongoose.Types.ObjectId ||
-              (typeof rawUserId === "string" && mongoose.Types.ObjectId.isValid(rawUserId));
+              (typeof rawUserId === "string" &&
+                mongoose.Types.ObjectId.isValid(rawUserId));
 
             if (isObjectIdLike) {
-              user = await this.userRepo.findById(rawUserId, organizationId, [], null, session);
+              user = await this.userRepo.findById(
+                rawUserId,
+                organizationId,
+                [],
+                null,
+                session,
+              );
             } else if (typeof rawUserId === "string") {
               const normalizedUsername = normalizeUsername(rawUserId);
-              if (normalizedUsername && typeof this.userRepo.findOne === "function") {
+              if (
+                normalizedUsername &&
+                typeof this.userRepo.findOne === "function"
+              ) {
                 user = await this.userRepo.findOne(
                   { username: normalizedUsername },
                   organizationId,
                   [],
                   null,
-                  session
+                  session,
                 );
               }
             }
@@ -104,11 +134,17 @@ export class StaffService {
             }
 
             if (user.status !== "active") {
-              throw new AppError(`User is ${user.status} and cannot be linked`, 400);
+              throw new AppError(
+                `User is ${user.status} and cannot be linked`,
+                400,
+              );
             }
 
             if (user.organizationId.toString() !== organizationId.toString()) {
-              throw new AppError("Cross-organization linkage is prohibited", 400);
+              throw new AppError(
+                "Cross-organization linkage is prohibited",
+                400,
+              );
             }
 
             const existingLinkedStaff = await this.staffRepo.findOne(
@@ -116,15 +152,23 @@ export class StaffService {
               organizationId,
               [],
               null,
-              session
+              session,
             );
 
             if (existingLinkedStaff) {
-              throw new AppError("User is already linked to another active Staff", 400);
+              throw new AppError(
+                "User is already linked to another active Staff",
+                400,
+              );
             }
 
             if (data.branchId) {
-              await assertStaffBranchSubsetOfUserAccess(user, null, organizationId, data.branchId);
+              await assertStaffBranchSubsetOfUserAccess(
+                user,
+                null,
+                organizationId,
+                data.branchId,
+              );
             }
 
             resolvedUserId = user._id;
@@ -142,8 +186,30 @@ export class StaffService {
             staffPayload,
             organizationId,
             actorId,
-            session
+            session,
           );
+
+          // If branchId is provided (e.g. from active branch header/body), assign staff to that branch
+          if (data.branchId) {
+            const branch = await mongoose
+              .model("Branch")
+              .findOne({ _id: data.branchId, organizationId, isActive: true });
+            if (!branch) {
+              throw new AppError("Branch not found", 404);
+            }
+
+            await this.staffBranchRepo.create(
+              {
+                staffId: staff._id,
+                branchId: data.branchId,
+                isPrimary: true,
+                isActive: true,
+              },
+              organizationId,
+              actorId,
+              session,
+            );
+          }
 
           // Log audit
           await this.auditLogService.createAuditLog(
@@ -152,13 +218,13 @@ export class StaffService {
               entityId: staff._id,
               action: "STAFF_CREATED",
               description: `Staff member created with code ${staffCode}`,
-              metadata: { staffCode },
+              metadata: { staffCode, branchId: data.branchId || null },
               branchId: data.branchId || new mongoose.Types.ObjectId(), // Default fallback if no branch header
               actorId,
             },
             organizationId,
             actorId,
-            session
+            session,
           );
           return staff;
         });
@@ -181,10 +247,13 @@ export class StaffService {
     if (activeBranchId) {
       const isAssigned = await this.staffBranchRepo.findOne(
         { staffId: id, branchId: activeBranchId, isActive: true },
-        organizationId
+        organizationId,
       );
       if (!isAssigned) {
-        throw new AppError("Access denied. Staff is not visible within your active branch scope.", 403);
+        throw new AppError(
+          "Access denied. Staff is not visible within your active branch scope.",
+          403,
+        );
       }
     }
 
@@ -199,16 +268,28 @@ export class StaffService {
       }
 
       if (data.email) {
-        const existingEmail = await this.staffRepo.findByEmail(data.email, organizationId);
+        const existingEmail = await this.staffRepo.findByEmail(
+          data.email,
+          organizationId,
+        );
         if (existingEmail && existingEmail._id.toString() !== id.toString()) {
-          throw new AppError("Duplicate email address. Please use another value!", 400);
+          throw new AppError(
+            "Duplicate email address. Please use another value!",
+            400,
+          );
         }
       }
 
       if (data.phone) {
-        const existingPhone = await this.staffRepo.findByPhone(data.phone, organizationId);
+        const existingPhone = await this.staffRepo.findByPhone(
+          data.phone,
+          organizationId,
+        );
         if (existingPhone && existingPhone._id.toString() !== id.toString()) {
-          throw new AppError("Duplicate phone number. Please use another value!", 400);
+          throw new AppError(
+            "Duplicate phone number. Please use another value!",
+            400,
+          );
         }
       }
 
@@ -224,7 +305,10 @@ export class StaffService {
 
         // Update linked User status if needed
         if (staff.userId) {
-          const linkedUser = await this.userRepo.findById(staff.userId, organizationId);
+          const linkedUser = await this.userRepo.findById(
+            staff.userId,
+            organizationId,
+          );
           if (linkedUser) {
             if (target === "inactive") {
               linkedUser.status = "inactive";
@@ -238,24 +322,37 @@ export class StaffService {
       }
 
       // Handle User Link / Unlink based on userId in payload
-      if (data.userId && (typeof data.userId === "string" ? data.userId.trim().length > 0 : true)) {
+      if (
+        data.userId &&
+        (typeof data.userId === "string" ? data.userId.trim().length > 0 : true)
+      ) {
         const rawUserId = data.userId;
         let user;
         const isObjectIdLike =
           rawUserId instanceof mongoose.Types.ObjectId ||
-          (typeof rawUserId === "string" && mongoose.Types.ObjectId.isValid(rawUserId));
+          (typeof rawUserId === "string" &&
+            mongoose.Types.ObjectId.isValid(rawUserId));
 
         if (isObjectIdLike) {
-          user = await this.userRepo.findById(rawUserId, organizationId, [], null, session);
+          user = await this.userRepo.findById(
+            rawUserId,
+            organizationId,
+            [],
+            null,
+            session,
+          );
         } else if (typeof rawUserId === "string") {
           const normalizedUsername = normalizeUsername(rawUserId);
-          if (normalizedUsername && typeof this.userRepo.findOne === "function") {
+          if (
+            normalizedUsername &&
+            typeof this.userRepo.findOne === "function"
+          ) {
             user = await this.userRepo.findOne(
               { username: normalizedUsername },
               organizationId,
               [],
               null,
-              session
+              session,
             );
           }
         }
@@ -267,9 +364,15 @@ export class StaffService {
         const resolvedUserId = user._id;
 
         // If staff is not already connected to this exact user, validate and link
-        if (!staff.userId || staff.userId.toString() !== resolvedUserId.toString()) {
+        if (
+          !staff.userId ||
+          staff.userId.toString() !== resolvedUserId.toString()
+        ) {
           if (user.status !== "active") {
-            throw new AppError(`User is ${user.status} and cannot be linked`, 400);
+            throw new AppError(
+              `User is ${user.status} and cannot be linked`,
+              400,
+            );
           }
 
           if (user.organizationId.toString() !== organizationId.toString()) {
@@ -281,11 +384,17 @@ export class StaffService {
             organizationId,
             [],
             null,
-            session
+            session,
           );
 
-          if (existingLinkedStaff && existingLinkedStaff._id.toString() !== id.toString()) {
-            throw new AppError("User is already linked to another active Staff", 400);
+          if (
+            existingLinkedStaff &&
+            existingLinkedStaff._id.toString() !== id.toString()
+          ) {
+            throw new AppError(
+              "User is already linked to another active Staff",
+              400,
+            );
           }
 
           await assertStaffBranchSubsetOfUserAccess(user, id, organizationId);
@@ -300,7 +409,13 @@ export class StaffService {
         data.userId = null;
       }
 
-      const updatedStaff = await this.staffRepo.updateById(id, data, organizationId, actorId, session);
+      const updatedStaff = await this.staffRepo.updateById(
+        id,
+        data,
+        organizationId,
+        actorId,
+        session,
+      );
 
       // Audit status changes
       if (data.status && data.status !== staff.status) {
@@ -316,7 +431,7 @@ export class StaffService {
           },
           organizationId,
           actorId,
-          session
+          session,
         );
       } else {
         await this.auditLogService.createAuditLog(
@@ -331,7 +446,7 @@ export class StaffService {
           },
           organizationId,
           actorId,
-          session
+          session,
         );
       }
       return updatedStaff;
@@ -354,7 +469,10 @@ export class StaffService {
 
       // Deactivate user account linkage
       if (staff.userId) {
-        const linkedUser = await this.userRepo.findById(staff.userId, organizationId);
+        const linkedUser = await this.userRepo.findById(
+          staff.userId,
+          organizationId,
+        );
         if (linkedUser) {
           linkedUser.status = "inactive";
           await linkedUser.save({ session });
@@ -362,17 +480,21 @@ export class StaffService {
       }
 
       // Deactivate relationships
-      await mongoose.model("StaffBranch").updateMany(
-        { staffId: id, organizationId },
-        { $set: { isActive: false } },
-        { session }
-      );
+      await mongoose
+        .model("StaffBranch")
+        .updateMany(
+          { staffId: id, organizationId },
+          { $set: { isActive: false } },
+          { session },
+        );
 
-      await mongoose.model("StaffService").updateMany(
-        { staffId: id, organizationId },
-        { $set: { isActive: false } },
-        { session }
-      );
+      await mongoose
+        .model("StaffService")
+        .updateMany(
+          { staffId: id, organizationId },
+          { $set: { isActive: false } },
+          { session },
+        );
 
       // Audit log
       await this.auditLogService.createAuditLog(
@@ -386,7 +508,7 @@ export class StaffService {
         },
         organizationId,
         actorId,
-        session
+        session,
       );
       return true;
     });
@@ -394,28 +516,53 @@ export class StaffService {
 
   async restoreStaff(id, organizationId, actorId) {
     return this.runTransaction(async (session) => {
-      const staff = await this.staffRepo.findByIdIncludeDeleted(id, organizationId);
+      const staff = await this.staffRepo.findByIdIncludeDeleted(
+        id,
+        organizationId,
+      );
       if (!staff) {
         throw new AppError("Staff not found", 404);
       }
 
       // Check phone, email, and staffCode uniqueness
-      const existingEmail = await this.staffRepo.findByEmail(staff.email, organizationId);
+      const existingEmail = await this.staffRepo.findByEmail(
+        staff.email,
+        organizationId,
+      );
       if (existingEmail && existingEmail._id.toString() !== id.toString()) {
-        throw new AppError("Email is already in use by another active record", 400);
+        throw new AppError(
+          "Email is already in use by another active record",
+          400,
+        );
       }
 
-      const existingPhone = await this.staffRepo.findByPhone(staff.phone, organizationId);
+      const existingPhone = await this.staffRepo.findByPhone(
+        staff.phone,
+        organizationId,
+      );
       if (existingPhone && existingPhone._id.toString() !== id.toString()) {
-        throw new AppError("Phone is already in use by another active record", 400);
+        throw new AppError(
+          "Phone is already in use by another active record",
+          400,
+        );
       }
 
-      const existingCode = await this.staffRepo.findByCode(staff.staffCode, organizationId);
+      const existingCode = await this.staffRepo.findByCode(
+        staff.staffCode,
+        organizationId,
+      );
       if (existingCode && existingCode._id.toString() !== id.toString()) {
-        throw new AppError("StaffCode is already in use by another active record", 400);
+        throw new AppError(
+          "StaffCode is already in use by another active record",
+          400,
+        );
       }
 
-      const restored = await this.staffRepo.reactivateById(id, organizationId, actorId);
+      const restored = await this.staffRepo.reactivateById(
+        id,
+        organizationId,
+        actorId,
+      );
 
       await this.auditLogService.createAuditLog(
         {
@@ -428,7 +575,7 @@ export class StaffService {
         },
         organizationId,
         actorId,
-        session
+        session,
       );
       return restored;
     });
@@ -440,17 +587,70 @@ export class StaffService {
       const branchAssignments = await this.staffBranchRepo.find(
         { branchId: options.branchId, isActive: true },
         { limit: 9999 },
-        organizationId
+        organizationId,
       );
       const staffIds = branchAssignments.data.map((b) => b.staffId);
       queryFilter._id = { $in: staffIds };
     }
-    return this.staffRepo.find(queryFilter, options, organizationId);
+
+    const result = await this.staffRepo.find(queryFilter, options, organizationId);
+    if (!result || !result.data || result.data.length === 0) {
+      return result;
+    }
+
+    const staffIds = result.data.map((s) => s._id);
+
+    // Fetch active branch assignments populated with Branch model data
+    const assignmentsResult = await this.staffBranchRepo.find(
+      { staffId: { $in: staffIds }, isActive: true },
+      { limit: 9999, populate: ["branchId"] },
+      organizationId,
+    );
+
+    const assignmentsByStaff = (assignmentsResult.data || []).reduce((acc, assignment) => {
+      const sId = assignment.staffId?.toString();
+      if (!acc[sId]) acc[sId] = [];
+      acc[sId].push(assignment);
+      return acc;
+    }, {});
+
+    const enrichedData = result.data.map((staffDoc) => {
+      const staffObj = typeof staffDoc.toObject === "function" ? staffDoc.toObject() : { ...staffDoc };
+      const assignments = assignmentsByStaff[staffDoc._id?.toString()] || [];
+
+      // Include all branch assignments with populated branch data
+      staffObj.branches = assignments.map((a) => ({
+        branchId: a.branchId?._id || a.branchId,
+        // branch: a.branchId && typeof a.branchId === "object" ? a.branchId : null,
+        name: a.branchId?.name,
+        isPrimary: a.isPrimary,
+        isActive: a.isActive,
+      }));
+
+      // // Convenience: primary branch
+      // const primaryAssignment = assignments.find((a) => a.isPrimary) || assignments[0] || null;
+      // staffObj.primaryBranch = primaryAssignment?.branchId && typeof primaryAssignment.branchId === "object"
+      //   ? primaryAssignment.branchId
+      //   : null;
+
+      return staffObj;
+    });
+
+    return {
+      ...result,
+      data: enrichedData,
+    };
   }
 
   async linkUser(id, userId, organizationId, actorId) {
     return this.runTransaction(async (session) => {
-      const staff = await this.staffRepo.findById(id, organizationId, [], null, session);
+      const staff = await this.staffRepo.findById(
+        id,
+        organizationId,
+        [],
+        null,
+        session,
+      );
       if (!staff) {
         throw new AppError("Staff not found", 404);
       }
@@ -463,10 +663,22 @@ export class StaffService {
         (typeof userId === "string" && mongoose.Types.ObjectId.isValid(userId));
 
       if (isObjectIdLike) {
-        user = await this.userRepo.findById(userId, organizationId, [], null, session);
+        user = await this.userRepo.findById(
+          userId,
+          organizationId,
+          [],
+          null,
+          session,
+        );
       } else {
         try {
-          user = await this.userRepo.findById(userId, organizationId, [], null, session);
+          user = await this.userRepo.findById(
+            userId,
+            organizationId,
+            [],
+            null,
+            session,
+          );
         } catch (error) {
           if (!error?.message?.includes("Cast to ObjectId")) {
             throw error;
@@ -505,7 +717,10 @@ export class StaffService {
       resolvedUserId = user._id || userId;
 
       // 1. Staff cannot already be linked to another User
-      if (staff.userId && staff.userId.toString() !== resolvedUserId.toString()) {
+      if (
+        staff.userId &&
+        staff.userId.toString() !== resolvedUserId.toString()
+      ) {
         throw new AppError("Staff is already linked to another User", 400);
       }
 
@@ -515,14 +730,26 @@ export class StaffService {
       }
 
       // 3. Prevent cross-organization linking
-      if (user.organizationId.toString() !== organizationId.toString() || staff.organizationId.toString() !== organizationId.toString()) {
+      if (
+        user.organizationId.toString() !== organizationId.toString() ||
+        staff.organizationId.toString() !== organizationId.toString()
+      ) {
         throw new AppError("Cross-organization linkage is prohibited", 400);
       }
 
       // 4. Verify User is not linked to another active Staff
-      const linkedStaff = await this.staffRepo.findOne({ userId: resolvedUserId, isDeleted: false }, organizationId, [], null, session);
+      const linkedStaff = await this.staffRepo.findOne(
+        { userId: resolvedUserId, isDeleted: false },
+        organizationId,
+        [],
+        null,
+        session,
+      );
       if (linkedStaff && linkedStaff._id.toString() !== id.toString()) {
-        throw new AppError("User is already linked to another active Staff", 400);
+        throw new AppError(
+          "User is already linked to another active Staff",
+          400,
+        );
       }
 
       // 5. Enforce invariant: Staff assigned branches ⊆ User authorized branches
@@ -543,7 +770,7 @@ export class StaffService {
         },
         organizationId,
         actorId,
-        session
+        session,
       );
       return staff;
     });
@@ -551,7 +778,13 @@ export class StaffService {
 
   async unlinkUser(id, organizationId, actorId) {
     return this.runTransaction(async (session) => {
-      const staff = await this.staffRepo.findById(id, organizationId, [], null, session);
+      const staff = await this.staffRepo.findById(
+        id,
+        organizationId,
+        [],
+        null,
+        session,
+      );
       if (!staff) {
         throw new AppError("Staff not found", 404);
       }
@@ -576,7 +809,7 @@ export class StaffService {
         },
         organizationId,
         actorId,
-        session
+        session,
       );
       return staff;
     });
@@ -589,33 +822,49 @@ export class StaffService {
         throw new AppError("Staff not found", 404);
       }
 
-      const branch = await mongoose.model("Branch").findOne({ _id: branchId, organizationId });
+      const branch = await mongoose
+        .model("Branch")
+        .findOne({ _id: branchId, organizationId });
       if (!branch) {
         throw new AppError("Branch not found", 404);
       }
 
       // Enforce invariant: Staff assigned branches ⊆ User authorized branches
       if (staff.userId) {
-        const linkedUser = await this.userRepo.findById(staff.userId, organizationId, [], null, session);
+        const linkedUser = await this.userRepo.findById(
+          staff.userId,
+          organizationId,
+          [],
+          null,
+          session,
+        );
         if (linkedUser) {
-          await assertStaffBranchSubsetOfUserAccess(linkedUser, id, organizationId, branchId);
+          await assertStaffBranchSubsetOfUserAccess(
+            linkedUser,
+            id,
+            organizationId,
+            branchId,
+          );
         }
       }
 
       const existingAssignment = await this.staffBranchRepo.findOne(
         { staffId: id, branchId, isActive: true },
-        organizationId
+        organizationId,
       );
       if (existingAssignment) {
         throw new AppError("Branch is already assigned to Staff", 400);
       }
 
       // Check count of active branch assignments
-      const activeCount = await mongoose.model("StaffBranch").countDocuments({
-        staffId: id,
-        organizationId,
-        isActive: true
-      }).session(session);
+      const activeCount = await mongoose
+        .model("StaffBranch")
+        .countDocuments({
+          staffId: id,
+          organizationId,
+          isActive: true,
+        })
+        .session(session);
 
       let primaryToAssign = isPrimary;
       if (activeCount === 0) {
@@ -623,18 +872,20 @@ export class StaffService {
       }
 
       if (primaryToAssign) {
-        await mongoose.model("StaffBranch").updateMany(
-          { staffId: id, organizationId },
-          { $set: { isPrimary: false } },
-          { session }
-        );
+        await mongoose
+          .model("StaffBranch")
+          .updateMany(
+            { staffId: id, organizationId },
+            { $set: { isPrimary: false } },
+            { session },
+          );
       }
 
       const assignment = await this.staffBranchRepo.create(
         { staffId: id, branchId, isPrimary: primaryToAssign, isActive: true },
         organizationId,
         actorId,
-        session
+        session,
       );
 
       await this.auditLogService.createAuditLog(
@@ -649,7 +900,7 @@ export class StaffService {
         },
         organizationId,
         actorId,
-        session
+        session,
       );
       return assignment;
     });
@@ -664,7 +915,7 @@ export class StaffService {
 
       const assignment = await this.staffBranchRepo.findOne(
         { staffId: id, branchId, isActive: true },
-        organizationId
+        organizationId,
       );
       if (!assignment) {
         throw new AppError("Branch assignment not found", 404);
@@ -677,7 +928,8 @@ export class StaffService {
 
       if (wasPrimary) {
         // Promote the oldest remaining active branch assignment
-        const remaining = await mongoose.model("StaffBranch")
+        const remaining = await mongoose
+          .model("StaffBranch")
           .find({ staffId: id, organizationId, isActive: true })
           .sort({ createdAt: 1 })
           .session(session);
@@ -701,7 +953,7 @@ export class StaffService {
         },
         organizationId,
         actorId,
-        session
+        session,
       );
       return true;
     });
@@ -714,14 +966,16 @@ export class StaffService {
         throw new AppError("Staff not found", 404);
       }
 
-      const service = await mongoose.model("Service").findOne({ _id: serviceId, organizationId });
+      const service = await mongoose
+        .model("Service")
+        .findOne({ _id: serviceId, organizationId });
       if (!service) {
         throw new AppError("Service not found", 404);
       }
 
       const existingMapping = await this.staffServiceRepo.findOne(
         { staffId: id, serviceId, isActive: true },
-        organizationId
+        organizationId,
       );
       if (existingMapping) {
         throw new AppError("Service capability already assigned", 400);
@@ -731,7 +985,7 @@ export class StaffService {
         { staffId: id, serviceId, isActive: true },
         organizationId,
         actorId,
-        session
+        session,
       );
 
       await this.auditLogService.createAuditLog(
@@ -746,7 +1000,7 @@ export class StaffService {
         },
         organizationId,
         actorId,
-        session
+        session,
       );
       return mapping;
     });
@@ -761,7 +1015,7 @@ export class StaffService {
 
       const mapping = await this.staffServiceRepo.findOne(
         { staffId: id, serviceId, isActive: true },
-        organizationId
+        organizationId,
       );
       if (!mapping) {
         throw new AppError("Service capability mapping not found", 404);
@@ -782,7 +1036,7 @@ export class StaffService {
         },
         organizationId,
         actorId,
-        session
+        session,
       );
       return true;
     });
@@ -796,7 +1050,7 @@ export class StaffService {
     const result = await this.staffBranchRepo.find(
       { staffId: id, isActive: true },
       { limit: 9999, populate: ["branchId"] },
-      organizationId
+      organizationId,
     );
     return result.data;
   }
@@ -809,7 +1063,7 @@ export class StaffService {
     const result = await this.staffServiceRepo.find(
       { staffId: id, isActive: true },
       { limit: 9999, populate: ["serviceId"] },
-      organizationId
+      organizationId,
     );
     return result.data;
   }

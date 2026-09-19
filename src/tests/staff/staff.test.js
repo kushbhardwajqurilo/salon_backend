@@ -154,6 +154,53 @@ describe("Staff Backend Module Unit & Lifecycle Tests", () => {
       expect(Sequence.findOneAndUpdate).toHaveBeenCalled();
     });
 
+    it("should automatically assign primary StaffBranch when branchId is provided during staff creation", async () => {
+      Staff.findOne.mockReturnValue(createQueryMock(null));
+      const mockStaff = {
+        _id: "staff-2",
+        name: "Jane Doe",
+        phone: "+1987654321",
+        email: "jane@example.com",
+        designation: "Colorist",
+        staffCode: "STF-0006",
+        organizationId: "org-1",
+      };
+
+      jest.spyOn(staffService.staffRepo, "create").mockResolvedValue(mockStaff);
+      jest.spyOn(staffService.staffBranchRepo, "create").mockResolvedValue({
+        _id: "staff-branch-1",
+        staffId: "staff-2",
+        branchId: "branch-1",
+        isPrimary: true,
+      });
+
+      const result = await staffService.createStaff(
+        {
+          name: "Jane Doe",
+          phone: "+1987654321",
+          email: "jane@example.com",
+          designation: "Colorist",
+          joiningDate: new Date(),
+          branchId: "branch-1",
+        },
+        "org-1",
+        "actor-1"
+      );
+
+      expect(result.staffCode).toBe("STF-0006");
+      expect(staffService.staffBranchRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          staffId: "staff-2",
+          branchId: "branch-1",
+          isPrimary: true,
+          isActive: true,
+        }),
+        "org-1",
+        "actor-1",
+        null
+      );
+    });
+
     it("should throw 400 error on duplicate phone", async () => {
       jest.spyOn(staffService.staffRepo, "findByEmail").mockResolvedValue(null);
       jest.spyOn(staffService.staffRepo, "findByPhone").mockResolvedValue({ _id: "existing" });
@@ -485,6 +532,46 @@ describe("Staff Backend Module Unit & Lifecycle Tests", () => {
       expect(filterArg.limit).toBeUndefined();
       expect(filterArg.search).toBeUndefined();
       expect(filterArg.branchId).toBeUndefined();
+    });
+
+    it("should enrich staff with Branch model data in listStaff", async () => {
+      const mockStaffList = [
+        { _id: "staff-1", name: "John Stylist", staffCode: "STF-0001" },
+        { _id: "staff-2", name: "Jane Colorist", staffCode: "STF-0002" },
+      ];
+
+      jest.spyOn(staffService.staffRepo, "find").mockResolvedValue({
+        data: mockStaffList,
+        meta: { total: 2, page: 1, limit: 10, totalPages: 1 },
+      });
+
+      const mockBranchAssignments = [
+        {
+          _id: "sb-1",
+          staffId: "staff-1",
+          branchId: { _id: "branch-1", name: "Main Branch", address: "123 Main St" },
+          isPrimary: true,
+          isActive: true,
+        },
+        {
+          _id: "sb-2",
+          staffId: "staff-2",
+          branchId: { _id: "branch-2", name: "Downtown Branch", address: "456 Downtown St" },
+          isPrimary: true,
+          isActive: true,
+        },
+      ];
+
+      jest.spyOn(staffService.staffBranchRepo, "find").mockResolvedValue({
+        data: mockBranchAssignments,
+      });
+
+      const result = await staffService.listStaff({}, {}, "org-1");
+
+      expect(result.data).toHaveLength(2);
+      expect(result.data[0].branches).toHaveLength(1);
+      expect(result.data[0].branches[0].name).toBe("Main Branch");
+      expect(result.data[1].branches[0].name).toBe("Downtown Branch");
     });
   });
 

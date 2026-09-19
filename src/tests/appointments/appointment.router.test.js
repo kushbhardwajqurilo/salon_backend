@@ -131,7 +131,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       joiningDate: new Date(),
     });
 
-    // 6. Setup Category & Services for Branch A
+    // 6. Setup Category & Services (Services are Organization-Global master data)
     category = await ServiceCategory.create({
       name: "Hair Care",
       organizationId: orgId,
@@ -143,10 +143,8 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       categoryId: category._id,
       duration: 30,
       pricing: { basePrice: 500 },
-      taxConfiguration: { taxable: true, taxRate: 18 },
       status: "active",
       organizationId: orgId,
-      branchId: branchAId,
     });
 
     serviceColor = await Service.create({
@@ -154,10 +152,8 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       categoryId: category._id,
       duration: 60,
       pricing: { basePrice: 1500 },
-      taxConfiguration: { taxable: false, taxRate: 0 },
       status: "active",
       organizationId: orgId,
-      branchId: branchAId,
     });
   });
 
@@ -176,7 +172,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
   });
 
   describe("POST /api/v1/appointments - Appointment Creation & Invariants", () => {
-    it("creates an advance appointment with valid payload, calculating pricing snapshot & totalDuration", async () => {
+    it("creates an advance appointment with valid payload, calculating pricing snapshot & totalDuration without tax", async () => {
       const res = await request(app)
         .post("/api/v1/appointments")
         .set("Authorization", `Bearer ${ownerToken}`)
@@ -199,11 +195,97 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       expect(res.body.data.endTime).toBe("11:30");
       expect(res.body.data.status).toBe("scheduled");
 
-      // Pricing Check: Base = 500 + 1500 = 2000. Tax = 90 + 0 = 90. Discount = 100. Total = 1990.
+      // Pricing Check: Base = 500 + 1500 = 2000. Discount = 100. Total = 1900. No tax.
       expect(res.body.data.pricing.subtotal).toBe(2000);
-      expect(res.body.data.pricing.tax).toBe(90);
+      expect(res.body.data.pricing.tax).toBeUndefined();
       expect(res.body.data.pricing.discount).toBe(100);
-      expect(res.body.data.pricing.total).toBe(1990);
+      expect(res.body.data.pricing.total).toBe(1900);
+      expect(res.body.data.services[0].price).toBe(500);
+      expect(res.body.data.services[0].taxRate).toBeUndefined();
+      expect(res.body.data.services[0].taxAmount).toBeUndefined();
+    });
+
+    it("creates an appointment with custom service prices overriding master base prices", async () => {
+      const res = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [
+            { serviceId: serviceHaircut._id.toString(), customPrice: 400 },
+            { serviceId: serviceColor._id.toString(), customPrice: 1200 },
+          ],
+          appointmentDate: "2026-09-21",
+          startTime: "10:00",
+          bookingType: "advance",
+          discount: 50,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.services[0].price).toBe(400);
+      expect(res.body.data.services[1].price).toBe(1200);
+      expect(res.body.data.pricing.subtotal).toBe(1600);
+      expect(res.body.data.pricing.discount).toBe(50);
+      expect(res.body.data.pricing.total).toBe(1550);
+    });
+
+    it("creates an appointment with mixed custom price and omitted custom price defaulting to master basePrice", async () => {
+      const res = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [
+            { serviceId: serviceHaircut._id.toString(), customPrice: 350 },
+            { serviceId: serviceColor._id.toString() }, // omitted -> defaults to 1500
+          ],
+          appointmentDate: "2026-09-22",
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.services[0].price).toBe(350);
+      expect(res.body.data.services[1].price).toBe(1500);
+      expect(res.body.data.pricing.subtotal).toBe(1850);
+      expect(res.body.data.pricing.total).toBe(1850);
+    });
+
+    it("ensures changing Service master base price does NOT mutate existing appointment snapshots", async () => {
+      const createRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          serviceIds: [serviceHaircut._id.toString()],
+          appointmentDate: "2026-09-23",
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+
+      expect(createRes.status).toBe(201);
+      const aptId = createRes.body.data.id;
+      expect(createRes.body.data.services[0].price).toBe(500);
+
+      // Now change Service master base price to 800
+      await Service.findByIdAndUpdate(serviceHaircut._id, { "pricing.basePrice": 800 });
+
+      // Fetch appointment from API
+      const getRes = await request(app)
+        .get(`/api/v1/appointments/${aptId}`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchAId.toString());
+
+      expect(getRes.status).toBe(200);
+      expect(getRes.body.data.services[0].price).toBe(500);
+      expect(getRes.body.data.pricing.subtotal).toBe(500);
+      expect(getRes.body.data.pricing.total).toBe(500);
     });
 
     it("rejects appointment creation if body.branchId is missing (Invariant 2)", async () => {
@@ -732,6 +814,89 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       expect(res.body.data.reminder.status).toBe("sent");
       expect(res.body.data.reminder.email.status).toBe("sent");
       expect(res.body.data.reminder.sms.status).toBe("sent");
+    });
+  });
+
+  describe("Organization-Global Services in Appointments", () => {
+    it("allows booking the same organization-global service across multiple different branches of the same organization", async () => {
+      // 1. Book Haircut in Branch A
+      const resBranchA = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          appointmentDate: "2026-09-22",
+          startTime: "11:00",
+          bookingType: "advance",
+        });
+
+      expect(resBranchA.status).toBe(201);
+      expect(resBranchA.body.data.branchId).toBe(branchAId.toString());
+      expect(resBranchA.body.data.services[0].serviceId).toBe(serviceHaircut._id.toString());
+      expect(resBranchA.body.data.services[0].price).toBe(500);
+
+      // 2. Book the EXACT same Haircut in Branch B with customPrice = 600
+      const resBranchB = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchBId.toString(),
+          customerId: customer._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString(), customPrice: 600 }],
+          appointmentDate: "2026-09-22",
+          startTime: "14:00",
+          bookingType: "advance",
+        });
+
+      expect(resBranchB.status).toBe(201);
+      expect(resBranchB.body.data.branchId).toBe(branchBId.toString());
+      expect(resBranchB.body.data.services[0].serviceId).toBe(serviceHaircut._id.toString());
+      expect(resBranchB.body.data.services[0].price).toBe(600);
+
+      // Verify customer's visitedBranchIds now includes BOTH home branch (Branch A) and new visited branch (Branch B)
+      const updatedCustomer = await Customer.findById(customer._id);
+      const visitedStrs = updatedCustomer.visitedBranchIds.map((id) => id.toString());
+      expect(visitedStrs).toContain(branchAId.toString());
+      expect(visitedStrs).toContain(branchBId.toString());
+    });
+
+    it("rejects booking an appointment with a service belonging to a different organization", async () => {
+      // Create another organization with its own service
+      const otherOrg = await Organization.create({
+        name: "Other Salon Org",
+        slug: `other-org-${Date.now()}`,
+        status: "active",
+      });
+      const otherCat = await ServiceCategory.create({
+        name: "Other Care",
+        organizationId: otherOrg._id,
+        branchId: new mongoose.Types.ObjectId(),
+      });
+      const otherService = await Service.create({
+        name: "Other Haircut",
+        categoryId: otherCat._id,
+        duration: 45,
+        pricing: { basePrice: 800 },
+        status: "active",
+        organizationId: otherOrg._id,
+      });
+
+      const res = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          services: [{ serviceId: otherService._id.toString() }],
+          appointmentDate: "2026-09-22",
+          startTime: "16:00",
+          bookingType: "advance",
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/invalid, inactive, or belong to a different organization/i);
     });
   });
 });

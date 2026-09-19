@@ -20,6 +20,7 @@ export const createStaffSchema = z.object({
       objectIdSchema,
       z.string().trim().min(3).max(30).regex(usernameRegex),
     ]).or(z.literal("")).nullable().optional(),
+    branchId: objectIdSchema.optional(),
   }),
 });
 
