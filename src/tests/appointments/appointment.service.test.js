@@ -196,7 +196,7 @@ describe("AppointmentService Unit & Domain Tests", () => {
         startAt: parseLocalToUTC(currentBranchTime.dateStr, "06:00", branchTz),
         endAt: parseLocalToUTC(currentBranchTime.dateStr, "06:30", branchTz),
         slotMinutes: [],
-        services: [{ serviceId: new mongoose.Types.ObjectId(), name: "Haircut", duration: 30, price: 500, taxRate: 0, taxAmount: 0 }],
+        services: [{ serviceId: new mongoose.Types.ObjectId(), name: "Haircut", duration: 30, price: 500 }],
       };
 
       let updatedData = null;

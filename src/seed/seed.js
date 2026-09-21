@@ -82,7 +82,8 @@ const seed = async () => {
       "appointments.view", "appointments.book", "appointments.reschedule", "appointments.cancel",
       "employees.view",
       "billing.view", "billing.checkout",
-      "reports.revenue.view"
+      "reports.revenue.view",
+      "logs.view"
     ];
     const managerPerms = await Permission.find({ name: { $in: managerPermNames } });
 

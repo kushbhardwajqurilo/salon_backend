@@ -181,7 +181,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString(), serviceColor._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
           discount: 100,
@@ -217,7 +217,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
             { serviceId: serviceHaircut._id.toString(), customPrice: 400 },
             { serviceId: serviceColor._id.toString(), customPrice: 1200 },
           ],
-          appointmentDate: "2026-09-21",
+          appointmentDate: "2026-10-21",
           startTime: "10:00",
           bookingType: "advance",
           discount: 50,
@@ -243,7 +243,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
             { serviceId: serviceHaircut._id.toString(), customPrice: 350 },
             { serviceId: serviceColor._id.toString() }, // omitted -> defaults to 1500
           ],
-          appointmentDate: "2026-09-22",
+          appointmentDate: "2026-10-22",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -264,7 +264,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-23",
+          appointmentDate: "2026-10-23",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -295,7 +295,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         .send({
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -321,16 +321,16 @@ describe("Appointment Module Comprehensive Test Suite", () => {
     });
 
     it("rejects creation if assigned staff is on leave (Leave Integration)", async () => {
-      // Create approved leave for staffA on 2026-09-20
+      // Create approved leave for staffA on 2026-10-20
       await Leave.create({
         organizationId: orgId,
         branchId: branchAId,
         staffId: staffA._id,
         leaveCode: "LV-TEST-01",
         leaveType: "Casual",
-        startDate: new Date("2026-09-20T00:00:00.000Z"),
-        endDate: new Date("2026-09-20T00:00:00.000Z"),
-        dates: ["2026-09-20"],
+        startDate: new Date("2026-10-20T00:00:00.000Z"),
+        endDate: new Date("2026-10-20T00:00:00.000Z"),
+        dates: ["2026-10-20"],
         reason: "Vacation",
         status: "approved",
         submittedBy: ownerUser._id,
@@ -345,7 +345,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -389,7 +389,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -410,7 +410,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -423,6 +423,84 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       expect(res.status).toBe(200);
       expect(res.body.data).toHaveLength(0);
     });
+
+    it("filters appointments by customerName and general search matching customer name", async () => {
+      // Create a second customer with a different name
+      const customerBob = await Customer.create({
+        name: "Bob Builder",
+        phone: "+919811112222",
+        organizationId: orgId,
+        homeBranchId: branchAId,
+        status: "active",
+      });
+
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+
+      // Create appointment for Alice
+      await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          serviceIds: [serviceHaircut._id.toString()],
+          appointmentDate: todayStr,
+          startTime: "14:00",
+          bookingType: "walk_in",
+        });
+
+      // Create appointment for Bob
+      await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customerBob._id.toString(),
+          serviceIds: [serviceHaircut._id.toString()],
+          appointmentDate: todayStr,
+          startTime: "15:00",
+          bookingType: "walk_in",
+        });
+
+      // Query with customerName=Alice
+      const resAlice = await request(app)
+        .get("/api/v1/appointments?customerName=Alice")
+        .set("Authorization", `Bearer ${ownerToken}`);
+
+      expect(resAlice.status).toBe(200);
+      expect(resAlice.body.data.length).toBeGreaterThanOrEqual(1);
+      expect(resAlice.body.data.every((apt) => apt.customerId._id === customer._id.toString())).toBe(true);
+
+      // Query with customerName=Bob
+      const resBob = await request(app)
+        .get("/api/v1/appointments?customerName=Bob")
+        .set("Authorization", `Bearer ${ownerToken}`);
+
+      expect(resBob.status).toBe(200);
+      expect(resBob.body.data.length).toBeGreaterThanOrEqual(1);
+      expect(resBob.body.data.every((apt) => apt.customerId._id === customerBob._id.toString())).toBe(true);
+
+      // Query with generic search=Bob
+      const resSearch = await request(app)
+        .get("/api/v1/appointments?search=Bob")
+        .set("Authorization", `Bearer ${ownerToken}`);
+
+      expect(resSearch.status).toBe(200);
+      expect(resSearch.body.data.length).toBeGreaterThanOrEqual(1);
+      expect(resSearch.body.data.every((apt) => apt.customerId._id === customerBob._id.toString())).toBe(true);
+
+      // Query with customerName non-existent
+      const resNone = await request(app)
+        .get("/api/v1/appointments?customerName=NonExistentCustomerName")
+        .set("Authorization", `Bearer ${ownerToken}`);
+
+      expect(resNone.status).toBe(200);
+      expect(resNone.body.data).toHaveLength(0);
+    });
   });
 
   describe("PATCH /api/v1/appointments/:id/reschedule - Rescheduling & Cross-Branch Guard", () => {
@@ -434,7 +512,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -446,13 +524,13 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         .set("Authorization", `Bearer ${ownerToken}`)
         .send({
           branchId: branchAId.toString(),
-          appointmentDate: "2026-09-21",
+          appointmentDate: "2026-10-21",
           startTime: "11:00",
         });
 
       if (res.status !== 200) console.error("RESCHEDULE ERROR:", res.body);
       expect(res.status).toBe(200);
-      expect(res.body.data.appointmentDate).toBe("2026-09-21");
+      expect(res.body.data.appointmentDate).toBe("2026-10-21");
       expect(res.body.data.startTime).toBe("11:00");
     });
 
@@ -464,7 +542,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -476,7 +554,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         .set("Authorization", `Bearer ${ownerToken}`)
         .send({
           branchId: branchBId.toString(), // Target branch mismatch
-          appointmentDate: "2026-09-21",
+          appointmentDate: "2026-10-21",
           startTime: "11:00",
         });
 
@@ -495,7 +573,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -537,7 +615,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -686,7 +764,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -715,7 +793,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
           reminder: { enabled: true, channel: "sms", offsetMinutes: 60 },
@@ -741,7 +819,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -768,7 +846,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
           reminder: { enabled: true, channel: "both", offsetMinutes: 60 },
@@ -797,7 +875,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-20",
+          appointmentDate: "2026-10-20",
           startTime: "10:00",
           bookingType: "advance",
           reminder: { enabled: true, channel: "both", offsetMinutes: 60 },
@@ -827,7 +905,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           services: [{ serviceId: serviceHaircut._id.toString() }],
-          appointmentDate: "2026-09-22",
+          appointmentDate: "2026-10-22",
           startTime: "11:00",
           bookingType: "advance",
         });
@@ -845,7 +923,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchBId.toString(),
           customerId: customer._id.toString(),
           services: [{ serviceId: serviceHaircut._id.toString(), customPrice: 600 }],
-          appointmentDate: "2026-09-22",
+          appointmentDate: "2026-10-22",
           startTime: "14:00",
           bookingType: "advance",
         });
@@ -890,7 +968,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           services: [{ serviceId: otherService._id.toString() }],
-          appointmentDate: "2026-09-22",
+          appointmentDate: "2026-10-22",
           startTime: "16:00",
           bookingType: "advance",
         });

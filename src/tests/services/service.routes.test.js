@@ -159,7 +159,7 @@ describe("Service Router Organization-Global Scope Test Suite", () => {
     expect(res.body.data.name).toBe("Classic Haircut");
     expect(res.body.data.pricing.basePrice).toBe(450);
     expect(res.body.data.organizationId).toBe(org1._id.toString());
-    expect(res.body.data.branchId).toBeNull();
+    expect(res.body.data.branchId).toBeUndefined();
   });
 
   it("lists services without requiring X-Branch-Id header, returning all organization services", async () => {

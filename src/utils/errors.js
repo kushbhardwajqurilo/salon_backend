@@ -23,9 +23,9 @@ export const asyncHandler = (fn) => {
 };
 
 const handleZodError = (err) => {
-  console.log("zod error", err)
-  const errors = err.errors.map((e) => ({
-    field: e.path.join("."),
+  const issues = err.issues || err.errors || [];
+  const errors = issues.map((e) => ({
+    field: Array.isArray(e.path) ? e.path.join(".") : "",
     message: e.message,
   }));
   return new AppError(`Validation failed: ${JSON.stringify(errors)}`, 400);
@@ -94,23 +94,22 @@ const sendErrorProd = (err, req, res) => {
 };
 
 export const globalErrorHandler = (err, req, res, next) => {
-  err.statusCode = err.statusCode || 500;
-  err.status = err.status || "error";
+  let error = err;
+
+  if (error instanceof ZodError) error = handleZodError(error);
+  if (error.name === "CastError") error = handleCastErrorDB(error);
+  if (error.code === 11000) error = handleDuplicateFieldsDB(error);
+  if (error.name === "ValidationError")
+    error = handleValidationErrorDB(error);
+  if (error.name === "JsonWebTokenError") error = handleJWTError();
+  if (error.name === "TokenExpiredError") error = handleJWTExpiredError();
+
+  error.statusCode = error.statusCode || 500;
+  error.status = error.status || "error";
 
   if (process.env.NODE_ENV === "development") {
-    sendErrorDev(err, req, res);
+    sendErrorDev(error, req, res);
   } else {
-    let error = Object.assign(err);
-    error.message = err.message;
-
-    if (error instanceof ZodError) error = handleZodError(error);
-    if (error.name === "CastError") error = handleCastErrorDB(error);
-    if (error.code === 11000) error = handleDuplicateFieldsDB(error);
-    if (error.name === "ValidationError")
-      error = handleValidationErrorDB(error);
-    if (error.name === "JsonWebTokenError") error = handleJWTError();
-    if (error.name === "TokenExpiredError") error = handleJWTExpiredError();
-
     sendErrorProd(error, req, res);
   }
 };

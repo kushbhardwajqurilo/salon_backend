@@ -428,3 +428,26 @@
 [2026-09-19 10:03:30:330] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
 [2026-09-19 10:03:31:331] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
 [2026-09-19 10:03:32:332] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:07:18:718] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-09-19 19:07:18:718] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:07:19:719] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:07:19:719] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:07:19:719] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:07:19:719] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:07:20:720] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:07:20:720] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:07:20:720] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:07:21:721] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:07:21:721] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:07:22:722] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:07:22:722] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-19 19:19:32:1932] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-21 10:08:19:819] [[31merror[39m]: [31m🔌 Redis connection error: read ECONNRESET[39m
+[2026-09-21 10:08:19:819] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-21 10:08:19:819] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-21 10:08:20:820] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-21 10:08:20:820] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-21 10:08:22:822] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-21 10:08:22:822] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-21 10:08:23:823] [[31merror[39m]: [31m🔌 Redis connection error: getaddrinfo ENOTFOUND observable-outsize-month-97016.db.redis.io[39m
+[2026-09-21 18:18:45:1845] [[31merror[39m]: [31m❌ MongoDB connection error: Permission: crypto is not defined[39m

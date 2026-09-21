@@ -91,7 +91,8 @@ export const syncPermissionsLogic = async () => {
     "appointments.view", "appointments.book", "appointments.reschedule", "appointments.cancel",
     "employees.view",
     "billing.view", "billing.checkout",
-    "reports.revenue.view"
+    "reports.revenue.view",
+    "logs.view"
   ];
   let managerRole = await Role.findOne({ name: "manager" });
   if (!managerRole) {

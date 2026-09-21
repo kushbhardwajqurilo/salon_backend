@@ -58,11 +58,6 @@ const serviceSchema = new mongoose.Schema(
       ref: "Organization",
       required: true,
     },
-    branchId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Branch",
-      default: null,
-    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

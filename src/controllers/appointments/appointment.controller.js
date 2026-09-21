@@ -1,4 +1,5 @@
 import { AppointmentService } from "../../services/appointments/appointment.service.js";
+import { Customer } from "../../models/customers/customer.model.js";
 import { sendResponse } from "../../utils/response.js";
 import { asyncHandler } from "../../utils/errors.js";
 
@@ -10,15 +11,44 @@ export const createAppointment = asyncHandler(async (req, res) => {
 });
 
 export const listAppointments = asyncHandler(async (req, res) => {
-  const { page, limit, sortBy, sortOrder, status, search, customerId, staffId, date } = req.query;
+  const { page, limit, sortBy, sortOrder, status, search, customerName, customerId, staffId, date } = req.query;
 
   const filter = {};
   if (status) filter.status = status;
   if (customerId) filter.customerId = customerId;
   if (staffId) filter.staffId = staffId;
   if (date) filter.appointmentDate = date;
-  if (search) {
-    filter.appointmentCode = { $regex: search, $options: "i" };
+
+  // Filter by customer name if provided
+  const searchName = customerName || search;
+  if (searchName) {
+    const matchingCustomers = await Customer.find({
+      organizationId: req.organizationId,
+      name: { $regex: searchName, $options: "i" },
+      isDeleted: false,
+    }).select("_id");
+
+    const matchedCustomerIds = matchingCustomers.map((c) => c._id);
+
+    if (customerName) {
+      // Direct customerName filter: matches any customer with this name
+      if (filter.customerId) {
+        // If customerId was also provided, ensure it is among the matched customer IDs
+        filter.customerId = matchedCustomerIds.some(
+          (id) => id.toString() === filter.customerId.toString()
+        )
+          ? filter.customerId
+          : { $in: [] };
+      } else {
+        filter.customerId = { $in: matchedCustomerIds };
+      }
+    } else if (search) {
+      // Generic search: matches appointmentCode OR customer name
+      filter.$or = [
+        { appointmentCode: { $regex: search, $options: "i" } },
+        { customerId: { $in: matchedCustomerIds } },
+      ];
+    }
   }
 
   const branchId = req.branchId || null;
