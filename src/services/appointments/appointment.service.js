@@ -726,7 +726,7 @@ export class AppointmentService {
       // Record interaction: automatically track visited branch for the customer
       await Customer.updateOne(
         { _id: customerId, organizationId },
-        { $addToSet: { visitedBranchIds: branchId } }
+        { $addToSet: { visitedBranchIds: branchId } },
       );
 
       return appointment;

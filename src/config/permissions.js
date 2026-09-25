@@ -282,28 +282,28 @@ export const CANONICAL_PERMISSIONS = [
     description: "Delete or archive a service category/item."
   },
   {
-    name: "memberships.view",
-    module: "Memberships",
+    name: "subscriptions.view",
+    module: "Subscriptions",
     action: "View",
-    description: "View membership plans and customer membership statuses."
+    description: "View customer subscriptions, balances, and redemption history."
   },
   {
-    name: "memberships.configure",
-    module: "Memberships",
+    name: "subscriptions.configure",
+    module: "Subscriptions",
     action: "Configure",
-    description: "Define, update, or retire membership packages (Silver, Gold, Platinum)."
+    description: "Update subscription metadata, permitted branches, or cancel subscriptions."
   },
   {
-    name: "memberships.sell",
-    module: "Memberships",
+    name: "subscriptions.sell",
+    module: "Subscriptions",
     action: "Sell",
-    description: "Purchase/issue memberships for customers."
+    description: "Purchase or assign subscriptions with customer-specific pricing."
   },
   {
-    name: "memberships.redeem",
-    module: "Memberships",
+    name: "subscriptions.redeem",
+    module: "Subscriptions",
     action: "Redeem",
-    description: "Record a membership benefit usage event."
+    description: "Send OTP and record subscription entitlement redemptions."
   },
   {
     name: "coupons.view",

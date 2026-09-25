@@ -130,6 +130,23 @@ const customerSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // OTP Verification Fields (for Subscription redemption, etc.)
+    otp: {
+      type: String,
+      default: null,
+    },
+    otpExpires: {
+      type: Date,
+      default: null,
+    },
+    otpAttempts: {
+      type: Number,
+      default: 0,
+    },
+    otpResendUntil: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

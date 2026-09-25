@@ -230,6 +230,25 @@ export const startNotificationWorkers = () => {
             });
             return true;
           }
+          case "sendSubscriptionCreatedSMS": {
+            const { phone, customerName, subscriptionCode, price } = job.data;
+            if (!phone) return false;
+            return await smsService.sendSms({
+              phone,
+              message: `Dear ${customerName || "Customer"}, your subscription ${subscriptionCode} has been activated. Amount: INR ${price}. Thank you for choosing us!`,
+            });
+          }
+          case "sendSubscriptionRedemptionSMS": {
+            const { phone, customerName, subscriptionCode, services } = job.data;
+            if (!phone) return false;
+            const serviceSummary = Array.isArray(services)
+              ? services.map((s) => `${s.quantity}x service`).join(", ")
+              : "services";
+            return await smsService.sendSms({
+              phone,
+              message: `Dear ${customerName || "Customer"}, redemption confirmed for subscription ${subscriptionCode}: ${serviceSummary}.`,
+            });
+          }
           default:
             logger.warn(`Unknown SMS job type: ${job.name}`);
             return true;

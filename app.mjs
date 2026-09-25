@@ -20,6 +20,8 @@ import userRouter from "./src/routers/users/user.routes.js";
 import leaveRouter from "./src/routers/leaves/leave.router.js";
 import appointmentRouter from "./src/routers/appointments/appointment.router.js";
 import auditLogRouter from "./src/routers/audit/auditLog.routes.js";
+import subscriptionRouter from "./src/routers/subscriptions/subscription.routes.js";
+import subscriptionPlanRouter from "./src/routers/subscriptions/subscriptionPlan.routes.js";
 import {
   apiLimiter,
   speedLimiter,
@@ -113,6 +115,8 @@ app.use("/api/v1/users", userRouter);
 app.use("/api/v1/leaves", leaveRouter);
 app.use("/api/v1/appointments", appointmentRouter);
 app.use("/api/v1/audit-logs", auditLogRouter);
+app.use("/api/v1/subscriptions", subscriptionRouter);
+app.use("/api/v1/subscription-plans", subscriptionPlanRouter);
 
 // health check endpoint for server
 app.get("/health", (req, res) => {
