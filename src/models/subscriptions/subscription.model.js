@@ -30,7 +30,7 @@ const entitlementSchema = new mongoose.Schema(
       min: 0,
     },
   },
-  { _id: true }
+  { _id: true },
 );
 
 const subscriptionSchema = new mongoose.Schema(
@@ -99,13 +99,13 @@ const subscriptionSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Unique subscriptionCode per organization for non-deleted records
 subscriptionSchema.index(
   { organizationId: 1, subscriptionCode: 1 },
-  { unique: true, partialFilterExpression: { isDeleted: false } }
+  { unique: true, partialFilterExpression: { isDeleted: false } },
 );
 
 // Customer subscriptions index

@@ -24,7 +24,6 @@ const serverStart = async () => {
 
     // 3. Start BullMQ Background Notification Workers
     startNotificationWorkers();
-
     // 4. Start Express Web Server
     server = app.listen(env.PORT, () => {
       logger.info(`🚀 Unisex Parlour ERP Server running in [${env.NODE_ENV}] mode on port ${env.PORT}`);

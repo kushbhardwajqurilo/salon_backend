@@ -1,7 +1,13 @@
+import dns from "dns";
 import mongoose from "mongoose";
 import { env } from "../config/env.js";
 import { logger } from "../utils/logger.js";
 import { auditPlugin } from "./plugins/audit.js";
+
+// Ensure public DNS fallback for MongoDB Atlas SRV lookups on local environments
+try {
+  dns.setServers(["8.8.8.8", "1.1.1.1"]);
+} catch (_) {}
 
 // Register global plugins
 mongoose.plugin(auditPlugin);

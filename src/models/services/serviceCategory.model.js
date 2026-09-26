@@ -35,11 +35,7 @@ const serviceCategorySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Organization",
       required: true,
-    },
-    branchId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Branch",
-      required: true,
+      index: true,
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -53,11 +49,10 @@ const serviceCategorySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Enforce unique category name per branch (for active categories)
+// Enforce unique category name per organization (for active categories)
 serviceCategorySchema.index(
-  { branchId: 1, name: 1 },
+  { organizationId: 1, name: 1 },
   { unique: true, partialFilterExpression: { isDeleted: false } }
 );
-serviceCategorySchema.index({ organizationId: 1, branchId: 1 });
 
 export const ServiceCategory = mongoose.model("ServiceCategory", serviceCategorySchema);

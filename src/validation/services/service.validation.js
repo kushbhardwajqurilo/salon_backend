@@ -27,7 +27,19 @@ const allowedCategorySortFields = ["name", "createdAt", "updatedAt", "displayOrd
 export const queryServiceCategorySchema = z.object({
   query: z.object({
     page: z.coerce.number().int().positive().default(1),
-    limit: z.coerce.number().int().positive().default(10),
+    limit: z
+      .union([
+        z.coerce.number().int().positive(),
+        z.literal("all"),
+      ])
+      .default(10),
+    all: z
+      .preprocess((val) => {
+        if (typeof val === "boolean") return val;
+        if (val === "true" || val === "1") return true;
+        if (val === "false" || val === "0") return false;
+        return val;
+      }, z.union([z.boolean(), z.literal("all")]).optional()),
     sort: z
       .string()
       .refine(
@@ -41,6 +53,7 @@ export const queryServiceCategorySchema = z.object({
       )
       .default("displayOrder"),
     search: z.string().optional(),
+    query: z.string().optional(),
     status: z.enum(["active", "inactive"]).optional(),
   }),
 });
@@ -77,7 +90,19 @@ const allowedServiceSortFields = ["name", "createdAt", "updatedAt", "displayOrde
 export const queryServiceSchema = z.object({
   query: z.object({
     page: z.coerce.number().int().positive().default(1),
-    limit: z.coerce.number().int().positive().default(10),
+    limit: z
+      .union([
+        z.coerce.number().int().positive(),
+        z.literal("all"),
+      ])
+      .default(10),
+    all: z
+      .preprocess((val) => {
+        if (typeof val === "boolean") return val;
+        if (val === "true" || val === "1") return true;
+        if (val === "false" || val === "0") return false;
+        return val;
+      }, z.union([z.boolean(), z.literal("all")]).optional()),
     sort: z
       .string()
       .refine(
@@ -91,6 +116,7 @@ export const queryServiceSchema = z.object({
       )
       .default("displayOrder"),
     search: z.string().optional(),
+    query: z.string().optional(),
     status: z.enum(["active", "inactive"]).optional(),
     categoryId: objectIdSchema.optional(),
   }),

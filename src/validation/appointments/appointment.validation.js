@@ -14,6 +14,7 @@ const appointmentServiceItemSchema = z.object({
     .number()
     .min(0, "Custom price must be a non-negative number")
     .optional(),
+  appliedSubscriptionId: objectIdSchema.optional().nullable(),
 });
 
 export const createAppointmentSchema = z.object({
@@ -130,5 +131,18 @@ export const cancelAppointmentSchema = z.object({
 export const triggerReminderSchema = z.object({
   body: z.object({
     branchId: objectIdSchema,
+  }),
+});
+
+export const requestConsumptionOtpSchema = z.object({
+  body: z.object({
+    branchId: objectIdSchema,
+  }),
+});
+
+export const completeAppointmentWithSubscriptionSchema = z.object({
+  body: z.object({
+    branchId: objectIdSchema,
+    otp: z.string().trim().min(4, "OTP is required"),
   }),
 });

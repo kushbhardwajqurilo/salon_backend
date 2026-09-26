@@ -63,6 +63,7 @@ export class BaseRepository {
     const {
       page = 1,
       limit = 10,
+      all = false,
       sort = "-createdAt",
       search = "",
       searchFields = [],
@@ -79,7 +80,11 @@ export class BaseRepository {
       }));
     }
 
-    const skip = (page - 1) * limit;
+    const isFetchAll =
+      limit === "all" ||
+      all === true ||
+      all === "true" ||
+      all === "all";
 
     let query = this.model.find(queryFilter);
 
@@ -92,18 +97,28 @@ export class BaseRepository {
       query = query.select(select);
     }
 
-    query = query.sort(sort).skip(skip).limit(limit);
+    query = query.sort(sort);
+
+    if (!isFetchAll) {
+      const parsedPage = Number(page) || 1;
+      const parsedLimit = Number(limit) || 10;
+      const skip = (parsedPage - 1) * parsedLimit;
+      query = query.skip(skip).limit(parsedLimit);
+    }
 
     const data = await query.exec();
     const total = await this.count(queryFilter);
+
+    const parsedLimit = isFetchAll ? total : (Number(limit) || 10);
+    const parsedPage = isFetchAll ? 1 : (Number(page) || 1);
 
     return {
       data,
       meta: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: parsedPage,
+        limit: isFetchAll ? "all" : parsedLimit,
+        totalPages: isFetchAll ? 1 : Math.ceil(total / parsedLimit),
       },
     };
   }

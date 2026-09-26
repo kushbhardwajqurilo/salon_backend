@@ -1,13 +1,20 @@
 import { AppointmentRepository } from "../../repositories/appointments/appointment.repository.js";
+import { Appointment } from "../../models/appointments/appointment.model.js";
 import { Customer } from "../../models/customers/customer.model.js";
 import { Staff } from "../../models/staff/staff.model.js";
 import { Service } from "../../models/services/service.model.js";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Leave } from "../../models/leaves/leave.model.js";
+import { Subscription } from "../../models/subscriptions/subscription.model.js";
+import { SubscriptionUsage } from "../../models/subscriptions/subscriptionUsage.model.js";
+import { SubscriptionConsumptionChallenge } from "../../models/subscriptions/subscriptionConsumptionChallenge.model.js";
+import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 import { AppError } from "../../utils/errors.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { emailQueue, smsQueue } from "../../queues/client.js";
+import { logger } from "../../utils/logger.js";
 import mongoose from "mongoose";
+import crypto from "crypto";
 
 const appointmentRepo = new AppointmentRepository();
 
@@ -484,6 +491,84 @@ export class AppointmentService {
   }
 
   /**
+   * Helper to validate subscription entitlement eligibility at booking or update
+   */
+  async validateSubscriptionEntitlement(
+    subscriptionId,
+    serviceId,
+    customerId,
+    branchId,
+    organizationId,
+    session = null
+  ) {
+    if (!subscriptionId) return null;
+
+    let query = Subscription.findOne({
+      _id: subscriptionId,
+      organizationId,
+      isDeleted: false,
+    });
+    if (session) query = query.session(session);
+    const subscription = await query;
+
+    if (!subscription) {
+      throw new AppError("Applied subscription not found in this organization", 404);
+    }
+
+    if (subscription.customerId.toString() !== customerId.toString()) {
+      throw new AppError("Applied subscription does not belong to this customer", 400);
+    }
+
+    if (subscription.status !== "active") {
+      throw new AppError(
+        `Applied subscription is not active (current status: '${subscription.status}')`,
+        400
+      );
+    }
+
+    const now = new Date();
+    if (subscription.endDate && new Date(subscription.endDate) < now) {
+      throw new AppError("Applied subscription has expired", 400);
+    }
+    if (subscription.startDate && new Date(subscription.startDate) > now) {
+      throw new AppError("Applied subscription is not yet active", 400);
+    }
+
+    // Branch eligibility check
+    if (
+      Array.isArray(subscription.permittedBranchIds) &&
+      subscription.permittedBranchIds.length > 0
+    ) {
+      const isPermitted = subscription.permittedBranchIds.some(
+        (b) => b.toString() === branchId.toString()
+      );
+      if (!isPermitted) {
+        throw new AppError("Applied subscription is not valid at this branch", 403);
+      }
+    }
+
+    // Service entitlement check
+    const entitlement = subscription.entitlements.find(
+      (e) => e.serviceId.toString() === serviceId.toString()
+    );
+    if (!entitlement) {
+      throw new AppError(
+        "Applied subscription does not contain an entitlement for this service",
+        400
+      );
+    }
+
+    if (entitlement.remainingQuantity <= 0) {
+      throw new AppError(
+        `Applied subscription has no remaining quantity for service '${entitlement.serviceName}'`,
+        409
+      );
+    }
+
+    return subscription;
+  }
+
+  /**
    * Generates next unique appointment code
    */
   async generateAppointmentCode(organizationId) {
@@ -558,12 +643,12 @@ export class AppointmentService {
       );
     }
 
-    // Normalize incoming service selections (supporting services array with customPrice or serviceIds array)
+    // Normalize incoming service selections (supporting services array with customPrice/appliedSubscriptionId or serviceIds array)
     let normalizedServiceInputs = [];
     if (Array.isArray(services) && services.length > 0) {
       normalizedServiceInputs = services.map((item) => {
         if (typeof item === "string") {
-          return { serviceId: item, customPrice: undefined };
+          return { serviceId: item, customPrice: undefined, appliedSubscriptionId: null };
         }
         return {
           serviceId: item.serviceId
@@ -573,12 +658,16 @@ export class AppointmentService {
             item.customPrice !== undefined && item.customPrice !== null
               ? Number(item.customPrice)
               : undefined,
+          appliedSubscriptionId: item.appliedSubscriptionId
+            ? item.appliedSubscriptionId.toString()
+            : null,
         };
       });
     } else if (Array.isArray(serviceIds) && serviceIds.length > 0) {
       normalizedServiceInputs = serviceIds.map((id) => ({
         serviceId: id.toString(),
         customPrice: undefined,
+        appliedSubscriptionId: null,
       }));
     }
 
@@ -597,6 +686,19 @@ export class AppointmentService {
         "One or more selected services are invalid, inactive, or belong to a different organization",
         400,
       );
+    }
+
+    // Validate any appliedSubscriptionId
+    for (const item of normalizedServiceInputs) {
+      if (item.appliedSubscriptionId) {
+        await this.validateSubscriptionEntitlement(
+          item.appliedSubscriptionId,
+          item.serviceId,
+          customerId,
+          branchId,
+          organizationId
+        );
+      }
     }
 
     let totalDuration = 0;
@@ -619,6 +721,9 @@ export class AppointmentService {
         name: s.name,
         duration: s.duration,
         price: resolvedPrice,
+        appliedSubscriptionId: item.appliedSubscriptionId || null,
+        isRedeemedViaSubscription: false,
+        subscriptionUsageId: null,
       };
     });
 
@@ -816,7 +921,7 @@ export class AppointmentService {
     if (Array.isArray(services) && services.length > 0) {
       normalizedServiceInputs = services.map((item) => {
         if (typeof item === "string") {
-          return { serviceId: item, customPrice: undefined };
+          return { serviceId: item, customPrice: undefined, appliedSubscriptionId: null };
         }
         return {
           serviceId: item.serviceId
@@ -826,12 +931,16 @@ export class AppointmentService {
             item.customPrice !== undefined && item.customPrice !== null
               ? Number(item.customPrice)
               : undefined,
+          appliedSubscriptionId: item.appliedSubscriptionId
+            ? item.appliedSubscriptionId.toString()
+            : null,
         };
       });
     } else if (Array.isArray(serviceIds) && serviceIds.length > 0) {
       normalizedServiceInputs = serviceIds.map((id) => ({
         serviceId: id.toString(),
         customPrice: undefined,
+        appliedSubscriptionId: null,
       }));
     }
 
@@ -854,6 +963,20 @@ export class AppointmentService {
         );
       }
 
+      // Validate any appliedSubscriptionId
+      const customerId = appointment.customerId?._id || appointment.customerId;
+      for (const item of normalizedServiceInputs) {
+        if (item.appliedSubscriptionId) {
+          await this.validateSubscriptionEntitlement(
+            item.appliedSubscriptionId,
+            item.serviceId,
+            customerId,
+            branchId,
+            organizationId
+          );
+        }
+      }
+
       let totalDuration = 0;
       let subtotal = 0;
 
@@ -874,6 +997,9 @@ export class AppointmentService {
           name: s.name,
           duration: s.duration,
           price: resolvedPrice,
+          appliedSubscriptionId: item.appliedSubscriptionId || null,
+          isRedeemedViaSubscription: false,
+          subscriptionUsageId: null,
         };
       });
 
@@ -1221,6 +1347,16 @@ export class AppointmentService {
           400,
         );
       }
+      // Ensure appointments with subscription-associated service lines cannot bypass OTP consumption
+      const hasSubscriptionService = (appointment.services || []).some(
+        (s) => s.appliedSubscriptionId && !s.isRedeemedViaSubscription
+      );
+      if (hasSubscriptionService) {
+        throw new AppError(
+          "This appointment contains subscription-associated services. It must be completed via OTP verification at /api/v1/appointments/:id/complete-with-subscription",
+          400
+        );
+      }
     }
 
     const updates = { status };
@@ -1243,6 +1379,509 @@ export class AppointmentService {
     }
 
     return await appointmentRepo.update(id, updates, organizationId);
+  }
+
+  /**
+   * Helper to execute a sequence of operations in a MongoDB transaction with controlled enforcement
+   */
+  async executeTransaction(callback, { requireTransaction = false } = {}) {
+    let session = null;
+    try {
+      // Multi-document ACID transactions in MongoDB require a replica set or sharded cluster
+      const topologyType = mongoose.connection.client?.topology?.description?.type;
+      const isReplicaSetOrSharded = ["ReplicaSetWithPrimary", "ReplicaSetNoPrimary", "Sharded"].includes(topologyType);
+      const isStandaloneFallbackAllowed = process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK === "true";
+
+      // If in a non-replica environment (e.g. local standalone test) and standalone fallback is allowed:
+      if (!isReplicaSetOrSharded && isStandaloneFallbackAllowed) {
+        return await callback(null);
+      }
+
+      if (!isReplicaSetOrSharded && !isStandaloneFallbackAllowed) {
+        if (requireTransaction) {
+          throw new AppError(
+            "ACID transaction support is required for this operation but unavailable in the database environment (MongoDB replica set required)",
+            500
+          );
+        }
+        return await callback(null);
+      }
+
+      if (
+        mongoose.connection.db &&
+        typeof mongoose.connection.startSession === "function"
+      ) {
+        session = await mongoose.connection.startSession();
+        session.startTransaction();
+
+        const result = await callback(session);
+
+        await session.commitTransaction();
+        session.endSession();
+        return result;
+      }
+    } catch (err) {
+      if (session) {
+        try {
+          await session.abortTransaction();
+          session.endSession();
+        } catch (_) {}
+      }
+
+      const isSessionError =
+        err.message &&
+        (err.message.includes("Transaction numbers") ||
+          err.message.includes("does not support retryable writes") ||
+          err.message.includes("replica set") ||
+          err.message.includes("IllegalOperation"));
+
+      if (!isSessionError) {
+        throw err;
+      }
+
+      if (requireTransaction && process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK !== "true") {
+        throw new AppError(
+          "ACID transaction support is required for this operation but unavailable in the database environment",
+          500
+        );
+      }
+    }
+
+    if (requireTransaction && process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK !== "true") {
+      throw new AppError(
+        "ACID transaction support is required for this operation but unavailable in the database environment",
+        500
+      );
+    }
+
+    // Fallback: run without transaction only when allowed for non-critical/fallback paths
+    return await callback(null);
+  }
+
+  /**
+   * REQUEST CONSUMPTION OTP FOR SUBSCRIPTION-COVERED APPOINTMENT
+   */
+  async requestConsumptionOTP(id, branchId, organizationId, userId) {
+    const appointment = await appointmentRepo.findById(id, organizationId);
+    if (!appointment) {
+      throw new AppError("Appointment not found", 404);
+    }
+
+    const getAptBranchId = (apt) =>
+      apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString();
+    if (getAptBranchId(appointment) !== branchId.toString()) {
+      throw new AppError("Target branchId does not match appointment branch", 400);
+    }
+
+    if (appointment.status !== "in_progress") {
+      throw new AppError(
+        `Consumption OTP can only be requested for appointments in 'in_progress' status (current status: '${appointment.status}')`,
+        400
+      );
+    }
+
+    // Identify unredeemed subscription-associated service lines
+    const subscriptionLines = (appointment.services || []).filter(
+      (s) => s.appliedSubscriptionId && !s.isRedeemedViaSubscription
+    );
+
+    if (subscriptionLines.length === 0) {
+      throw new AppError(
+        "Appointment does not contain any unredeemed subscription-associated services",
+        400
+      );
+    }
+
+    // Collect all unique applied subscription IDs for this appointment
+    const uniqueSubscriptionIds = [
+      ...new Set(
+        subscriptionLines
+          .map((l) => l.appliedSubscriptionId?.toString())
+          .filter(Boolean)
+      ),
+    ];
+
+    // Validate customer and phone number
+    const customer = await Customer.findOne({
+      _id: appointment.customerId?._id || appointment.customerId,
+      organizationId,
+      isDeleted: false,
+    });
+
+    if (!customer || customer.status !== "active") {
+      throw new AppError("Customer record is inactive or not found", 400);
+    }
+
+    if (!customer.phone) {
+      throw new AppError("Customer does not have a registered phone number for OTP delivery", 400);
+    }
+
+    // Revalidate subscription eligibility for every subscription-backed line
+    for (const line of subscriptionLines) {
+      await this.validateSubscriptionEntitlement(
+        line.appliedSubscriptionId,
+        line.serviceId,
+        customer._id,
+        branchId,
+        organizationId
+      );
+    }
+
+    // Check existing challenge and enforce 60s resend cooldown (scoped strictly to appointment)
+    const existingChallenge = await SubscriptionConsumptionChallenge.findOne({
+      appointmentId: appointment._id,
+      status: "pending",
+    });
+
+    const now = new Date();
+    if (existingChallenge && existingChallenge.resendAvailableAt > now) {
+      const waitSeconds = Math.ceil((existingChallenge.resendAvailableAt - now) / 1000);
+      throw new AppError(
+        `Too many OTP requests. Please wait ${waitSeconds} seconds before requesting a new OTP.`,
+        429
+      );
+    }
+
+    // Generate 6-digit OTP and SHA-256 hash
+    const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = crypto.createHash("sha256").update(rawOtp).digest("hex");
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
+    const resendAvailableAt = new Date(Date.now() + 60 * 1000); // 60s cooldown
+
+    const serviceIds = subscriptionLines.map((l) => l.serviceId);
+
+    // Upsert or create appointment-scoped challenge
+    if (existingChallenge) {
+      existingChallenge.otpHash = otpHash;
+      existingChallenge.attempts = 0;
+      existingChallenge.subscriptionIds = uniqueSubscriptionIds;
+      existingChallenge.serviceIds = serviceIds;
+      existingChallenge.expiresAt = expiresAt;
+      existingChallenge.resendAvailableAt = resendAvailableAt;
+      existingChallenge.status = "pending";
+      await existingChallenge.save();
+    } else {
+      await SubscriptionConsumptionChallenge.create({
+        organizationId,
+        branchId,
+        appointmentId: appointment._id,
+        subscriptionIds: uniqueSubscriptionIds,
+        customerId: customer._id,
+        serviceIds,
+        otpHash,
+        attempts: 0,
+        resendAvailableAt,
+        expiresAt,
+        status: "pending",
+      });
+    }
+
+    // Dispatch SMS via BullMQ queue (never logs or returns rawOtp)
+    try {
+      await smsQueue.add("sendOtpSMS", {
+        phone: customer.phone,
+        otp: rawOtp,
+      });
+    } catch (queueErr) {
+      logger.warn(`Failed to enqueue consumption OTP SMS: ${queueErr.message}`);
+    }
+
+    logger.info(`[SECURITY] CONSUMPTION_OTP_SENT for appointment ${appointment._id}`);
+
+    return {
+      success: true,
+      message: "Consumption authorization OTP sent to customer phone",
+      data: {
+        expiresIn: 300,
+        resendAfter: 60,
+      },
+    };
+  }
+
+  /**
+   * COMPLETE APPOINTMENT AND CONSUME SUBSCRIPTION ENTITLEMENTS ATOMICALLY
+   */
+  async completeWithSubscription(id, data, organizationId, userId) {
+    const { branchId, otp } = data;
+
+    if (!otp) {
+      throw new AppError("OTP is required to complete subscription-associated appointment", 400);
+    }
+
+    const appointment = await appointmentRepo.findById(id, organizationId);
+    if (!appointment) {
+      throw new AppError("Appointment not found", 404);
+    }
+
+    const getAptBranchId = (apt) =>
+      apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString();
+    if (getAptBranchId(appointment) !== branchId.toString()) {
+      throw new AppError("Target branchId does not match appointment branch", 400);
+    }
+
+    if (appointment.status !== "in_progress") {
+      throw new AppError(
+        `Cannot complete appointment with status '${appointment.status}'. Must be 'in_progress'`,
+        400
+      );
+    }
+
+    const subscriptionLines = (appointment.services || []).filter(
+      (s) => s.appliedSubscriptionId && !s.isRedeemedViaSubscription
+    );
+
+    if (subscriptionLines.length === 0) {
+      throw new AppError(
+        "Appointment does not contain any unredeemed subscription-associated services",
+        400
+      );
+    }
+
+    // Load active challenge bound specifically to this appointment
+    const challenge = await SubscriptionConsumptionChallenge.findOne({
+      appointmentId: appointment._id,
+      organizationId,
+    });
+
+    if (!challenge) {
+      throw new AppError(
+        "No OTP challenge found. Please request an OTP first.",
+        400
+      );
+    }
+
+    if (challenge.status === "exhausted" || challenge.attempts >= 5) {
+      throw new AppError("Too many incorrect OTP attempts. Please request a new OTP.", 429);
+    }
+
+    if (challenge.status !== "pending") {
+      throw new AppError(
+        "No pending OTP challenge found. Please request a new OTP first.",
+        400
+      );
+    }
+
+    const now = new Date();
+    if (challenge.expiresAt < now) {
+      challenge.status = "expired";
+      await challenge.save();
+      throw new AppError("OTP has expired. Please request a new OTP.", 400);
+    }
+
+    if (challenge.attempts >= 5) {
+      challenge.status = "exhausted";
+      await challenge.save();
+      throw new AppError("Too many incorrect OTP attempts. Please request a new OTP.", 429);
+    }
+
+    // Verify OTP hash
+    const inputHash = crypto.createHash("sha256").update(otp.toString().trim()).digest("hex");
+    if (inputHash !== challenge.otpHash) {
+      challenge.attempts = (challenge.attempts || 0) + 1;
+      if (challenge.attempts >= 5) {
+        challenge.status = "exhausted";
+      }
+      await challenge.save();
+      const remaining = Math.max(0, 5 - challenge.attempts);
+      throw new AppError(`Invalid OTP. ${remaining} attempt(s) remaining.`, 400);
+    }
+
+    // OTP matches! Execute atomic transaction with mandatory ACID guarantee
+    const customer = await Customer.findOne({
+      _id: appointment.customerId?._id || appointment.customerId,
+      organizationId,
+      isDeleted: false,
+    });
+
+    const completionResult = await this.executeTransaction(async (session) => {
+      // Pre-validation pass: Verify all subscription lines are eligible and have remaining balance before mutating anything
+      for (const line of subscriptionLines) {
+        await this.validateSubscriptionEntitlement(
+          line.appliedSubscriptionId,
+          line.serviceId,
+          customer._id,
+          branchId,
+          organizationId,
+          session
+        );
+      }
+
+      // 1. Mark challenge verified (replay protection)
+      challenge.status = "verified";
+      await challenge.save({ session });
+
+      const createdUsageRecords = [];
+      const updatedServiceLines = appointment.services.map((s) => s.toObject ? s.toObject() : { ...s });
+      const latestSubMap = new Map();
+
+      // Group consumption by subscription to handle multiple services under same or distinct subscriptions
+      for (const line of subscriptionLines) {
+        const subId = line.appliedSubscriptionId;
+        const sId = line.serviceId;
+
+        // Revalidate subscription eligibility at completion inside transaction
+        await this.validateSubscriptionEntitlement(
+          subId,
+          sId,
+          customer._id,
+          branchId,
+          organizationId,
+          session
+        );
+
+        // Atomic decrement using $elemMatch guard
+        let query = {
+          _id: subId,
+          organizationId,
+          status: "active",
+          isDeleted: false,
+          entitlements: {
+            $elemMatch: {
+              serviceId: sId,
+              remainingQuantity: { $gte: 1 },
+            },
+          },
+        };
+        const update = {
+          $inc: {
+            "entitlements.$.usedQuantity": 1,
+            "entitlements.$.remainingQuantity": -1,
+          },
+        };
+        const options = { new: true };
+        if (session) options.session = session;
+
+        const updatedSub = await Subscription.findOneAndUpdate(query, update, options);
+        if (!updatedSub) {
+          throw new AppError(
+            `Concurrent modification or insufficient entitlement balance for service ${line.name}`,
+            409
+          );
+        }
+
+        // Create SubscriptionUsage record
+        const usageData = {
+          organizationId,
+          subscriptionId: subId,
+          customerId: customer._id,
+          serviceId: sId,
+          serviceName: line.name,
+          quantity: 1,
+          branchId,
+          verifiedBy: userId,
+          verificationMethod: "otp",
+          appointmentId: appointment._id,
+        };
+
+        const usageRecord = new SubscriptionUsage(usageData);
+        await usageRecord.save({ session });
+        createdUsageRecords.push(usageRecord);
+
+        // Mark corresponding service line as redeemed
+        const targetLine = updatedServiceLines.find(
+          (sl) => sl._id?.toString() === line._id?.toString() ||
+            (sl.serviceId.toString() === sId.toString() && sl.appliedSubscriptionId?.toString() === subId.toString())
+        );
+        if (targetLine) {
+          targetLine.isRedeemedViaSubscription = true;
+          targetLine.subscriptionUsageId = usageRecord._id;
+        }
+
+        latestSubMap.set(subId.toString(), updatedSub);
+
+        // Create subscription redemption audit log
+        const subAudit = new AuditLog({
+          organizationId,
+          branchId,
+          actorId: userId,
+          action: AUDIT_ACTIONS.SUBSCRIPTION_REDEEMED,
+          entityType: "Subscription",
+          entityId: subId,
+          description: `Subscription ${updatedSub.subscriptionCode} redeemed for appointment ${appointment.appointmentCode}`,
+          metadata: {
+            subscriptionCode: updatedSub.subscriptionCode,
+            appointmentId: appointment._id,
+            serviceId: sId,
+            verifiedBy: userId,
+          },
+        });
+        await subAudit.save({ session });
+      }
+
+      // Check exhaustion for all affected subscriptions
+      for (const [subIdKey] of latestSubMap.entries()) {
+        const freshSub = await Subscription.findById(subIdKey).session(session);
+        if (freshSub && freshSub.entitlements.every((e) => e.remainingQuantity === 0)) {
+          freshSub.status = "exhausted";
+          await freshSub.save({ session });
+        }
+      }
+
+      // Update Appointment document: completed, clear slotMinutes, update services
+      const completedAt = new Date();
+      let aptUpdateQuery = {
+        _id: appointment._id,
+        organizationId,
+        status: "in_progress", // Concurrency guard: must still be in_progress
+      };
+
+      const aptUpdateDoc = {
+        $set: {
+          status: "completed",
+          completedAt,
+          slotMinutes: [],
+          services: updatedServiceLines,
+        },
+      };
+
+      const aptOptions = { new: true };
+      if (session) aptOptions.session = session;
+
+      const finalAppointment = await appointmentRepo.model
+        ? await appointmentRepo.model.findOneAndUpdate(aptUpdateQuery, aptUpdateDoc, aptOptions)
+        : await Appointment.findOneAndUpdate(aptUpdateQuery, aptUpdateDoc, aptOptions);
+
+      if (!finalAppointment) {
+        throw new AppError("Appointment status conflict during completion", 409);
+      }
+
+      // Create Appointment Completion Audit Log
+      const aptAudit = new AuditLog({
+        organizationId,
+        branchId,
+        actorId: userId,
+        action: AUDIT_ACTIONS.APPOINTMENT_COMPLETED,
+        entityType: "Appointment",
+        entityId: appointment._id,
+        description: `Appointment ${appointment.appointmentCode} completed with subscription entitlement redemption`,
+        metadata: {
+          appointmentCode: appointment.appointmentCode,
+          redeemedViaSubscription: true,
+          subscriptionCount: subscriptionLines.length,
+        },
+      });
+      await aptAudit.save({ session });
+
+      return {
+        appointment: finalAppointment,
+        usages: createdUsageRecords,
+      };
+    }, { requireTransaction: true });
+
+    // Enqueue service completion notification strictly AFTER transaction commit
+    try {
+      if (customer?.phone) {
+        await smsQueue.add("sendServiceCompletionSMS", {
+          phone: customer.phone,
+          customerName: customer.name,
+          appointmentCode: appointment.appointmentCode,
+        });
+      }
+    } catch (queueErr) {
+      logger.warn(`Failed to enqueue service completion SMS: ${queueErr.message}`);
+    }
+
+    return completionResult.appointment;
   }
 
   /**

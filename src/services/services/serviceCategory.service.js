@@ -11,24 +11,16 @@ export class ServiceCategoryService {
   }
 
   async createCategory(data, organizationId, userId) {
-    // Validate branchId existence and active status
-    const BranchModel = mongoose.model("Branch");
-    const branch = await BranchModel.findOne({ _id: data.branchId, organizationId, isActive: true });
-    if (!branch) {
-      throw new AppError("branchId does not exist or does not belong to this organization.", 400);
-    }
-
-    // Duplicate check in the same branch
+    // Duplicate check in the same organization
     const duplicate = await this.categoryRepo.findOne(
       {
         name: { $regex: new RegExp("^" + data.name.trim() + "$", "i") },
-        branchId: data.branchId,
         isDeleted: false,
       },
       organizationId
     );
     if (duplicate) {
-      throw new AppError("A category with this name already exists in this branch.", 400);
+      throw new AppError("A category with this name already exists in this organization.", 400);
     }
 
     const category = await this.categoryRepo.create(
@@ -36,7 +28,6 @@ export class ServiceCategoryService {
         name: data.name.trim(),
         description: data.description || "",
         displayOrder: data.displayOrder || 0,
-        branchId: data.branchId,
         status: "active",
       },
       organizationId,
@@ -46,7 +37,6 @@ export class ServiceCategoryService {
     // Write audit log
     await this.auditRepo.create(
       {
-        branchId: data.branchId,
         action: AUDIT_ACTIONS.SERVICE_CREATED,
         entityType: "ServiceCategory",
         entityId: category._id,
@@ -60,22 +50,17 @@ export class ServiceCategoryService {
     return category;
   }
 
-  async getCategoryById(id, organizationId, userContext = null, activeBranchId = null) {
+  async getCategoryById(id, organizationId, userContext = null) {
     const category = await this.categoryRepo.findById(id, organizationId);
     if (!category || category.isDeleted) {
       throw new AppError("Resource not found", 404);
     }
 
-    // Branch visibility scope check
-    if (activeBranchId && category.branchId.toString() !== activeBranchId.toString()) {
-      throw new AppError("Access denied. Service Category is not visible within your active branch scope.", 403);
-    }
-
     return category;
   }
 
-  async updateCategory(id, data, organizationId, userId, userContext = null, activeBranchId = null) {
-    const category = await this.getCategoryById(id, organizationId, userContext, activeBranchId);
+  async updateCategory(id, data, organizationId, userId, userContext = null) {
+    const category = await this.getCategoryById(id, organizationId, userContext);
 
     // If category is deactivated, block updates unless reactivation is requested
     if (category.status !== "active" && data.status !== "active") {
@@ -85,19 +70,18 @@ export class ServiceCategoryService {
     // Prevent direct modification of immutable fields
     const { organizationId: _, branchId: __, isDeleted: ___, deletedAt: ____, ...updateData } = data;
 
-    // Check duplicate name during update
+    // Check duplicate name during update in the same organization
     if (updateData.name) {
       const duplicate = await this.categoryRepo.findOne(
         {
           _id: { $ne: id },
           name: { $regex: new RegExp("^" + updateData.name.trim() + "$", "i") },
-          branchId: category.branchId,
           isDeleted: false,
         },
         organizationId
       );
       if (duplicate) {
-        throw new AppError("A category with this name already exists in this branch.", 400);
+        throw new AppError("A category with this name already exists in this organization.", 400);
       }
       updateData.name = updateData.name.trim();
     }
@@ -131,7 +115,6 @@ export class ServiceCategoryService {
 
     await this.auditRepo.create(
       {
-        branchId: category.branchId,
         action,
         entityType: "ServiceCategory",
         entityId: id,
@@ -144,8 +127,8 @@ export class ServiceCategoryService {
     return updated;
   }
 
-  async deleteCategory(id, organizationId, userId, activeBranchId = null) {
-    const category = await this.getCategoryById(id, organizationId, null, activeBranchId);
+  async deleteCategory(id, organizationId, userId) {
+    await this.getCategoryById(id, organizationId, null);
 
     // Reject deletion if active services still depend on it
     const activeServicesCount = await mongoose.model("Service").countDocuments({
@@ -159,7 +142,6 @@ export class ServiceCategoryService {
 
     await this.auditRepo.create(
       {
-        branchId: activeBranchId || category.branchId,
         action: AUDIT_ACTIONS.SERVICE_DELETED,
         entityType: "ServiceCategory",
         entityId: id,
@@ -176,27 +158,16 @@ export class ServiceCategoryService {
     return this.categoryRepo.find(filter, options, organizationId);
   }
 
-  async reactivateCategory(id, organizationId, userId, activeBranchId = null) {
+  async reactivateCategory(id, organizationId, userId) {
     const category = await this.categoryRepo.findByIdIncludeDeleted(id, organizationId);
     if (!category) {
       throw new AppError("Resource not found", 404);
-    }
-
-    if (activeBranchId && category.branchId.toString() !== activeBranchId.toString()) {
-      throw new AppError("Access denied. Service Category is not visible within your active branch scope.", 403);
-    }
-
-    const BranchModel = mongoose.model("Branch");
-    const branch = await BranchModel.findOne({ _id: category.branchId, organizationId, isActive: true });
-    if (!branch) {
-      throw new AppError("Cannot activate category if parent branch is invalid or inactive.", 400);
     }
 
     const reactivated = await this.categoryRepo.reactivateById(id, organizationId, userId);
 
     await this.auditRepo.create(
       {
-        branchId: category.branchId,
         action: AUDIT_ACTIONS.SERVICE_ACTIVATED,
         entityType: "ServiceCategory",
         entityId: id,
@@ -209,3 +180,4 @@ export class ServiceCategoryService {
     return reactivated;
   }
 }
+

@@ -176,7 +176,6 @@ describe("Subscription Module Integration Tests", () => {
     categoryA = await ServiceCategory.create({
       name: "Hair Services",
       organizationId: orgA._id,
-      branchId: branchA1._id,
     });
 
     serviceA1 = await Service.create({

@@ -135,7 +135,6 @@ describe("Appointment Module Comprehensive Test Suite", () => {
     category = await ServiceCategory.create({
       name: "Hair Care",
       organizationId: orgId,
-      branchId: branchAId,
     });
 
     serviceHaircut = await Service.create({
@@ -657,7 +656,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-25",
+          appointmentDate: "2026-10-25",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -671,7 +670,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-09-25",
+          appointmentDate: "2026-10-25",
           startTime: "10:15",
           bookingType: "advance",
         });
@@ -950,7 +949,6 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       const otherCat = await ServiceCategory.create({
         name: "Other Care",
         organizationId: otherOrg._id,
-        branchId: new mongoose.Types.ObjectId(),
       });
       const otherService = await Service.create({
         name: "Other Haircut",

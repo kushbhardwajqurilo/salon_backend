@@ -13,6 +13,12 @@ import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
 import { redis } from "../../utils/redis.js";
 
+import dns from "dns";
+
+try {
+  dns.setServers(["8.8.8.8", "1.1.1.1"]);
+} catch (_) {}
+
 jest.spyOn(redis, "get").mockResolvedValue(null);
 jest.spyOn(redis, "setex").mockResolvedValue("OK");
 
@@ -25,14 +31,10 @@ describe("Service Router Organization-Global Scope Test Suite", () => {
   let category1, category2;
 
   beforeAll(async () => {
-    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
-    if (testUri.includes("?")) {
-      const parts = testUri.split("?");
-      testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_srv_test") + "?" + parts[1];
-    } else {
-      testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_srv_test");
-    }
+    let testUri = "mongodb://127.0.0.1:27017/saloon_erp_srv_test";
     dbConnection = await mongoose.connect(testUri);
+    await ServiceCategory.syncIndexes();
+    await Service.syncIndexes();
   });
 
   afterAll(async () => {
@@ -123,14 +125,12 @@ describe("Service Router Organization-Global Scope Test Suite", () => {
     category1 = await ServiceCategory.create({
       name: "Haircare",
       organizationId: org1._id,
-      branchId: branch1A._id,
       status: "active",
     });
 
     category2 = await ServiceCategory.create({
       name: "Skincare",
       organizationId: org2._id,
-      branchId: new mongoose.Types.ObjectId(),
       status: "active",
     });
   });
@@ -181,6 +181,54 @@ describe("Service Router Organization-Global Scope Test Suite", () => {
     expect(res.body.data[0].name).toBe("Service A");
   });
 
+  it("fetches all services without pagination limit when query='all' or all=true or limit='all'", async () => {
+    // Create multiple services
+    const servicesData = [];
+    for (let i = 1; i <= 15; i++) {
+      servicesData.push({
+        name: `Service Bulk ${i}`,
+        categoryId: category1._id,
+        duration: 30,
+        pricing: { basePrice: 100 + i },
+        organizationId: org1._id,
+        status: "active",
+      });
+    }
+    await Service.insertMany(servicesData);
+
+    // Default list has limit 10
+    const defaultRes = await request(app)
+      .get("/api/v1/services")
+      .set("Authorization", `Bearer ${ownerToken1}`);
+    expect(defaultRes.status).toBe(200);
+    expect(defaultRes.body.data).toHaveLength(10);
+    expect(defaultRes.body.meta.total).toBe(15);
+    expect(defaultRes.body.meta.totalPages).toBe(2);
+
+    // query="all"
+    const queryAllRes = await request(app)
+      .get("/api/v1/services?query=all")
+      .set("Authorization", `Bearer ${ownerToken1}`);
+    expect(queryAllRes.status).toBe(200);
+    expect(queryAllRes.body.data).toHaveLength(15);
+    expect(queryAllRes.body.meta.limit).toBe("all");
+    expect(queryAllRes.body.meta.totalPages).toBe(1);
+
+    // all=true
+    const allTrueRes = await request(app)
+      .get("/api/v1/services?all=true")
+      .set("Authorization", `Bearer ${ownerToken1}`);
+    expect(allTrueRes.status).toBe(200);
+    expect(allTrueRes.body.data).toHaveLength(15);
+
+    // limit=all
+    const limitAllRes = await request(app)
+      .get("/api/v1/services?limit=all")
+      .set("Authorization", `Bearer ${ownerToken1}`);
+    expect(limitAllRes.status).toBe(200);
+    expect(limitAllRes.body.data).toHaveLength(15);
+  });
+
   it("prevents accessing or updating another organization's service", async () => {
     const serviceOrg1 = await Service.create({
       name: "Exclusive Treatment",
@@ -218,5 +266,167 @@ describe("Service Router Organization-Global Scope Test Suite", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toMatch(/Category not found/i);
+  });
+
+  describe("ServiceCategory Organization-Global Tests", () => {
+    it("creates a category without requiring X-Branch-Id header or body.branchId", async () => {
+      const res = await request(app)
+        .post("/api/v1/services/categories")
+        .set("Authorization", `Bearer ${ownerToken1}`)
+        .send({
+          name: "Massage Therapy",
+          description: "Full body and head massage",
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.name).toBe("Massage Therapy");
+      expect(res.body.data.organizationId).toBe(org1._id.toString());
+      expect(res.body.data.branchId).toBeUndefined();
+    });
+
+    it("creates a category even when user provides an arbitrary or specific X-Branch-Id header", async () => {
+      const res = await request(app)
+        .post("/api/v1/services/categories")
+        .set("Authorization", `Bearer ${ownerToken1}`)
+        .set("X-Branch-Id", branch1A._id.toString())
+        .send({
+          name: "Nail Care",
+          description: "Manicure and pedicure",
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.name).toBe("Nail Care");
+      expect(res.body.data.organizationId).toBe(org1._id.toString());
+      expect(res.body.data.branchId).toBeUndefined();
+    });
+
+    it("lists all organization categories regardless of which branch header is sent", async () => {
+      // Create another category in org1
+      await ServiceCategory.create({
+        name: "Spa Treatments",
+        organizationId: org1._id,
+        status: "active",
+      });
+
+      // Request without X-Branch-Id
+      const resNoBranch = await request(app)
+        .get("/api/v1/services/categories")
+        .set("Authorization", `Bearer ${ownerToken1}`);
+
+      expect(resNoBranch.status).toBe(200);
+      expect(resNoBranch.body.data.length).toBeGreaterThanOrEqual(2);
+      const names = resNoBranch.body.data.map((c) => c.name);
+      expect(names).toContain("Haircare");
+      expect(names).toContain("Spa Treatments");
+
+      // Request with Branch 1A header - still returns all org categories
+      const resBranch1A = await request(app)
+        .get("/api/v1/services/categories")
+        .set("Authorization", `Bearer ${ownerToken1}`)
+        .set("X-Branch-Id", branch1A._id.toString());
+
+      expect(resBranch1A.status).toBe(200);
+      expect(resBranch1A.body.data.length).toBe(resNoBranch.body.data.length);
+
+      // Request with Branch 1B header - returns same org categories
+      const resBranch1B = await request(app)
+        .get("/api/v1/services/categories")
+        .set("Authorization", `Bearer ${ownerToken1}`)
+        .set("X-Branch-Id", branch1B._id.toString());
+
+      expect(resBranch1B.status).toBe(200);
+      expect(resBranch1B.body.data.length).toBe(resNoBranch.body.data.length);
+    });
+
+    it("fetches all service categories without pagination limit when query='all' or all=true or limit='all'", async () => {
+      // Create additional categories
+      const categoriesData = [];
+      for (let i = 1; i <= 15; i++) {
+        categoriesData.push({
+          name: `Category Bulk ${i}`,
+          organizationId: org1._id,
+          status: "active",
+        });
+      }
+      await ServiceCategory.insertMany(categoriesData);
+
+      // Default pagination limit 10
+      const defaultRes = await request(app)
+        .get("/api/v1/services/categories")
+        .set("Authorization", `Bearer ${ownerToken1}`);
+      expect(defaultRes.status).toBe(200);
+      expect(defaultRes.body.data).toHaveLength(10);
+      expect(defaultRes.body.meta.total).toBe(16); // 1 from beforeEach + 15
+      expect(defaultRes.body.meta.totalPages).toBe(2);
+
+      // query="all"
+      const queryAllRes = await request(app)
+        .get("/api/v1/services/categories?query=all")
+        .set("Authorization", `Bearer ${ownerToken1}`);
+      expect(queryAllRes.status).toBe(200);
+      expect(queryAllRes.body.data).toHaveLength(16);
+      expect(queryAllRes.body.meta.limit).toBe("all");
+      expect(queryAllRes.body.meta.totalPages).toBe(1);
+
+      // all=true
+      const allTrueRes = await request(app)
+        .get("/api/v1/services/categories?all=true")
+        .set("Authorization", `Bearer ${ownerToken1}`);
+      expect(allTrueRes.status).toBe(200);
+      expect(allTrueRes.body.data).toHaveLength(16);
+
+      // limit=all
+      const limitAllRes = await request(app)
+        .get("/api/v1/services/categories?limit=all")
+        .set("Authorization", `Bearer ${ownerToken1}`);
+      expect(limitAllRes.status).toBe(200);
+      expect(limitAllRes.body.data).toHaveLength(16);
+    });
+
+    it("rejects duplicate category name within the same organization", async () => {
+      const res = await request(app)
+        .post("/api/v1/services/categories")
+        .set("Authorization", `Bearer ${ownerToken1}`)
+        .send({
+          name: "Haircare", // already created in beforeEach
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/already exists in this organization/i);
+    });
+
+    it("allows same category name in a different organization", async () => {
+      const res = await request(app)
+        .post("/api/v1/services/categories")
+        .set("Authorization", `Bearer ${ownerToken2}`)
+        .send({
+          name: "Haircare", // already in org1, but allowed in org2
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.name).toBe("Haircare");
+      expect(res.body.data.organizationId).toBe(org2._id.toString());
+    });
+
+    it("denies cross-organization category access, update, and deletion", async () => {
+      // Org 2 user tries to GET Org 1 category
+      const getRes = await request(app)
+        .get(`/api/v1/services/categories/${category1._id}`)
+        .set("Authorization", `Bearer ${ownerToken2}`);
+      expect(getRes.status).toBe(404);
+
+      // Org 2 user tries to UPDATE Org 1 category
+      const updateRes = await request(app)
+        .put(`/api/v1/services/categories/${category1._id}`)
+        .set("Authorization", `Bearer ${ownerToken2}`)
+        .send({ name: "Hacked Category" });
+      expect(updateRes.status).toBe(404);
+
+      // Org 2 user tries to DELETE Org 1 category
+      const deleteRes = await request(app)
+        .delete(`/api/v1/services/categories/${category1._id}`)
+        .set("Authorization", `Bearer ${ownerToken2}`);
+      expect(deleteRes.status).toBe(404);
+    });
   });
 });

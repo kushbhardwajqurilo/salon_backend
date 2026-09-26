@@ -11,6 +11,8 @@ import {
   assignStaffSchema,
   cancelAppointmentSchema,
   triggerReminderSchema,
+  requestConsumptionOtpSchema,
+  completeAppointmentWithSubscriptionSchema,
 } from "../../validation/appointments/appointment.validation.js";
 import {
   createAppointment,
@@ -22,6 +24,8 @@ import {
   updateStatus,
   deleteAppointment,
   triggerReminder,
+  requestConsumptionOTP,
+  completeWithSubscription,
 } from "../../controllers/appointments/appointment.controller.js";
 import { asyncHandler } from "../../utils/errors.js";
 import { AppError } from "../../utils/errors.js";
@@ -140,6 +144,24 @@ router.post(
   validate(triggerReminderSchema),
   requirePermission("appointments.reminders.send"),
   triggerReminder
+);
+
+// Subscription Entitlement Consumption Workflow
+router.post(
+  "/:id/request-consumption-otp",
+  validateMutationBranch,
+  validate(requestConsumptionOtpSchema),
+  requirePermission("subscriptions.redeem"),
+  requestConsumptionOTP
+);
+
+router.post(
+  "/:id/complete-with-subscription",
+  validateMutationBranch,
+  validate(completeAppointmentWithSubscriptionSchema),
+  requirePermission("appointments.update_status"),
+  requirePermission("subscriptions.redeem"),
+  completeWithSubscription
 );
 
 export default router;

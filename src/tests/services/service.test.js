@@ -91,14 +91,13 @@ describe("Services Module Unit Tests", () => {
         name: "Haircare",
         description: "Hair styling and cuts",
         displayOrder: 1,
-        branchId: "branch-1",
         organizationId: "org-1",
         status: "active",
       };
       mockCategoryRepo.create.mockResolvedValue(mockCategory);
 
       const result = await categoryService.createCategory(
-        { name: "Haircare", description: "Hair styling and cuts", displayOrder: 1, branchId: "branch-1" },
+        { name: "Haircare", description: "Hair styling and cuts", displayOrder: 1 },
         "org-1",
         "user-1"
       );
@@ -116,16 +115,16 @@ describe("Services Module Unit Tests", () => {
       );
     });
 
-    it("should reject creation of category if name duplicate exists in branch", async () => {
+    it("should reject creation of category if name duplicate exists in organization", async () => {
       mockCategoryRepo.findOne.mockResolvedValue({ _id: "cat-1", name: "Haircare" });
 
       await expect(
         categoryService.createCategory(
-          { name: "Haircare", branchId: "branch-1" },
+          { name: "Haircare" },
           "org-1",
           "user-1"
         )
-      ).rejects.toThrow("A category with this name already exists in this branch.");
+      ).rejects.toThrow("A category with this name already exists in this organization.");
     });
 
     it("should reject deactivation of category if it has active services", async () => {
@@ -282,6 +281,50 @@ describe("Services Module Unit Tests", () => {
 
       const result = await categoryService.reactivateCategory("cat-1", "org-1", "user-1");
       expect(result.status).toBe("active");
+    });
+  });
+
+  describe("List Operations with query='all' and limit='all'", () => {
+    it("should pass options correctly when listing services", async () => {
+      mockServiceRepo.find.mockResolvedValue({
+        data: [{ _id: "srv-1", name: "Service 1" }],
+        meta: { total: 1, page: 1, limit: "all", totalPages: 1 },
+      });
+
+      const res = await serviceService.listServices(
+        { isDeleted: false },
+        { limit: "all", all: true },
+        "org-1"
+      );
+
+      expect(mockServiceRepo.find).toHaveBeenCalledWith(
+        { isDeleted: false },
+        { limit: "all", all: true },
+        "org-1"
+      );
+      expect(res.data).toHaveLength(1);
+      expect(res.meta.limit).toBe("all");
+    });
+
+    it("should pass options correctly when listing categories", async () => {
+      mockCategoryRepo.find.mockResolvedValue({
+        data: [{ _id: "cat-1", name: "Cat 1" }],
+        meta: { total: 1, page: 1, limit: "all", totalPages: 1 },
+      });
+
+      const res = await categoryService.listCategories(
+        { isDeleted: false },
+        { limit: "all", all: true },
+        "org-1"
+      );
+
+      expect(mockCategoryRepo.find).toHaveBeenCalledWith(
+        { isDeleted: false },
+        { limit: "all", all: true },
+        "org-1"
+      );
+      expect(res.data).toHaveLength(1);
+      expect(res.meta.limit).toBe("all");
     });
   });
 });

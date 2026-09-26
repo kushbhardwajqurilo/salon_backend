@@ -249,6 +249,14 @@ export const startNotificationWorkers = () => {
               message: `Dear ${customerName || "Customer"}, redemption confirmed for subscription ${subscriptionCode}: ${serviceSummary}.`,
             });
           }
+          case "sendServiceCompletionSMS": {
+            const { phone, customerName, appointmentCode } = job.data;
+            if (!phone) return false;
+            return await smsService.sendSms({
+              phone,
+              message: `Dear ${customerName || "Valued Customer"}, your appointment ${appointmentCode} has been completed. Thank you for visiting us!`,
+            });
+          }
           default:
             logger.warn(`Unknown SMS job type: ${job.name}`);
             return true;

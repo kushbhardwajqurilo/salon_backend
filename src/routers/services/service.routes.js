@@ -18,7 +18,7 @@ router.use(authenticate);
 // --- Category Routes ---
 router.post(
   "/categories",
-  requireBranchScope,
+  requireOrganizationScope,
   authorize("services.create"),
   validate(serviceValidation.createServiceCategorySchema),
   categoryController.createCategory,
@@ -26,7 +26,7 @@ router.post(
 
 router.get(
   "/categories",
-  requireBranchScope,
+  requireOrganizationScope,
   authorize("services.view"),
   validate(serviceValidation.queryServiceCategorySchema),
   categoryController.listCategories,

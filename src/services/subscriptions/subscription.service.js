@@ -628,6 +628,8 @@ export class SubscriptionService {
     organizationId,
     userId
   ) {
+    logger.warn(`[DEPRECATION] Standalone subscription redeem called for subscription ${subscriptionId}. Salon redemptions should proceed via Appointment completion.`);
+
     if (!otp) {
       throw new AppError("OTP is required to redeem subscription", 400);
     }

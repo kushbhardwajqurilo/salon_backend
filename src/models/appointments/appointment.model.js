@@ -6,10 +6,11 @@ const appointmentServiceSnapshotSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     duration: { type: Number, required: true, min: 1 }, // positive integer in minutes
     price: { type: Number, required: true, min: 0 },
+    appliedSubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
     isRedeemedViaSubscription: { type: Boolean, default: false },
     subscriptionUsageId: { type: mongoose.Schema.Types.ObjectId, ref: "SubscriptionUsage", default: null }
   },
-  { _id: false }
+  { _id: true }
 );
 
 const appointmentSchema = new mongoose.Schema(

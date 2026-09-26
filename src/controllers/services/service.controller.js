@@ -63,7 +63,14 @@ export const toggleServiceStatus = asyncHandler(async (req, res) => {
 export const listServices = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
 
-  const { page, limit, sort, search, status, categoryId } = req.query;
+  const { page, limit, sort, search, status, categoryId, all, query } = req.query;
+
+  const isFetchAll =
+    limit === "all" ||
+    all === true ||
+    all === "true" ||
+    all === "all" ||
+    query === "all";
 
   const filter = { isDeleted: false };
   const andConditions = [];
@@ -100,7 +107,8 @@ export const listServices = asyncHandler(async (req, res) => {
     filter,
     {
       page,
-      limit,
+      limit: isFetchAll ? "all" : limit,
+      all: isFetchAll,
       sort: sortOption,
       search,
       searchFields: ["name", "description", "serviceCode"],

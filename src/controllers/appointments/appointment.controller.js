@@ -115,3 +115,29 @@ export const triggerReminder = asyncHandler(async (req, res) => {
   const appointment = await appointmentService.triggerReminder(req.params.id, branchId, req.organizationId);
   return sendResponse(res, 200, "Reminder dispatched successfully", appointment);
 });
+
+export const requestConsumptionOTP = asyncHandler(async (req, res) => {
+  const branchId = req.body.branchId || req.branchId || req.headers["x-branch-id"];
+  const result = await appointmentService.requestConsumptionOTP(
+    req.params.id,
+    branchId,
+    req.organizationId,
+    req.user?.id || req.user?._id
+  );
+  return sendResponse(res, 200, result.message, result.data);
+});
+
+export const completeWithSubscription = asyncHandler(async (req, res) => {
+  const appointment = await appointmentService.completeWithSubscription(
+    req.params.id,
+    req.body,
+    req.organizationId,
+    req.user?.id || req.user?._id
+  );
+  return sendResponse(
+    res,
+    200,
+    "Appointment completed and subscription entitlement consumed successfully",
+    appointment
+  );
+});

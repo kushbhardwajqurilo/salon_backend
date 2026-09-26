@@ -8,9 +8,13 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch=\"**/permissionsSync.manual.js\" --runInBand",
     "seed": "node src/seed/seed.js",
+    "seed:services": "node src/seed/serviceSeed.js",
+    "seed:customers": "node src/seed/customerSeed.js",
+    "seed:staff": "node src/seed/staffSeed.js",
     "permissions:sync": "node src/scripts/syncPermissions.js",
     "customers:migrate": "node src/scripts/migrateCustomers.js",
-    "users:migrate-usernames": "node src/scripts/migrateUsernames.js"
+    "users:migrate-usernames": "node src/scripts/migrateUsernames.js",
+    "db:migrate-to-atlas": "node src/scripts/transferToAtlas.js"
   },
   "keywords": [],
   "author": "kush bhardwaj",

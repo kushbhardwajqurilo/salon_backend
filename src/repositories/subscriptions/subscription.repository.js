@@ -51,8 +51,12 @@ export class SubscriptionRepository extends BaseRepository {
       organizationId,
       status: "active",
       isDeleted: false,
-      "entitlements.serviceId": serviceId,
-      "entitlements.remainingQuantity": { $gte: quantity },
+      entitlements: {
+        $elemMatch: {
+          serviceId: serviceId,
+          remainingQuantity: { $gte: quantity },
+        },
+      },
     };
 
     const update = {

@@ -549,7 +549,29 @@ Every model registered after the plugin is applied gets:
 ### Prerequisites
 
 - **Node.js ≥ 20**
-- **MongoDB** (local or Atlas; replica set recommended for transactions)
+- **MongoDB** (local or Atlas; **Replica Set required** for transaction support):
+  > 💡 **Local Development with Transactions**:
+  > Multi-document ACID transactions (such as subscription entitlement redemption) require MongoDB running with replica set enabled (`--replSet rs0`).
+  > 
+  > **On Windows (Service installation)**:
+  > 1. Open `C:\Program Files\MongoDB\Server\8.0\bin\mongod.cfg` (as Administrator).
+  > 2. Add or uncomment under `replication:`:
+  >    ```yaml
+  >    replication:
+  >      replSetName: rs0
+  >    ```
+  > 3. Restart the MongoDB service:
+  >    ```powershell
+  >    Restart-Service MongoDB
+  >    ```
+  > 4. In `mongosh` or Node.js, initiate the replica set once:
+  >    ```javascript
+  >    rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "127.0.0.1:27017" }] })
+  >    ```
+  > 5. Update your `.env`:
+  >    ```env
+  >    MONGO_URI=mongodb://127.0.0.1:27017/saloon_erp_dev?replicaSet=rs0
+  >    ```
 - **Redis** (local or managed)
 
 ### Installation
