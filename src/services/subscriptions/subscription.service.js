@@ -13,7 +13,7 @@ export class SubscriptionService {
     customerRepo,
     serviceRepo,
     branchRepo,
-    auditRepo
+    auditRepo,
   ) {
     this.subscriptionRepo = subscriptionRepo;
     this.subscriptionUsageRepo = subscriptionUsageRepo;
@@ -75,7 +75,7 @@ export class SubscriptionService {
     const seq = await Sequence.findOneAndUpdate(
       { key: sequenceKey },
       { $inc: { seq: 1 } },
-      { new: true, upsert: true }
+      { new: true, upsert: true },
     );
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -89,6 +89,7 @@ export class SubscriptionService {
    * Create a customer-specific subscription
    */
   async createSubscription(data, organizationId, userId) {
+    console.log("subscription data", data);
     const {
       customerId,
       planId,
@@ -110,7 +111,10 @@ export class SubscriptionService {
         isDeleted: false,
       });
       if (!plan) {
-        throw new AppError("Subscription plan template not found in this organization", 404);
+        throw new AppError(
+          "Subscription plan template not found in this organization",
+          404,
+        );
       }
       resolvedPlanId = plan._id;
     }
@@ -135,7 +139,7 @@ export class SubscriptionService {
     if (customer.status !== "active") {
       throw new AppError(
         `Cannot create subscription for customer with status '${customer.status}'`,
-        400
+        400,
       );
     }
 
@@ -156,7 +160,10 @@ export class SubscriptionService {
         let branch;
         if (this.branchRepo && typeof this.branchRepo.findById === "function") {
           branch = await this.branchRepo.findById(branchId);
-        } else if (this.branchRepo && typeof this.branchRepo.findOne === "function") {
+        } else if (
+          this.branchRepo &&
+          typeof this.branchRepo.findOne === "function"
+        ) {
           branch = await this.branchRepo.findOne({ _id: branchId });
         } else {
           const BranchModel = mongoose.model("Branch");
@@ -169,7 +176,10 @@ export class SubscriptionService {
           branch.isDeleted ||
           branch.isActive === false
         ) {
-          throw new AppError(`Permitted branch ${branchId} is invalid or inactive`, 400);
+          throw new AppError(
+            `Permitted branch ${branchId} is invalid or inactive`,
+            400,
+          );
         }
         validPermittedBranchIds.push(branch._id);
       }
@@ -188,14 +198,17 @@ export class SubscriptionService {
       if (seenServiceIds.has(sIdStr)) {
         throw new AppError(
           "Duplicate serviceId in entitlements. Consolidate into a single entitlement with total quantity.",
-          400
+          400,
         );
       }
       seenServiceIds.add(sIdStr);
 
       let service;
       if (this.serviceRepo && typeof this.serviceRepo.findById === "function") {
-        service = await this.serviceRepo.findById(ent.serviceId, organizationId);
+        service = await this.serviceRepo.findById(
+          ent.serviceId,
+          organizationId,
+        );
       } else {
         const ServiceModel = mongoose.model("Service");
         service = await ServiceModel.findById(ent.serviceId);
@@ -206,13 +219,16 @@ export class SubscriptionService {
         service.organizationId.toString() !== organizationId.toString() ||
         service.isDeleted
       ) {
-        throw new AppError(`Service ${ent.serviceId} not found in this organization`, 404);
+        throw new AppError(
+          `Service ${ent.serviceId} not found in this organization`,
+          404,
+        );
       }
 
       if (service.status !== "active") {
         throw new AppError(
           `Service '${service.name}' is inactive and cannot be added to a subscription`,
-          400
+          400,
         );
       }
 
@@ -220,7 +236,7 @@ export class SubscriptionService {
       if (isNaN(totalQuantity) || totalQuantity < 1) {
         throw new AppError(
           `Invalid quantity for service '${service.name}'. Must be at least 1.`,
-          400
+          400,
         );
       }
 
@@ -234,7 +250,8 @@ export class SubscriptionService {
     }
 
     // 5. Generate subscription code
-    const subscriptionCode = await this.generateSubscriptionCode(organizationId);
+    const subscriptionCode =
+      await this.generateSubscriptionCode(organizationId);
 
     // 6. Create subscription and audit log in transaction
     const subscription = await this.executeTransaction(async (session) => {
@@ -253,7 +270,7 @@ export class SubscriptionService {
           notes,
         },
         userId,
-        session
+        session,
       );
 
       if (this.auditRepo && typeof this.auditRepo.create === "function") {
@@ -274,7 +291,7 @@ export class SubscriptionService {
           },
           organizationId,
           userId,
-          session
+          session,
         );
       }
 
@@ -293,7 +310,9 @@ export class SubscriptionService {
         });
       }
     } catch (queueErr) {
-      logger.warn(`Failed to enqueue subscription creation SMS: ${queueErr.message}`);
+      logger.warn(
+        `Failed to enqueue subscription creation SMS: ${queueErr.message}`,
+      );
     }
 
     return subscription;
@@ -360,7 +379,8 @@ export class SubscriptionService {
         { path: "customerId", select: "name phone email status" },
         { path: "permittedBranchIds", select: "name isActive" },
         { path: "entitlements.serviceId", select: "name duration price" },
-      ]
+        { path: "planId", select: "_id name" },
+      ],
     );
 
     if (!subscription) {
@@ -390,7 +410,7 @@ export class SubscriptionService {
     if (["cancelled", "expired"].includes(subscription.status)) {
       throw new AppError(
         `Cannot update subscription with status '${subscription.status}'`,
-        400
+        400,
       );
     }
 
@@ -427,7 +447,10 @@ export class SubscriptionService {
     if (updateData.endDate !== undefined) {
       const newEnd = new Date(updateData.endDate);
       if (isNaN(newEnd.getTime()) || newEnd <= subscription.startDate) {
-        throw new AppError("End date must be after subscription start date", 400);
+        throw new AppError(
+          "End date must be after subscription start date",
+          400,
+        );
       }
       allowedUpdates.endDate = newEnd;
     }
@@ -437,7 +460,7 @@ export class SubscriptionService {
         id,
         allowedUpdates,
         userId,
-        session
+        session,
       );
 
       if (this.auditRepo && typeof this.auditRepo.create === "function") {
@@ -452,7 +475,7 @@ export class SubscriptionService {
           },
           organizationId,
           userId,
-          session
+          session,
         );
       }
 
@@ -490,7 +513,7 @@ export class SubscriptionService {
             : `[Cancelled]: ${reason}`,
         },
         userId,
-        session
+        session,
       );
 
       if (this.auditRepo && typeof this.auditRepo.create === "function") {
@@ -505,7 +528,7 @@ export class SubscriptionService {
           },
           organizationId,
           userId,
-          session
+          session,
         );
       }
 
@@ -535,7 +558,7 @@ export class SubscriptionService {
     if (subscription.status !== "active") {
       throw new AppError(
         `Subscription is not active (current status: '${subscription.status}')`,
-        400
+        400,
       );
     }
 
@@ -545,7 +568,10 @@ export class SubscriptionService {
     // Load customer
     let customer;
     if (this.customerRepo && typeof this.customerRepo.findById === "function") {
-      customer = await this.customerRepo.findById(subscription.customerId, organizationId);
+      customer = await this.customerRepo.findById(
+        subscription.customerId,
+        organizationId,
+      );
     } else {
       const CustomerModel = mongoose.model("Customer");
       customer = await CustomerModel.findById(subscription.customerId);
@@ -556,15 +582,20 @@ export class SubscriptionService {
     }
 
     if (!customer.phone) {
-      throw new AppError("Customer does not have a registered phone number for OTP delivery", 400);
+      throw new AppError(
+        "Customer does not have a registered phone number for OTP delivery",
+        400,
+      );
     }
 
     // Rate limiting: 60s cooldown
     if (customer.otpResendUntil && customer.otpResendUntil > new Date()) {
-      const waitSeconds = Math.ceil((customer.otpResendUntil - new Date()) / 1000);
+      const waitSeconds = Math.ceil(
+        (customer.otpResendUntil - new Date()) / 1000,
+      );
       throw new AppError(
         `Too many OTP requests. Please wait ${waitSeconds} seconds before requesting a new OTP.`,
-        429
+        429,
       );
     }
 
@@ -600,11 +631,13 @@ export class SubscriptionService {
           metadata: { customerId: customer._id },
         },
         organizationId,
-        userId
+        userId,
       );
     }
 
-    logger.info(`[SECURITY] SUBSCRIPTION_REDEMPTION_OTP_SENT for subscription ${subscriptionId}`);
+    logger.info(
+      `[SECURITY] SUBSCRIPTION_REDEMPTION_OTP_SENT for subscription ${subscriptionId}`,
+    );
 
     return {
       success: true,
@@ -626,16 +659,21 @@ export class SubscriptionService {
     services,
     appointmentId,
     organizationId,
-    userId
+    userId,
   ) {
-    logger.warn(`[DEPRECATION] Standalone subscription redeem called for subscription ${subscriptionId}. Salon redemptions should proceed via Appointment completion.`);
+    logger.warn(
+      `[DEPRECATION] Standalone subscription redeem called for subscription ${subscriptionId}. Salon redemptions should proceed via Appointment completion.`,
+    );
 
     if (!otp) {
       throw new AppError("OTP is required to redeem subscription", 400);
     }
 
     if (!Array.isArray(services) || services.length === 0) {
-      throw new AppError("At least one service to redeem must be specified", 400);
+      throw new AppError(
+        "At least one service to redeem must be specified",
+        400,
+      );
     }
 
     // 1. Fetch subscription
@@ -654,7 +692,7 @@ export class SubscriptionService {
     if (subscription.status !== "active") {
       throw new AppError(
         `Cannot redeem from a subscription with status '${subscription.status}'`,
-        400
+        400,
       );
     }
 
@@ -664,7 +702,10 @@ export class SubscriptionService {
     // 3. Load customer and verify OTP
     let customer;
     if (this.customerRepo && typeof this.customerRepo.findById === "function") {
-      customer = await this.customerRepo.findById(subscription.customerId, organizationId);
+      customer = await this.customerRepo.findById(
+        subscription.customerId,
+        organizationId,
+      );
     } else {
       const CustomerModel = mongoose.model("Customer");
       customer = await CustomerModel.findById(subscription.customerId);
@@ -690,15 +731,24 @@ export class SubscriptionService {
       customer.otp = null;
       customer.otpExpires = null;
       await customer.save();
-      throw new AppError("Too many incorrect OTP attempts. Please request a new OTP.", 429);
+      throw new AppError(
+        "Too many incorrect OTP attempts. Please request a new OTP.",
+        429,
+      );
     }
 
-    const hashedInputOtp = crypto.createHash("sha256").update(otp.toString()).digest("hex");
+    const hashedInputOtp = crypto
+      .createHash("sha256")
+      .update(otp.toString())
+      .digest("hex");
     if (hashedInputOtp !== customer.otp) {
       customer.otpAttempts = (customer.otpAttempts || 0) + 1;
       await customer.save();
       const remainingAttempts = 5 - customer.otpAttempts;
-      throw new AppError(`Invalid OTP. ${remainingAttempts} attempts remaining.`, 400);
+      throw new AppError(
+        `Invalid OTP. ${remainingAttempts} attempts remaining.`,
+        400,
+      );
     }
 
     // OTP matches! Clear customer OTP
@@ -715,20 +765,20 @@ export class SubscriptionService {
       }
 
       const entitlement = subscription.entitlements.find(
-        (e) => e.serviceId.toString() === reqService.serviceId.toString()
+        (e) => e.serviceId.toString() === reqService.serviceId.toString(),
       );
 
       if (!entitlement) {
         throw new AppError(
           `Service ${reqService.serviceId} is not included in this subscription's entitlements`,
-          400
+          400,
         );
       }
 
       if (entitlement.remainingQuantity < qty) {
         throw new AppError(
           `Insufficient balance for service '${entitlement.serviceName}'. Available: ${entitlement.remainingQuantity}, Requested: ${qty}`,
-          409
+          409,
         );
       }
     }
@@ -742,18 +792,19 @@ export class SubscriptionService {
         const qty = parseInt(reqService.quantity || 1, 10);
 
         // Atomic decrement with balance guard
-        const updatedSub = await this.subscriptionRepo.atomicDecrementEntitlement(
-          subscription._id,
-          organizationId,
-          reqService.serviceId,
-          qty,
-          session
-        );
+        const updatedSub =
+          await this.subscriptionRepo.atomicDecrementEntitlement(
+            subscription._id,
+            organizationId,
+            reqService.serviceId,
+            qty,
+            session,
+          );
 
         if (!updatedSub) {
           throw new AppError(
             `Concurrent modification or insufficient balance while redeeming service ${reqService.serviceId}`,
-            409
+            409,
           );
         }
 
@@ -761,7 +812,7 @@ export class SubscriptionService {
 
         // Find service name snapshot
         const matchingEnt = updatedSub.entitlements.find(
-          (e) => e.serviceId.toString() === reqService.serviceId.toString()
+          (e) => e.serviceId.toString() === reqService.serviceId.toString(),
         );
         const serviceName = matchingEnt ? matchingEnt.serviceName : "Service";
 
@@ -780,7 +831,7 @@ export class SubscriptionService {
             appointmentId: appointmentId || null,
           },
           userId,
-          session
+          session,
         );
 
         createdUsageRecords.push(usageRecord);
@@ -800,14 +851,14 @@ export class SubscriptionService {
                 "services.$.subscriptionUsageId": usageRecord._id,
               },
             },
-            { session }
+            { session },
           );
         }
       }
 
       // Check if all entitlements are exhausted
       const allExhausted = latestSubscription.entitlements.every(
-        (e) => e.remainingQuantity === 0
+        (e) => e.remainingQuantity === 0,
       );
 
       if (allExhausted) {
@@ -833,7 +884,7 @@ export class SubscriptionService {
           },
           organizationId,
           userId,
-          session
+          session,
         );
       }
 
@@ -879,7 +930,7 @@ export class SubscriptionService {
 
     return this.subscriptionUsageRepo.findBySubscriptionId(
       subscriptionId,
-      organizationId
+      organizationId,
     );
   }
 
@@ -892,12 +943,12 @@ export class SubscriptionService {
       subscription.permittedBranchIds.length > 0
     ) {
       const isPermitted = subscription.permittedBranchIds.some(
-        (b) => b.toString() === branchId.toString()
+        (b) => b.toString() === branchId.toString(),
       );
       if (!isPermitted) {
         throw new AppError(
           "Subscription is not valid for redemption at this branch",
-          403
+          403,
         );
       }
     }

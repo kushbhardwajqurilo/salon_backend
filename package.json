@@ -14,7 +14,8 @@
     "permissions:sync": "node src/scripts/syncPermissions.js",
     "customers:migrate": "node src/scripts/migrateCustomers.js",
     "users:migrate-usernames": "node src/scripts/migrateUsernames.js",
-    "db:migrate-to-atlas": "node src/scripts/transferToAtlas.js"
+    "db:migrate-to-atlas": "node src/scripts/transferToAtlas.js",
+    "staff:assign-all-services": "node src/scripts/assignAllServicesToStaff.js"
   },
   "keywords": [],
   "author": "kush bhardwaj",
@@ -27,7 +28,7 @@
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.81.1",
     "cloudinary": "^2.10.0",
-    "compression": "^1.8.1",
+    "compression": "^1.8.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

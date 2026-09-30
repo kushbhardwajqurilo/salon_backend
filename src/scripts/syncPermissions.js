@@ -87,9 +87,18 @@ export const syncPermissionsLogic = async () => {
 
   // 3. Synchronize Manager Role permissions
   const DEFAULT_MANAGER_PERM_NAMES = [
-    "customers.view", "customers.create", "customers.update",
+    // Customers (all)
+    "customers.view", "customers.create", "customers.update", "customers.delete", "customers.export", "customers.edit",
+    // Subscriptions (all)
+    "subscriptions.view", "subscriptions.configure", "subscriptions.sell", "subscriptions.redeem",
+    // Employees (all)
+    "employees.view", "employees.create", "employees.update", "employees.delete", "employees.assign_branch", "employees.assign_service",
+    // Leaves (all)
+    "employees.leaves.view", "employees.leaves.manage",
+    // Services (all)
+    "services.view", "services.create", "services.update", "services.delete",
+    // Existing defaults
     "appointments.view", "appointments.book", "appointments.reschedule", "appointments.cancel",
-    "employees.view",
     "billing.view", "billing.checkout",
     "reports.revenue.view",
     "logs.view"

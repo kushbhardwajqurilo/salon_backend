@@ -80,6 +80,7 @@ describe("Staff Backend Module Unit & Lifecycle Tests", () => {
 
     mockStaffServiceModel = {
       updateMany: jest.fn().mockResolvedValue({}),
+      insertMany: jest.fn().mockResolvedValue([]),
       find: jest.fn().mockImplementation(() => createQueryMock([])),
     };
 
@@ -92,6 +93,10 @@ describe("Staff Backend Module Unit & Lifecycle Tests", () => {
       if (name === "Service") {
         return {
           findOne: jest.fn().mockResolvedValue({ _id: "service-1", organizationId: "org-1", isActive: true }),
+          find: jest.fn().mockImplementation(() => createQueryMock([
+            { _id: "service-1" },
+            { _id: "service-2" },
+          ])),
         };
       }
       if (name === "StaffBranch") {
@@ -198,6 +203,76 @@ describe("Staff Backend Module Unit & Lifecycle Tests", () => {
         "org-1",
         "actor-1",
         null
+      );
+    });
+
+    it("should automatically assign all active organization services to newly created staff", async () => {
+      Staff.findOne.mockReturnValue(createQueryMock(null));
+      const mockStaff = {
+        _id: "staff-3",
+        name: "Alice Smith",
+        phone: "+1112223334",
+        email: "alice@example.com",
+        designation: "Therapist",
+        staffCode: "STF-0007",
+        organizationId: "org-1",
+      };
+
+      jest.spyOn(staffService.staffRepo, "create").mockResolvedValue(mockStaff);
+
+      const serviceFindMock = jest.fn().mockImplementation(() =>
+        createQueryMock([{ _id: "service-1" }, { _id: "service-2" }])
+      );
+      const staffServiceInsertManyMock = jest.fn().mockResolvedValue([]);
+
+      jest.spyOn(mongoose, "model").mockImplementation((name) => {
+        if (name === "Service") {
+          return { find: serviceFindMock };
+        }
+        if (name === "StaffService") {
+          return { insertMany: staffServiceInsertManyMock };
+        }
+        return {};
+      });
+
+      await staffService.createStaff(
+        {
+          name: "Alice Smith",
+          phone: "+1112223334",
+          email: "alice@example.com",
+          designation: "Therapist",
+          joiningDate: new Date(),
+        },
+        "org-1",
+        "actor-1"
+      );
+
+      expect(serviceFindMock).toHaveBeenCalledWith({
+        organizationId: "org-1",
+        status: "active",
+        isDeleted: false,
+      });
+
+      expect(staffServiceInsertManyMock).toHaveBeenCalledWith(
+        [
+          {
+            staffId: "staff-3",
+            serviceId: "service-1",
+            organizationId: "org-1",
+            isActive: true,
+            createdBy: "actor-1",
+            updatedBy: "actor-1",
+          },
+          {
+            staffId: "staff-3",
+            serviceId: "service-2",
+            organizationId: "org-1",
+            isActive: true,
+            createdBy: "actor-1",
+            updatedBy: "actor-1",
+          },
+        ],
+        { session: null }
       );
     });
 

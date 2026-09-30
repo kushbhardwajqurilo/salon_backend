@@ -85,7 +85,7 @@ export const updateServiceSchema = z.object({
   }).strict(),
 });
 
-const allowedServiceSortFields = ["name", "createdAt", "updatedAt", "displayOrder", "pricing.basePrice"];
+const allowedServiceSortFields = ["name", "createdAt", "updatedAt", "displayOrder", "basePrice"];
 
 export const queryServiceSchema = z.object({
   query: z.object({
@@ -107,7 +107,7 @@ export const queryServiceSchema = z.object({
       .string()
       .refine(
         (val) => {
-          const field = val.startsWith("-") ? val.slice(1) : val;
+          const field = val?.startsWith("-") ? val.slice(1) : val;
           return allowedServiceSortFields.includes(field);
         },
         {

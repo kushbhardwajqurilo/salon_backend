@@ -90,8 +90,14 @@ export const listServices = asyncHandler(async (req, res) => {
   const sortOption = {};
   if (sort) {
     const isDesc = sort.startsWith("-");
-    const field = isDesc ? sort.slice(1) : sort;
-    sortOption[field] = isDesc ? -1 : 1;
+    const rawField = isDesc ? sort.slice(1) : sort;
+
+    if (rawField === "basePrice") {
+      // -basePrice sends lowest price first (ascending: 1), basePrice sends highest price first (descending: -1)
+      sortOption["pricing.basePrice"] = isDesc ? 1 : -1;
+    } else {
+      sortOption[rawField] = isDesc ? -1 : 1;
+    }
   }
   if (sortOption.displayOrder === undefined) {
     sortOption.displayOrder = 1;

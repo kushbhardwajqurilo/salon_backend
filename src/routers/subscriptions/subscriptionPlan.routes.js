@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.js";
-import { requireOrganizationScope } from "../../middleware/branchScope.js";
+import {
+  requireBranchScope,
+  requireOrganizationScope,
+} from "../../middleware/branchScope.js";
 import { authorize } from "../../middleware/rbac.js";
 import { validate } from "../../middleware/validate.js";
 import * as planController from "../../controllers/subscriptions/subscriptionPlan.controller.js";
@@ -17,7 +20,7 @@ router.get(
   requireOrganizationScope,
   authorize("subscriptions.view"),
   validate(planValidation.querySubscriptionPlanSchema),
-  planController.listPlans
+  planController.listPlans,
 );
 
 // 2. Get Plan by ID
@@ -25,7 +28,7 @@ router.get(
   "/:id",
   requireOrganizationScope,
   authorize("subscriptions.view"),
-  planController.getPlanById
+  planController.getPlanById,
 );
 
 // 3. Create Plan
@@ -34,7 +37,7 @@ router.post(
   requireOrganizationScope,
   authorize("subscriptions.configure"),
   validate(planValidation.createSubscriptionPlanSchema),
-  planController.createPlan
+  planController.createPlan,
 );
 
 // 4. Update Plan
@@ -43,7 +46,7 @@ router.put(
   requireOrganizationScope,
   authorize("subscriptions.configure"),
   validate(planValidation.updateSubscriptionPlanSchema),
-  planController.updatePlan
+  planController.updatePlan,
 );
 
 // 5. Delete Plan (Soft delete)
@@ -51,7 +54,7 @@ router.delete(
   "/:id",
   requireOrganizationScope,
   authorize("subscriptions.configure"),
-  planController.deletePlan
+  planController.deletePlan,
 );
 
 export default router;

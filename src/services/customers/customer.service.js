@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { CustomerRepository } from "../../repositories/customers/customer.repository.js";
 import { AuditLogRepository } from "../../repositories/audit/auditLog.repository.js";
 import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
+import { Staff } from "../../models/staff/staff.model.js";
 import { AppError } from "../../utils/errors.js";
 import { normalizePhone } from "../../utils/phone.js";
 
@@ -72,13 +73,23 @@ export class CustomerService {
 
     // 5. Validate referenced users/staff belong to same organization
     if (data.preferences?.preferredStaff && data.preferences.preferredStaff.length > 0) {
-      const UserModel = mongoose.model("User");
       const staffIds = [...new Set(data.preferences.preferredStaff.map(id => id.toString()))];
-      const staff = await UserModel.find({
-        _id: { $in: staffIds },
-        organizationId
+      const StaffModel = mongoose.models.Staff || mongoose.model("Staff");
+      const UserModel = mongoose.models.User || mongoose.model("User");
+
+      const checkPromises = staffIds.map(async (id) => {
+        let exists = false;
+        if (StaffModel) {
+          exists = await StaffModel.exists({ _id: id, organizationId, isDeleted: { $ne: true } });
+        }
+        if (!exists && UserModel) {
+          exists = await UserModel.exists({ _id: id, organizationId });
+        }
+        return !!exists;
       });
-      if (staff.length !== staffIds.length) {
+
+      const results = await Promise.all(checkPromises);
+      if (results.some(found => !found)) {
         throw new AppError("One or more preferredStaff do not exist or do not belong to this organization.", 400);
       }
     }
@@ -247,13 +258,23 @@ export class CustomerService {
 
     // 4. Validate referenced users/staff belong to same organization
     if (updateData.preferences?.preferredStaff && updateData.preferences.preferredStaff.length > 0) {
-      const UserModel = mongoose.model("User");
       const staffIds = [...new Set(updateData.preferences.preferredStaff.map(id => id.toString()))];
-      const staff = await UserModel.find({
-        _id: { $in: staffIds },
-        organizationId
+      const StaffModel = mongoose.models.Staff || mongoose.model("Staff");
+      const UserModel = mongoose.models.User || mongoose.model("User");
+
+      const checkPromises = staffIds.map(async (id) => {
+        let exists = false;
+        if (StaffModel) {
+          exists = await StaffModel.exists({ _id: id, organizationId, isDeleted: { $ne: true } });
+        }
+        if (!exists && UserModel) {
+          exists = await UserModel.exists({ _id: id, organizationId });
+        }
+        return !!exists;
       });
-      if (staff.length !== staffIds.length) {
+
+      const results = await Promise.all(checkPromises);
+      if (results.some(found => !found)) {
         throw new AppError("One or more preferredStaff do not exist or do not belong to this organization.", 400);
       }
     }

@@ -15,7 +15,12 @@ export class CustomerRepository extends BaseRepository {
     return doc.save({ session });
   }
 
-  async findById(id, organizationId, populate = [], select = null) {
+  async findById(
+    id,
+    organizationId,
+    populate = [{ path: "referredByCustomerId", select: "_id name" }],
+    select = null,
+  ) {
     let query = this.model.findOne({ _id: id, organizationId });
     if (populate.length > 0) {
       query = query.populate(populate);
@@ -26,8 +31,15 @@ export class CustomerRepository extends BaseRepository {
     return query.exec();
   }
 
-  async findByIdIncludeDeleted(id, organizationId, populate = [], select = null) {
-    let query = this.model.findOne({ _id: id, organizationId }).setOptions({ includeDeleted: true });
+  async findByIdIncludeDeleted(
+    id,
+    organizationId,
+    populate = [],
+    select = null,
+  ) {
+    let query = this.model
+      .findOne({ _id: id, organizationId })
+      .setOptions({ includeDeleted: true });
     if (populate.length > 0) {
       query = query.populate(populate);
     }
@@ -58,7 +70,9 @@ export class CustomerRepository extends BaseRepository {
   }
 
   async updateById(id, data, organizationId, userId = null, session = null) {
-    const doc = await this.model.findOne({ _id: id, organizationId }).session(session);
+    const doc = await this.model
+      .findOne({ _id: id, organizationId })
+      .session(session);
     if (!doc) return null;
 
     Object.assign(doc, data);
@@ -108,7 +122,7 @@ export class CustomerRepository extends BaseRepository {
     return this.model.findOneAndUpdate(
       { _id: id, organizationId },
       { $set: { status: newStatus } },
-      { new: true }
+      { new: true },
     );
   }
 
@@ -124,9 +138,7 @@ export class CustomerRepository extends BaseRepository {
     return this.model.findOneAndUpdate(
       { _id: id, organizationId },
       { $set: update },
-      { new: true, includeDeleted: true }
+      { new: true, includeDeleted: true },
     );
   }
 }
-
-

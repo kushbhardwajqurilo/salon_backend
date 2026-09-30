@@ -211,6 +211,28 @@ export class StaffService {
             );
           }
 
+          // Automatically assign all active organization services to the new staff
+          const activeServices = await mongoose
+            .model("Service")
+            .find({ organizationId, status: "active", isDeleted: false })
+            .select("_id")
+            .session(session);
+
+          if (activeServices.length > 0) {
+            const staffServiceDocs = activeServices.map((srv) => ({
+              staffId: staff._id,
+              serviceId: srv._id,
+              organizationId,
+              isActive: true,
+              createdBy: actorId,
+              updatedBy: actorId,
+            }));
+
+            await mongoose
+              .model("StaffService")
+              .insertMany(staffServiceDocs, { session });
+          }
+
           // Log audit
           await this.auditLogService.createAuditLog(
             {
@@ -218,7 +240,11 @@ export class StaffService {
               entityId: staff._id,
               action: "STAFF_CREATED",
               description: `Staff member created with code ${staffCode}`,
-              metadata: { staffCode, branchId: data.branchId || null },
+              metadata: {
+                staffCode,
+                branchId: data.branchId || null,
+                assignedServicesCount: activeServices.length,
+              },
               branchId: data.branchId || new mongoose.Types.ObjectId(), // Default fallback if no branch header
               actorId,
             },

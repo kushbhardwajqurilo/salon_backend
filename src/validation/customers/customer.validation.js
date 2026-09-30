@@ -92,7 +92,19 @@ export const updateCustomerSchema = z.object({
       loyaltyPoints: z.any().optional(),
       loyaltyPointsBalance: z.any().optional(),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (data) => {
+        if (data.acquisitionSource === "referral") {
+          return !!data.referredByCustomerId;
+        }
+        return true;
+      },
+      {
+        message: "referredByCustomerId is required when acquisitionSource is 'referral'",
+        path: ["referredByCustomerId"],
+      }
+    ),
 });
 
 export const addNoteSchema = z.object({

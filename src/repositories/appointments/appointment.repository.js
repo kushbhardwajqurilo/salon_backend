@@ -7,14 +7,22 @@ export class AppointmentRepository {
   }
 
   async findById(id, organizationId) {
-    return await Appointment.findOne({ _id: id, organizationId, isDeleted: false })
+    return await Appointment.findOne({
+      _id: id,
+      organizationId,
+      isDeleted: false,
+    })
       .populate("branchId", "name")
       .populate("customerId", "name phone email")
       .populate("staffId", "name");
   }
 
   async findOne(filter, organizationId) {
-    return await Appointment.findOne({ ...filter, organizationId, isDeleted: false })
+    return await Appointment.findOne({
+      ...filter,
+      organizationId,
+      isDeleted: false,
+    })
       .populate("branchId", "name")
       .populate("customerId", "name phone email")
       .populate("staffId", "name");
@@ -26,7 +34,12 @@ export class AppointmentRepository {
       query.branchId = branchId;
     }
 
-    const { page = 1, limit = 10, sortBy = "startAt", sortOrder = "asc" } = pagination;
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = "startAt",
+      sortOrder = "asc",
+    } = pagination;
     const skip = (page - 1) * limit;
 
     const [data, total] = await Promise.all([
@@ -55,7 +68,7 @@ export class AppointmentRepository {
     return await Appointment.findOneAndUpdate(
       { _id: id, organizationId, isDeleted: false },
       { $set: updateData },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
   }
 
@@ -63,7 +76,7 @@ export class AppointmentRepository {
     return await Appointment.findOneAndUpdate(
       { _id: id, organizationId, isDeleted: false },
       { $set: { isDeleted: true, deletedAt: new Date() } },
-      { new: true }
+      { new: true },
     );
   }
 }
