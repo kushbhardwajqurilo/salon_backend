@@ -103,4 +103,28 @@ staffSchema.methods.softDelete = async function (userId) {
   return this.save();
 };
 
+staffSchema.post("deleteOne", { document: true, query: false }, function (doc) {
+  if (doc?.avatarUrl) {
+    import("../../services/cloudinary.service.js")
+      .then(({ deleteFromCloudinary }) => {
+        deleteFromCloudinary(doc.avatarUrl).catch((err) =>
+          console.warn("Non-blocking: Failed to delete avatar on employee removal", err)
+        );
+      })
+      .catch((err) => console.warn("Failed to load cloudinary service for avatar purge", err));
+  }
+});
+
+staffSchema.post("findOneAndDelete", function (doc) {
+  if (doc?.avatarUrl) {
+    import("../../services/cloudinary.service.js")
+      .then(({ deleteFromCloudinary }) => {
+        deleteFromCloudinary(doc.avatarUrl).catch((err) =>
+          console.warn("Non-blocking: Failed to delete avatar on employee removal", err)
+        );
+      })
+      .catch((err) => console.warn("Failed to load cloudinary service for avatar purge", err));
+  }
+});
+
 export const Staff = mongoose.model("Staff", staffSchema);

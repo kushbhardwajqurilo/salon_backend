@@ -8,6 +8,7 @@ import { Sequence } from "../../models/sequence/sequence.model.js";
 import { AppError } from "../../utils/errors.js";
 import { normalizeUsername } from "../../utils/userIdentity.js";
 import { assertStaffBranchSubsetOfUserAccess } from "../../utils/branchAuthorization.js";
+import { deleteFromCloudinary, commitAsset, confirmAsset } from "../cloudinary.service.js";
 
 export class StaffService {
   constructor() {
@@ -254,6 +255,14 @@ export class StaffService {
           );
           return staff;
         });
+
+        if (createdStaff?.avatarUrl) {
+          commitAsset(createdStaff.avatarUrl).catch((err) =>
+            console.warn("Failed to commit employee avatar (remove temp_upload tag)", err)
+          );
+        }
+
+        return createdStaff;
       } catch (error) {
         if (error.code === 11000 && retries > 1) {
           retries--;
@@ -287,10 +296,17 @@ export class StaffService {
   }
 
   async updateStaff(id, data, organizationId, actorId) {
-    return this.runTransaction(async (session) => {
+    let previousAvatarUrl = null;
+    let newAvatarUrl = undefined;
+    const updatedStaff = await this.runTransaction(async (session) => {
       const staff = await this.staffRepo.findById(id, organizationId);
       if (!staff) {
         throw new AppError("Staff not found", 404);
+      }
+
+      previousAvatarUrl = staff.avatarUrl;
+      if (Object.prototype.hasOwnProperty.call(data, "avatarUrl")) {
+        newAvatarUrl = data.avatarUrl;
       }
 
       if (data.email) {
@@ -477,6 +493,32 @@ export class StaffService {
       }
       return updatedStaff;
     });
+
+    // Lifecycle check: Delete previous avatar if replaced or cleared
+    if (
+      newAvatarUrl !== undefined &&
+      previousAvatarUrl &&
+      previousAvatarUrl !== newAvatarUrl
+    ) {
+      deleteFromCloudinary(previousAvatarUrl).catch((err) =>
+        console.warn(
+          "Non-blocking: Failed to delete previous avatar from Cloudinary",
+          err
+        )
+      );
+    }
+
+    // Commit the newly uploaded avatar (removes 'temp_upload' tag)
+    if (
+      newAvatarUrl &&
+      newAvatarUrl !== previousAvatarUrl
+    ) {
+      commitAsset(newAvatarUrl).catch((err) =>
+        console.warn("Non-blocking: Failed to commit new avatar (remove temp_upload tag)", err)
+      );
+    }
+
+    return updatedStaff;
   }
 
   async deleteStaff(id, organizationId, actorId) {

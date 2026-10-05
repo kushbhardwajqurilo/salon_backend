@@ -81,3 +81,5 @@ export const authenticate = asyncHandler(async (req, res, next) => {
     throw new AppError("Invalid or expired token.", 401);
   }
 });
+
+export const authenticateUser = authenticate;
