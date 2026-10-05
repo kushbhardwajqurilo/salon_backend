@@ -128,14 +128,56 @@ describe("Leaves Phase 2 — LeaveRepository", () => {
             superFind.mockRestore();
         });
 
-        test("count injects organizationId", async () => {
+        test("find builds date range interval overlap filter when startDate and endDate provided", async () => {
+            const superFind = jest
+                .spyOn(Object.getPrototypeOf(Object.getPrototypeOf(repo)), "find")
+                .mockResolvedValue({ data: [], meta: {} });
+            await repo.find(
+                { startDate: "2026-10-05", endDate: "2026-10-05", status: "approved" },
+                {},
+                orgA
+            );
+            const [filter] = superFind.mock.calls[0];
+            expect(filter.organizationId).toBe(orgA);
+            expect(filter.status).toBe("approved");
+            expect(filter.startDate).toEqual({ $lte: new Date("2026-10-05") });
+            expect(filter.endDate).toEqual({ $gte: new Date("2026-10-05") });
+            superFind.mockRestore();
+        });
+
+        test("find builds open-ended date range filter when only startDate or endDate provided", async () => {
+            const superFind = jest
+                .spyOn(Object.getPrototypeOf(Object.getPrototypeOf(repo)), "find")
+                .mockResolvedValue({ data: [], meta: {} });
+            
+            // Only startDate
+            await repo.find({ startDate: "2026-10-05" }, {}, orgA);
+            const [filterStartOnly] = superFind.mock.calls[0];
+            expect(filterStartOnly.endDate).toEqual({ $gte: new Date("2026-10-05") });
+            expect(filterStartOnly.startDate).toBeUndefined();
+
+            // Only endDate
+            await repo.find({ endDate: "2026-10-10" }, {}, orgA);
+            const [filterEndOnly] = superFind.mock.calls[1];
+            expect(filterEndOnly.startDate).toEqual({ $lte: new Date("2026-10-10") });
+            expect(filterEndOnly.endDate).toBeUndefined();
+
+            superFind.mockRestore();
+        });
+
+        test("count injects organizationId and date range overlap filter", async () => {
             const superCount = jest
                 .spyOn(Object.getPrototypeOf(Object.getPrototypeOf(repo)), "count")
                 .mockResolvedValue(3);
-            await repo.count({ status: "pending" }, orgA);
+            await repo.count(
+                { status: "pending", startDate: "2026-10-05", endDate: "2026-10-05" },
+                orgA
+            );
             expect(superCount).toHaveBeenCalledWith({
                 status: "pending",
                 organizationId: orgA,
+                startDate: { $lte: new Date("2026-10-05") },
+                endDate: { $gte: new Date("2026-10-05") },
             });
             superCount.mockRestore();
         });

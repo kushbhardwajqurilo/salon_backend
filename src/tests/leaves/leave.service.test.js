@@ -50,6 +50,8 @@ describe("LeaveService Phase 4", () => {
 
   beforeEach(() => {
     jest.restoreAllMocks();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-08-20T10:00:00.000Z"));
 
     leaveRepo = {
       create: jest.fn(),
@@ -642,5 +644,9 @@ describe("LeaveService Phase 4", () => {
     expect(service.runTransaction).toHaveBeenCalled();
     expect(leaveRepo.create.mock.calls[0][3]).toBe("session-1");
     expect(auditLogService.createAuditLog.mock.calls[0][3]).toBe("session-1");
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 });

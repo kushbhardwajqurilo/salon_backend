@@ -93,7 +93,7 @@ export class LeaveRepository extends BaseRepository {
     return doc.softDelete(userId);
   }
 
-  async find(filter = {}, options = {}, organizationId) {
+  _buildQueryFilter(filter = {}, organizationId) {
     const queryFilter = { ...filter };
 
     // Clean non-schema query parameters from the database query filter
@@ -112,6 +112,51 @@ export class LeaveRepository extends BaseRepository {
       queryFilter.organizationId = organizationId;
     }
 
+    // Interval overlap filtering for date ranges:
+    // A leave [leave.startDate, leave.endDate] overlaps with [query.startDate, query.endDate] iff:
+    // leave.startDate <= query.endDate AND leave.endDate >= query.startDate.
+    const hasStartDate = queryFilter.startDate !== undefined && queryFilter.startDate !== null && queryFilter.startDate !== "";
+    const hasEndDate = queryFilter.endDate !== undefined && queryFilter.endDate !== null && queryFilter.endDate !== "";
+
+    if (hasStartDate || hasEndDate) {
+      const parseDateSafe = (val) => {
+        if (!val) return null;
+        if (val instanceof Date) return Number.isNaN(val.getTime()) ? null : val;
+        if (typeof val === "string") {
+          const trimmed = val.trim();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+            return new Date(`${trimmed}T00:00:00.000Z`);
+          }
+          const d = new Date(trimmed);
+          return Number.isNaN(d.getTime()) ? null : d;
+        }
+        return null;
+      };
+
+      const qStart = hasStartDate ? parseDateSafe(queryFilter.startDate) : null;
+      const qEnd = hasEndDate ? parseDateSafe(queryFilter.endDate) : null;
+
+      delete queryFilter.startDate;
+      delete queryFilter.endDate;
+
+      if (qStart && qEnd) {
+        queryFilter.startDate = { $lte: qEnd };
+        queryFilter.endDate = { $gte: qStart };
+      } else if (qStart) {
+        // Only startDate provided: leaves that end on or after startDate
+        queryFilter.endDate = { $gte: qStart };
+      } else if (qEnd) {
+        // Only endDate provided: leaves that start on or before endDate
+        queryFilter.startDate = { $lte: qEnd };
+      }
+    }
+
+    return queryFilter;
+  }
+
+  async find(filter = {}, options = {}, organizationId) {
+    const queryFilter = this._buildQueryFilter(filter, organizationId);
+
     const queryOptions = { ...options };
     if (
       queryOptions.search &&
@@ -124,10 +169,7 @@ export class LeaveRepository extends BaseRepository {
   }
 
   async count(filter = {}, organizationId) {
-    const queryFilter = { ...filter };
-    if (organizationId !== undefined) {
-      queryFilter.organizationId = organizationId;
-    }
+    const queryFilter = this._buildQueryFilter(filter, organizationId);
     return super.count(queryFilter);
   }
 

@@ -884,7 +884,7 @@ export class LeaveService {
       endDate: leave.endDate ? toDateOnlyStr(leave.endDate) : null,
       reason: leave.reason,
       status: leave.status,
-      submittedBy: normalizeId(leave.submittedBy?.name),
+      submittedBy: normalizeId(leave.submittedBy?.name) || normalizeId(leave.submittedBy),
       submittedFor: leave.submittedFor,
       reviewedBy: normalizeId(leave.reviewedBy),
       reviewedAt: normalizeDateTime(leave.reviewedAt),
