@@ -38,8 +38,7 @@ const transports = [
   new winston.transports.File({
     filename: path.join("logs", "error.log"),
     level: "error",
-  }),
-  new winston.transports.File({ filename: path.join("logs", "combined.log") }),
+  })
 ];
 
 export const logger = winston.createLogger({

@@ -652,6 +652,60 @@ export class SubscriptionService {
   /**
    * Redeem subscription entitlements with OTP verification and atomic balance update
    */
+  /**
+   * Deterministically find an active, eligible subscription for a customer and service.
+   * Selection rule:
+   * 1. Customer ID and Organization ID match.
+   * 2. Status is "active", not expired (endDate >= now), not deleted.
+   * 3. Permitted branches include branchId (or empty array means all branches permitted).
+   * 4. Entitlements include serviceId with remainingQuantity >= 1.
+   * 5. Deterministic order: earliest-expiring first (endDate: 1), followed by earliest-created (createdAt: 1).
+   */
+  async findEligibleSubscriptionForService(
+    customerId,
+    serviceId,
+    branchId,
+    organizationId,
+    session = null
+  ) {
+    const SubscriptionModel = mongoose.model("Subscription");
+    const now = new Date();
+
+    const candidateQuery = {
+      organizationId,
+      customerId,
+      status: "active",
+      isDeleted: false,
+      endDate: { $gte: now },
+      entitlements: {
+        $elemMatch: {
+          serviceId: serviceId,
+          remainingQuantity: { $gte: 1 },
+        },
+      },
+      $or: [
+        { permittedBranchIds: { $exists: false } },
+        { permittedBranchIds: { $size: 0 } },
+        { permittedBranchIds: branchId },
+      ],
+    };
+
+    let query = SubscriptionModel.find(candidateQuery).sort({
+      endDate: 1,
+      createdAt: 1,
+    });
+    if (session) {
+      query = query.session(session);
+    }
+
+    const subscriptions = await query.exec();
+    return subscriptions.length > 0 ? subscriptions[0] : null;
+  }
+
+  /**
+   * Redeem subscription entitlements with OTP or authorized Manual verification,
+   * atomic balance update, idempotency protection, and full audit logging.
+   */
   async redeemSubscription(
     subscriptionId,
     branchId,
@@ -660,13 +714,42 @@ export class SubscriptionService {
     appointmentId,
     organizationId,
     userId,
+    options = {}
   ) {
-    logger.warn(
-      `[DEPRECATION] Standalone subscription redeem called for subscription ${subscriptionId}. Salon redemptions should proceed via Appointment completion.`,
-    );
+    const isManual = Boolean(options.isManual);
+    const reason = options.reason ? options.reason.trim() : null;
+    const idempotencyKey = options.idempotencyKey ? options.idempotencyKey.trim() : null;
 
-    if (!otp) {
+    if (!isManual) {
+      logger.warn(
+        `[DEPRECATION] Standalone subscription redeem called for subscription ${subscriptionId}. Salon redemptions should proceed via Appointment completion.`,
+      );
+    }
+
+    // Idempotency check: if an idempotency key was supplied or duplicate manual request is sent
+    if (idempotencyKey) {
+      const existingUsage = await this.subscriptionUsageRepo.findOne({
+        organizationId,
+        subscriptionId,
+        reason: { $regex: new RegExp(`\\[IdempotencyKey: ${idempotencyKey}\\]`, "i") },
+      });
+      if (existingUsage) {
+        logger.info(`Idempotent redemption request detected for key: ${idempotencyKey}`);
+        const existingSub = await this.subscriptionRepo.findById(subscriptionId, organizationId);
+        return {
+          subscription: existingSub,
+          usage: [existingUsage],
+          idempotent: true,
+        };
+      }
+    }
+
+    if (!isManual && !otp) {
       throw new AppError("OTP is required to redeem subscription", 400);
+    }
+
+    if (isManual && !reason) {
+      throw new AppError("Reason is required for manual subscription redemption", 400);
     }
 
     if (!Array.isArray(services) || services.length === 0) {
@@ -684,12 +767,40 @@ export class SubscriptionService {
     });
 
     if (!subscription) {
+      if (this.auditRepo && typeof this.auditRepo.create === "function") {
+        await this.auditRepo.create(
+          {
+            branchId,
+            action: AUDIT_ACTIONS.SUBSCRIPTION_REDEMPTION_FAILED,
+            entityType: "Subscription",
+            entityId: subscriptionId,
+            description: `Redemption failed: Subscription not found`,
+            metadata: { subscriptionId, isManual, reason },
+          },
+          organizationId,
+          userId,
+        ).catch(() => {});
+      }
       throw new AppError("Subscription not found", 404);
     }
 
     await this.checkAndUpdateExpiry(subscription);
 
     if (subscription.status !== "active") {
+      if (this.auditRepo && typeof this.auditRepo.create === "function") {
+        await this.auditRepo.create(
+          {
+            branchId,
+            action: AUDIT_ACTIONS.SUBSCRIPTION_REDEMPTION_FAILED,
+            entityType: "Subscription",
+            entityId: subscription._id,
+            description: `Redemption failed: Subscription status is '${subscription.status}'`,
+            metadata: { subscriptionCode: subscription.subscriptionCode, isManual, status: subscription.status },
+          },
+          organizationId,
+          userId,
+        ).catch(() => {});
+      }
       throw new AppError(
         `Cannot redeem from a subscription with status '${subscription.status}'`,
         400,
@@ -699,7 +810,7 @@ export class SubscriptionService {
     // 2. Validate branch permission
     this.validateBranchPermission(subscription, branchId);
 
-    // 3. Load customer and verify OTP
+    // 3. Load customer and handle verification
     let customer;
     if (this.customerRepo && typeof this.customerRepo.findById === "function") {
       customer = await this.customerRepo.findById(
@@ -715,49 +826,106 @@ export class SubscriptionService {
       throw new AppError("Customer not found", 404);
     }
 
-    // OTP verification
-    if (!customer.otp || !customer.otpExpires) {
-      throw new AppError("No OTP requested. Please request an OTP first.", 400);
-    }
+    if (!isManual) {
+      // OTP verification path
+      if (!customer.otp || !customer.otpExpires) {
+        throw new AppError("No OTP requested. Please request an OTP first.", 400);
+      }
 
-    if (customer.otpExpires < new Date()) {
+      if (customer.otpExpires < new Date()) {
+        customer.otp = null;
+        customer.otpExpires = null;
+        await customer.save();
+        throw new AppError("OTP has expired. Please request a new OTP.", 400);
+      }
+
+      if (customer.otpAttempts >= 5) {
+        customer.otp = null;
+        customer.otpExpires = null;
+        await customer.save();
+        throw new AppError(
+          "Too many incorrect OTP attempts. Please request a new OTP.",
+          429,
+        );
+      }
+
+      const hashedInputOtp = crypto
+        .createHash("sha256")
+        .update(otp.toString())
+        .digest("hex");
+      if (hashedInputOtp !== customer.otp) {
+        customer.otpAttempts = (customer.otpAttempts || 0) + 1;
+        await customer.save();
+        const remainingAttempts = 5 - customer.otpAttempts;
+
+        if (this.auditRepo && typeof this.auditRepo.create === "function") {
+          await this.auditRepo.create(
+            {
+              branchId,
+              action: AUDIT_ACTIONS.SUBSCRIPTION_REDEMPTION_FAILED,
+              entityType: "Subscription",
+              entityId: subscription._id,
+              description: `Redemption failed: Invalid OTP attempt for customer ${customer.name}`,
+              metadata: { customerId: customer._id, attemptsRemaining: remainingAttempts },
+            },
+            organizationId,
+            userId,
+          ).catch(() => {});
+        }
+
+        throw new AppError(
+          `Invalid OTP. ${remainingAttempts} attempts remaining.`,
+          400,
+        );
+      }
+
+      // OTP matches! Clear customer OTP
       customer.otp = null;
       customer.otpExpires = null;
+      customer.otpAttempts = 0;
       await customer.save();
-      throw new AppError("OTP has expired. Please request a new OTP.", 400);
     }
 
-    if (customer.otpAttempts >= 5) {
-      customer.otp = null;
-      customer.otpExpires = null;
-      await customer.save();
-      throw new AppError(
-        "Too many incorrect OTP attempts. Please request a new OTP.",
-        429,
-      );
+    // 4. Validate appointment ownership & service inclusion if appointmentId is supplied
+    let appointment = null;
+    if (appointmentId) {
+      const AppointmentModel = mongoose.model("Appointment");
+      appointment = await AppointmentModel.findOne({
+        _id: appointmentId,
+        organizationId,
+        isDeleted: false,
+      });
+
+      if (!appointment) {
+        throw new AppError("Provided appointment not found in this organization", 404);
+      }
+
+      const aptCustId = appointment.customerId?._id ? appointment.customerId._id.toString() : appointment.customerId.toString();
+      if (aptCustId !== subscription.customerId.toString()) {
+        throw new AppError("Provided appointment does not belong to the subscription customer", 400);
+      }
+
+      const getAptBranchId = (apt) =>
+        apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString();
+      if (getAptBranchId(appointment) !== branchId.toString()) {
+        throw new AppError("Appointment branch does not match redemption branch", 400);
+      }
+
+      // Check each requested service is present on the appointment
+      for (const reqService of services) {
+        const hasService = appointment.services.some(
+          (s) => s.serviceId.toString() === reqService.serviceId.toString()
+        );
+        if (!hasService) {
+          throw new AppError(
+            `Service ${reqService.serviceId} is not part of appointment ${appointment.appointmentCode}`,
+            400
+          );
+        }
+      }
     }
 
-    const hashedInputOtp = crypto
-      .createHash("sha256")
-      .update(otp.toString())
-      .digest("hex");
-    if (hashedInputOtp !== customer.otp) {
-      customer.otpAttempts = (customer.otpAttempts || 0) + 1;
-      await customer.save();
-      const remainingAttempts = 5 - customer.otpAttempts;
-      throw new AppError(
-        `Invalid OTP. ${remainingAttempts} attempts remaining.`,
-        400,
-      );
-    }
-
-    // OTP matches! Clear customer OTP
-    customer.otp = null;
-    customer.otpExpires = null;
-    customer.otpAttempts = 0;
-    await customer.save();
-
-    // 4. Validate requested services against entitlements
+    // 5. Validate requested services against entitlements
     for (const reqService of services) {
       const qty = parseInt(reqService.quantity || 1, 10);
       if (isNaN(qty) || qty < 1) {
@@ -776,6 +944,24 @@ export class SubscriptionService {
       }
 
       if (entitlement.remainingQuantity < qty) {
+        if (this.auditRepo && typeof this.auditRepo.create === "function") {
+          await this.auditRepo.create(
+            {
+              branchId,
+              action: AUDIT_ACTIONS.SUBSCRIPTION_REDEMPTION_FAILED,
+              entityType: "Subscription",
+              entityId: subscription._id,
+              description: `Redemption failed: Insufficient entitlement balance for service ${entitlement.serviceName}`,
+              metadata: {
+                serviceId: reqService.serviceId,
+                requested: qty,
+                available: entitlement.remainingQuantity,
+              },
+            },
+            organizationId,
+            userId,
+          ).catch(() => {});
+        }
         throw new AppError(
           `Insufficient balance for service '${entitlement.serviceName}'. Available: ${entitlement.remainingQuantity}, Requested: ${qty}`,
           409,
@@ -783,7 +969,7 @@ export class SubscriptionService {
       }
     }
 
-    // 5. Atomic decrements and usage logging in transaction
+    // 6. Atomic decrements and usage logging in transaction
     const redemptionResult = await this.executeTransaction(async (session) => {
       const createdUsageRecords = [];
       let latestSubscription = subscription;
@@ -816,6 +1002,11 @@ export class SubscriptionService {
         );
         const serviceName = matchingEnt ? matchingEnt.serviceName : "Service";
 
+        const storedReason = [
+          reason ? `[Reason]: ${reason}` : null,
+          idempotencyKey ? `[IdempotencyKey: ${idempotencyKey}]` : null,
+        ].filter(Boolean).join(" ") || null;
+
         // Create SubscriptionUsage record
         const usageRecord = await this.subscriptionUsageRepo.create(
           {
@@ -827,7 +1018,8 @@ export class SubscriptionService {
             quantity: qty,
             branchId,
             verifiedBy: userId,
-            verificationMethod: "otp",
+            verificationMethod: isManual ? "manual" : "otp",
+            reason: storedReason,
             appointmentId: appointmentId || null,
           },
           userId,
@@ -867,19 +1059,26 @@ export class SubscriptionService {
       }
 
       // Audit Log
+      const auditAction = isManual
+        ? AUDIT_ACTIONS.SUBSCRIPTION_MANUAL_REDEEMED
+        : AUDIT_ACTIONS.SUBSCRIPTION_REDEEMED;
+
       if (this.auditRepo && typeof this.auditRepo.create === "function") {
         await this.auditRepo.create(
           {
             branchId,
-            action: AUDIT_ACTIONS.SUBSCRIPTION_REDEEMED,
+            action: auditAction,
             entityType: "Subscription",
             entityId: subscription._id,
-            description: `Redeemed ${services.length} service(s) from subscription ${subscription.subscriptionCode} at branch ${branchId}`,
+            description: `${isManual ? "Manually redeemed" : "Redeemed"} ${services.length} service(s) from subscription ${subscription.subscriptionCode} at branch ${branchId}`,
             metadata: {
               subscriptionCode: subscription.subscriptionCode,
               servicesRedeemed: services,
               appointmentId: appointmentId || null,
               newStatus: latestSubscription.status,
+              isManual,
+              reason: reason || null,
+              idempotencyKey: idempotencyKey || null,
             },
           },
           organizationId,
@@ -894,7 +1093,7 @@ export class SubscriptionService {
       };
     });
 
-    // 6. Best effort notification
+    // 7. Best effort notification
     try {
       if (customer.phone) {
         await smsQueue.add("sendSubscriptionRedemptionSMS", {
@@ -928,10 +1127,17 @@ export class SubscriptionService {
       throw new AppError("Subscription not found", 404);
     }
 
-    return this.subscriptionUsageRepo.findBySubscriptionId(
+    const usages = await this.subscriptionUsageRepo.findBySubscriptionId(
       subscriptionId,
       organizationId,
     );
+
+    // Map each usage to explicitly expose redeemedAt (and maintain createdAt)
+    return usages.map((item) => {
+      const obj = item.toObject ? item.toObject() : { ...item };
+      obj.redeemedAt = obj.createdAt;
+      return obj;
+    });
   }
 
   /**

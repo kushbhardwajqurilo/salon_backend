@@ -343,6 +343,7 @@ describe("Subscription Module Integration Tests", () => {
       expect(usageRes.body.data[0].serviceName).toBe("Signature Haircut");
       expect(usageRes.body.data[0].quantity).toBe(2);
       expect(usageRes.body.data[0].verificationMethod).toBe("otp");
+      expect(usageRes.body.data[0].redeemedAt).toBeDefined();
     });
 
     it("should link subscription to planId and update appointment service line item upon redemption", async () => {

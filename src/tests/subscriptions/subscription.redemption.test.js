@@ -372,5 +372,175 @@ describe("SubscriptionService Unit Tests - Redemption & Concurrency", () => {
         )
       ).rejects.toThrow("Concurrent modification or insufficient balance");
     });
+
+    it("should successfully perform manual redemption without OTP when isManual is true and reason is provided", async () => {
+      const mockSub = {
+        _id: subId,
+        organizationId: orgId,
+        customerId,
+        subscriptionCode: "SUB-MANUAL-001",
+        status: "active",
+        permittedBranchIds: [],
+        endDate: new Date(Date.now() + 86400000),
+        entitlements: [
+          {
+            serviceId,
+            serviceName: "Hair Spa",
+            totalQuantity: 3,
+            usedQuantity: 1,
+            remainingQuantity: 2,
+          },
+        ],
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      mockSubscriptionRepo.findOne.mockResolvedValue(mockSub);
+      mockCustomerRepo.findById.mockResolvedValue({
+        _id: customerId,
+        status: "active",
+        isDeleted: false,
+      });
+
+      const updatedSubDoc = {
+        ...mockSub,
+        entitlements: [
+          {
+            serviceId,
+            serviceName: "Hair Spa",
+            totalQuantity: 3,
+            usedQuantity: 2,
+            remainingQuantity: 1,
+          },
+        ],
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      mockSubscriptionRepo.atomicDecrementEntitlement.mockResolvedValue(updatedSubDoc);
+      mockSubscriptionUsageRepo.create.mockResolvedValue({
+        _id: new mongoose.Types.ObjectId().toString(),
+        verificationMethod: "manual",
+        quantity: 1,
+      });
+
+      const result = await subscriptionService.redeemSubscription(
+        subId,
+        branchAId,
+        null, // No OTP needed for manual
+        [{ serviceId, quantity: 1 }],
+        null,
+        orgId,
+        userId,
+        { isManual: true, reason: "Customer phone out of battery, manager verified identity" }
+      );
+
+      expect(result.subscription).toBeDefined();
+      expect(mockSubscriptionUsageRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          verificationMethod: "manual",
+          reason: expect.stringContaining("Customer phone out of battery"),
+        }),
+        userId,
+        null
+      );
+      expect(mockAuditRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "SUBSCRIPTION_MANUAL_REDEEMED",
+          description: expect.stringContaining("Manually redeemed"),
+        }),
+        orgId,
+        userId,
+        null
+      );
+    });
+
+    it("should reject manual redemption if reason is missing", async () => {
+      await expect(
+        subscriptionService.redeemSubscription(
+          subId,
+          branchAId,
+          null,
+          [{ serviceId, quantity: 1 }],
+          null,
+          orgId,
+          userId,
+          { isManual: true, reason: "" }
+        )
+      ).rejects.toThrow("Reason is required for manual subscription redemption");
+    });
+
+    it("should return cached result when idempotencyKey is re-submitted", async () => {
+      const existingUsageRecord = {
+        _id: new mongoose.Types.ObjectId().toString(),
+        subscriptionId: subId,
+        organizationId: orgId,
+        reason: "[Reason]: Offline token [IdempotencyKey: IDEMP-KEY-999]",
+      };
+      mockSubscriptionUsageRepo.findOne = jest.fn().mockResolvedValue(existingUsageRecord);
+      mockSubscriptionRepo.findById = jest.fn().mockResolvedValue({
+        _id: subId,
+        subscriptionCode: "SUB-IDEMP-001",
+      });
+
+      const result = await subscriptionService.redeemSubscription(
+        subId,
+        branchAId,
+        null,
+        [{ serviceId, quantity: 1 }],
+        null,
+        orgId,
+        userId,
+        { isManual: true, reason: "Offline token", idempotencyKey: "IDEMP-KEY-999" }
+      );
+
+      expect(result.idempotent).toBe(true);
+      expect(result.usage).toHaveLength(1);
+      expect(mockSubscriptionRepo.atomicDecrementEntitlement).not.toHaveBeenCalled();
+    });
+
+    it("should audit redemption failure when OTP attempt fails", async () => {
+      mockSubscriptionRepo.findOne.mockResolvedValue({
+        _id: subId,
+        organizationId: orgId,
+        customerId,
+        subscriptionCode: "SUB-AUDIT-FAIL-01",
+        status: "active",
+        permittedBranchIds: [],
+        endDate: new Date(Date.now() + 86400000),
+        entitlements: [{ serviceId, remainingQuantity: 2 }],
+      });
+
+      const rawOtp = "123456";
+      const wrongOtp = "999999";
+      const hashedOtp = crypto.createHash("sha256").update(rawOtp).digest("hex");
+      mockCustomerRepo.findById.mockResolvedValue({
+        _id: customerId,
+        name: "Test Customer",
+        otp: hashedOtp,
+        otpExpires: new Date(Date.now() + 300000),
+        otpAttempts: 0,
+        save: jest.fn(),
+      });
+
+      await expect(
+        subscriptionService.redeemSubscription(
+          subId,
+          branchAId,
+          wrongOtp,
+          [{ serviceId, quantity: 1 }],
+          null,
+          orgId,
+          userId
+        )
+      ).rejects.toThrow("Invalid OTP");
+
+      expect(mockAuditRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "SUBSCRIPTION_REDEMPTION_FAILED",
+          description: expect.stringContaining("Invalid OTP attempt"),
+        }),
+        orgId,
+        userId
+      );
+    });
   });
 });

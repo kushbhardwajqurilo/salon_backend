@@ -50,8 +50,14 @@ const subscriptionUsageSchema = new mongoose.Schema(
     },
     verificationMethod: {
       type: String,
-      enum: ["otp"],
+      enum: ["otp", "manual"],
       default: "otp",
+    },
+    reason: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: null,
     },
     appointmentId: {
       type: mongoose.Schema.Types.ObjectId,

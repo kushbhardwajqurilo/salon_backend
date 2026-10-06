@@ -569,6 +569,54 @@ export class AppointmentService {
   }
 
   /**
+   * Deterministically find an eligible active subscription for a customer and service.
+   * Selection rule (production-grade):
+   * 1. Belongs to the same customer and organization.
+   * 2. Status is "active", not deleted, and not expired (endDate >= now).
+   * 3. Permitted branches include branchId (or empty array / non-existent means valid at all branches).
+   * 4. Entitlements include serviceId with remainingQuantity >= 1.
+   * 5. Deterministic sorting: earliest-expiring first (endDate: 1), then earliest-created (createdAt: 1).
+   */
+  async findEligibleSubscriptionForService(
+    customerId,
+    serviceId,
+    branchId,
+    organizationId,
+    session = null
+  ) {
+    const now = new Date();
+    const candidateQuery = {
+      organizationId,
+      customerId,
+      status: "active",
+      isDeleted: false,
+      endDate: { $gte: now },
+      entitlements: {
+        $elemMatch: {
+          serviceId: serviceId,
+          remainingQuantity: { $gte: 1 },
+        },
+      },
+      $or: [
+        { permittedBranchIds: { $exists: false } },
+        { permittedBranchIds: { $size: 0 } },
+        { permittedBranchIds: branchId },
+      ],
+    };
+
+    let query = Subscription.find(candidateQuery).sort({
+      endDate: 1,
+      createdAt: 1,
+    });
+    if (session) {
+      query = query.session(session);
+    }
+
+    const subscriptions = await query.exec();
+    return subscriptions.length > 0 ? subscriptions[0] : null;
+  }
+
+  /**
    * Generates next unique appointment code
    */
   async generateAppointmentCode(organizationId) {
@@ -688,9 +736,9 @@ export class AppointmentService {
       );
     }
 
-    // Validate any appliedSubscriptionId
+    // Validate or auto-resolve appliedSubscriptionId deterministically
     for (const item of normalizedServiceInputs) {
-      if (item.appliedSubscriptionId) {
+      if (item.appliedSubscriptionId && item.appliedSubscriptionId !== "auto") {
         await this.validateSubscriptionEntitlement(
           item.appliedSubscriptionId,
           item.serviceId,
@@ -698,6 +746,18 @@ export class AppointmentService {
           branchId,
           organizationId
         );
+      } else if (item.appliedSubscriptionId === "auto") {
+        const eligibleSub = await this.findEligibleSubscriptionForService(
+          customerId,
+          item.serviceId,
+          branchId,
+          organizationId
+        );
+        if (eligibleSub) {
+          item.appliedSubscriptionId = eligibleSub._id.toString();
+        } else {
+          item.appliedSubscriptionId = null;
+        }
       }
     }
 
@@ -963,10 +1023,10 @@ export class AppointmentService {
         );
       }
 
-      // Validate any appliedSubscriptionId
+      // Validate or auto-resolve appliedSubscriptionId deterministically
       const customerId = appointment.customerId?._id || appointment.customerId;
       for (const item of normalizedServiceInputs) {
-        if (item.appliedSubscriptionId) {
+        if (item.appliedSubscriptionId && item.appliedSubscriptionId !== "auto") {
           await this.validateSubscriptionEntitlement(
             item.appliedSubscriptionId,
             item.serviceId,
@@ -974,6 +1034,18 @@ export class AppointmentService {
             branchId,
             organizationId
           );
+        } else if (item.appliedSubscriptionId === "auto") {
+          const eligibleSub = await this.findEligibleSubscriptionForService(
+            customerId,
+            item.serviceId,
+            branchId,
+            organizationId
+          );
+          if (eligibleSub) {
+            item.appliedSubscriptionId = eligibleSub._id.toString();
+          } else {
+            item.appliedSubscriptionId = null;
+          }
         }
       }
 

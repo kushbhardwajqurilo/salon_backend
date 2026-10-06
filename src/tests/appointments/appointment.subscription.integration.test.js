@@ -1128,5 +1128,125 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
       const usages = await SubscriptionUsage.find({ appointmentId: appointment.id });
       expect(usages).toHaveLength(0);
     });
+
+    it("verifies service pricing snapshot immutability: changing service.pricing.basePrice does not affect historical appointment line price", async () => {
+      // 1. Create appointment with basePrice = serviceA1.pricing.basePrice (500)
+      const resBooking = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchA1._id.toString(),
+          customerId: customerA._id.toString(),
+          services: [{ serviceId: serviceA1._id.toString() }],
+          appointmentDate: "2026-11-20",
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+
+      expect(resBooking.status).toBe(201);
+      const bookedAptId = resBooking.body.data._id;
+      expect(resBooking.body.data.services[0].price).toBe(500);
+
+      // 2. Mutate Service master basePrice to 750
+      await Service.updateOne({ _id: serviceA1._id }, { $set: { "pricing.basePrice": 750 } });
+
+      // 3. Query historical appointment and verify resolved price remains 500
+      const resGet = await request(app)
+        .get(`/api/v1/appointments/${bookedAptId}?branchId=${branchA1._id.toString()}`)
+        .set("Authorization", `Bearer ${ownerToken}`);
+
+      expect(resGet.status).toBe(200);
+      expect(resGet.body.data.services[0].price).toBe(500);
+      expect(resGet.body.data.pricing.subtotal).toBe(500);
+    });
+
+    it("customPrice overrides basePrice, and negative price is strictly rejected", async () => {
+      // Negative customPrice rejected
+      const negRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchA1._id.toString(),
+          customerId: customerA._id.toString(),
+          services: [{ serviceId: serviceA1._id.toString(), customPrice: -50 }],
+          appointmentDate: "2026-11-20",
+          startTime: "11:00",
+          bookingType: "advance",
+        });
+      expect(negRes.status).toBe(400);
+
+      // Positive customPrice overrides basePrice
+      const customRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchA1._id.toString(),
+          customerId: customerA._id.toString(),
+          services: [{ serviceId: serviceA1._id.toString(), customPrice: 175 }],
+          appointmentDate: "2026-11-20",
+          startTime: "11:00",
+          bookingType: "advance",
+        });
+      expect(customRes.status).toBe(201);
+      expect(customRes.body.data.services[0].price).toBe(175);
+      expect(customRes.body.data.pricing.subtotal).toBe(175);
+    });
+
+    it("deterministically auto-selects earliest-expiring subscription when customer owns multiple subscriptions for same service", async () => {
+      // Create Subscription A (expires in 10 days, remaining 2)
+      const subEarliest = await Subscription.create({
+        organizationId: orgA._id,
+        customerId: customerA._id,
+        subscriptionCode: "SUB-EARLIEST-01",
+        price: 500,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 10 * 86400000), // 10 days
+        status: "active",
+        permittedBranchIds: [branchA1._id],
+        entitlements: [{
+          serviceId: serviceA1._id,
+          serviceName: serviceA1.name,
+          totalQuantity: 2,
+          usedQuantity: 0,
+          remainingQuantity: 2,
+        }],
+      });
+
+      // Create Subscription B (expires in 60 days, remaining 5)
+      const subLater = await Subscription.create({
+        organizationId: orgA._id,
+        customerId: customerA._id,
+        subscriptionCode: "SUB-LATER-01",
+        price: 1200,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 60 * 86400000), // 60 days
+        status: "active",
+        permittedBranchIds: [branchA1._id],
+        entitlements: [{
+          serviceId: serviceA1._id,
+          serviceName: serviceA1.name,
+          totalQuantity: 5,
+          usedQuantity: 0,
+          remainingQuantity: 5,
+        }],
+      });
+
+      // Book with appliedSubscriptionId: "auto"
+      const resAuto = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchA1._id.toString(),
+          customerId: customerA._id.toString(),
+          services: [{ serviceId: serviceA1._id.toString(), appliedSubscriptionId: "auto" }],
+          appointmentDate: "2026-11-20",
+          startTime: "14:00",
+          bookingType: "advance",
+        });
+
+      expect(resAuto.status).toBe(201);
+      // Deterministic selection rule: subEarliest must be chosen!
+      expect(resAuto.body.data.services[0].appliedSubscriptionId).toBe(subEarliest._id.toString());
+    });
   });
 });

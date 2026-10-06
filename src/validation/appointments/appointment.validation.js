@@ -14,7 +14,7 @@ const appointmentServiceItemSchema = z.object({
     .number()
     .min(0, "Custom price must be a non-negative number")
     .optional(),
-  appliedSubscriptionId: objectIdSchema.optional().nullable(),
+  appliedSubscriptionId: objectIdSchema.or(z.literal("auto")).optional().nullable(),
 });
 
 export const createAppointmentSchema = z.object({

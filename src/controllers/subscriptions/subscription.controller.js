@@ -88,7 +88,7 @@ export const sendRedemptionOTP = asyncHandler(async (req, res) => {
 
 export const redeemSubscription = asyncHandler(async (req, res) => {
   const branchId = req.body.branchId || req.branchId || req.headers["x-branch-id"];
-  const { otp, services, appointmentId } = req.body;
+  const { otp, services, appointmentId, isManual, reason, idempotencyKey } = req.body;
   const result = await subscriptionService.redeemSubscription(
     req.params.id,
     branchId,
@@ -96,7 +96,8 @@ export const redeemSubscription = asyncHandler(async (req, res) => {
     services,
     appointmentId,
     req.organizationId,
-    req.user?.id || req.user?._id
+    req.user?.id || req.user?._id,
+    { isManual, reason, idempotencyKey }
   );
   return sendResponse(res, 200, "Subscription services redeemed successfully", result);
 });

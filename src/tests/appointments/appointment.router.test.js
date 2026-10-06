@@ -685,7 +685,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         customerId: customer._id.toString(),
         staffId: staffA._id.toString(),
         serviceIds: [serviceHaircut._id.toString()],
-        appointmentDate: "2026-09-28",
+        appointmentDate: "2026-11-28",
         startTime: "11:00",
         bookingType: "advance",
       };
@@ -695,7 +695,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         customerId: customer._id.toString(),
         staffId: staffA._id.toString(),
         serviceIds: [serviceHaircut._id.toString()],
-        appointmentDate: "2026-09-28",
+        appointmentDate: "2026-11-28",
         startTime: "11:15", // Overlaps 11:00-11:30
         bookingType: "advance",
       };
@@ -711,7 +711,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       const aptCount = await Appointment.countDocuments({
         organizationId: orgId,
         staffId: staffA._id,
-        appointmentDate: "2026-09-28",
+        appointmentDate: "2026-11-28",
         isDeleted: false,
       });
       expect(aptCount).toBe(1);
@@ -723,7 +723,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         customerId: customer._id.toString(),
         staffId: null,
         serviceIds: [serviceHaircut._id.toString()],
-        appointmentDate: "2026-09-29",
+        appointmentDate: "2026-11-29",
         startTime: "10:00",
         bookingType: "advance",
       };
@@ -733,7 +733,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         customerId: customer._id.toString(),
         staffId: null,
         serviceIds: [serviceHaircut._id.toString()],
-        appointmentDate: "2026-09-29",
+        appointmentDate: "2026-11-29",
         startTime: "10:15",
         bookingType: "advance",
       };
@@ -747,7 +747,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       const count = await Appointment.countDocuments({
         organizationId: orgId,
         staffId: null,
-        appointmentDate: "2026-09-29",
+        appointmentDate: "2026-11-29",
         isDeleted: false,
       });
       expect(count).toBe(2);

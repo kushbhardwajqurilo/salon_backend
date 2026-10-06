@@ -57,14 +57,32 @@ export const sendOtpSchema = z.object({
 });
 
 export const redeemSubscriptionSchema = z.object({
-  body: z.object({
-    otp: z.string().trim().min(4, "OTP is required"),
-    services: z
-      .array(redeemServiceInputSchema)
-      .min(1, "At least one service to redeem must be specified"),
-    appointmentId: objectIdSchema.optional().nullable(),
-    branchId: objectIdSchema.optional(), // Can also be resolved from req.branchId
-  }),
+  body: z
+    .object({
+      otp: z.string().trim().min(4).optional(),
+      services: z
+        .array(redeemServiceInputSchema)
+        .min(1, "At least one service to redeem must be specified"),
+      appointmentId: objectIdSchema.optional().nullable(),
+      branchId: objectIdSchema.optional(), // Can also be resolved from req.branchId
+      isManual: z.boolean().optional().default(false),
+      reason: z.string().trim().max(1000).optional(),
+      idempotencyKey: z.string().trim().max(255).optional(),
+    })
+    .refine(
+      (data) => data.isManual || (data.otp && data.otp.length >= 4),
+      {
+        message: "OTP is required for customer verification unless performing authorized manual redemption",
+        path: ["otp"],
+      }
+    )
+    .refine(
+      (data) => !data.isManual || (data.reason && data.reason.trim().length > 0),
+      {
+        message: "Reason is required for manual subscription redemption",
+        path: ["reason"],
+      }
+    ),
 });
 
 export const querySubscriptionSchema = z.object({
