@@ -1021,6 +1021,7 @@ export class SubscriptionService {
             verificationMethod: isManual ? "manual" : "otp",
             reason: storedReason,
             appointmentId: appointmentId || null,
+            appointmentCode: appointment ? appointment.appointmentCode : null,
           },
           userId,
           session,
@@ -1132,10 +1133,16 @@ export class SubscriptionService {
       organizationId,
     );
 
-    // Map each usage to explicitly expose redeemedAt (and maintain createdAt)
+    // Map each usage to explicitly expose redeemedAt and appointmentCode
     return usages.map((item) => {
       const obj = item.toObject ? item.toObject() : { ...item };
       obj.redeemedAt = obj.createdAt;
+      obj.appointmentCode =
+        obj.appointmentCode ||
+        (obj.appointmentId && typeof obj.appointmentId === "object"
+          ? obj.appointmentId.appointmentCode
+          : null) ||
+        null;
       return obj;
     });
   }

@@ -6,11 +6,7 @@ import { normalizePhone } from "../../utils/phone.js";
 describe("Inline Customer Creation & Validation Integration Tests", () => {
   describe("Phone Normalization Preprocessing", () => {
     it("should normalize formatted phone numbers before Zod validation", () => {
-      const inputs = [
-        "+91 98765 43210",
-        "+91-98765-43210",
-        "9876543210",
-      ];
+      const inputs = ["+91 98765 43210", "+91-98765-43210", "9876543210"];
 
       for (const rawPhone of inputs) {
         const result = createCustomerSchema.safeParse({

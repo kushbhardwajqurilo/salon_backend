@@ -64,6 +64,11 @@ const subscriptionUsageSchema = new mongoose.Schema(
       ref: "Appointment",
       default: null,
     },
+    appointmentCode: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
   {
     timestamps: true,

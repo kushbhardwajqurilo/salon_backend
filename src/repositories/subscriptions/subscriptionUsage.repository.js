@@ -20,6 +20,7 @@ export class SubscriptionUsageRepository extends BaseRepository {
       .populate("serviceId", "name code")
       .populate("branchId", "name")
       .populate("verifiedBy", "name")
+      .populate("appointmentId", "appointmentCode")
       .sort({ createdAt: -1 })
       .exec();
   }
@@ -38,6 +39,7 @@ export class SubscriptionUsageRepository extends BaseRepository {
       .populate("subscriptionId", "subscriptionCode")
       .populate("serviceId", "name code")
       .populate("branchId", "name")
+      .populate("appointmentId", "appointmentCode")
       .sort({ createdAt: -1 })
       .exec();
   }

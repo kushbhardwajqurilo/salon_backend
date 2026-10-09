@@ -103,6 +103,13 @@ export const globalErrorHandler = (err, req, res, next) => {
     error = handleValidationErrorDB(error);
   if (error.name === "JsonWebTokenError") error = handleJWTError();
   if (error.name === "TokenExpiredError") error = handleJWTExpiredError();
+  if (
+    error.code === 112 ||
+    (typeof error.hasErrorLabel === "function" && error.hasErrorLabel("TransientTransactionError")) ||
+    (error.message && error.message.includes("Write conflict"))
+  ) {
+    error = new AppError("A concurrent update conflicted with this request. Please retry.", 409);
+  }
 
   error.statusCode = error.statusCode || 500;
   error.status = error.status || "error";

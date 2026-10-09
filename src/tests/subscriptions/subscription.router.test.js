@@ -1,7 +1,12 @@
+import dns from "dns";
 import { describe, expect, it, beforeEach, afterEach, jest } from "@jest/globals";
 import crypto from "crypto";
 import request from "supertest";
 import mongoose from "mongoose";
+
+try {
+  dns.setServers(["8.8.8.8", "1.1.1.1"]);
+} catch (_) {}
 import app from "../../../app.mjs";
 import { Organization } from "../../../src/models/organizations/organization.model.js";
 import { Branch } from "../../../src/models/branches/branch.model.js";
@@ -435,6 +440,16 @@ describe("Subscription Module Integration Tests", () => {
       expect(updatedAppointment.services[0].subscriptionUsageId.toString()).toBe(
         usageId.toString()
       );
+
+      // 7. Verify /subscriptions/:id/usage returns appointmentCode
+      const usageRes = await request(app)
+        .get(`/api/v1/subscriptions/${subId}/usage`)
+        .set("Authorization", `Bearer ${ownerToken}`);
+
+      expect(usageRes.status).toBe(200);
+      expect(usageRes.body.data).toHaveLength(1);
+      expect(usageRes.body.data[0].appointmentCode).toBe("APT-20261001-0001");
+      expect(usageRes.body.data[0].appointmentId._id || usageRes.body.data[0].appointmentId).toBeDefined();
     });
   });
 });

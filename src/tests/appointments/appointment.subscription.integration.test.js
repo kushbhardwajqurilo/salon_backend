@@ -1248,5 +1248,99 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
       // Deterministic selection rule: subEarliest must be chosen!
       expect(resAuto.body.data.services[0].appliedSubscriptionId).toBe(subEarliest._id.toString());
     });
+
+    it("subscription coverage does NOT turn service economic price into 0 in appointment snapshot or billing subtotal", async () => {
+      // 1. Create appointment covered by activeSub
+      const res = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchA1._id.toString(),
+          customerId: customerA._id.toString(),
+          services: [
+            {
+              serviceId: serviceA1._id.toString(), // basePrice 500
+              appliedSubscriptionId: activeSub._id.toString(),
+            },
+          ],
+          appointmentDate: "2026-11-20",
+          startTime: "16:00",
+          bookingType: "advance",
+        });
+
+      expect(res.status).toBe(201);
+      const apt = res.body.data;
+
+      // Economic price is preserved at catalog basePrice (500), not zeroed out
+      expect(apt.services[0].price).toBe(500);
+      expect(apt.pricing.subtotal).toBe(500);
+      expect(apt.pricing.total).toBe(500);
+    });
+
+    it("concurrent completion requests cannot double-consume entitlements or duplicate appointment completion", async () => {
+      // Create new appointment in_progress with 1 entitlement needed
+      const createApt = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchA1._id.toString(),
+          customerId: customerA._id.toString(),
+          services: [
+            {
+              serviceId: serviceA1._id.toString(),
+              appliedSubscriptionId: activeSub._id.toString(),
+            },
+          ],
+          appointmentDate: "2026-11-21",
+          startTime: "11:00",
+          bookingType: "advance",
+        });
+
+      const concurrentApt = createApt.body.data;
+      await Appointment.findByIdAndUpdate(concurrentApt.id, { status: "in_progress" });
+
+      const testOtp = "778899";
+      await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: concurrentApt.id,
+        subscriptionIds: [activeSub._id],
+        customerId: customerA._id,
+        serviceIds: [serviceA1._id],
+        otpHash: crypto.createHash("sha256").update(testOtp).digest("hex"),
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+        status: "pending",
+      });
+
+      const subBefore = await Subscription.findById(activeSub._id);
+      const remainingBefore = subBefore.entitlements[0].remainingQuantity;
+
+      // Fire 2 concurrent requests
+      const [res1, res2] = await Promise.all([
+        request(app)
+          .post(`/api/v1/appointments/${concurrentApt.id}/complete-with-subscription`)
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({ branchId: branchA1._id.toString(), otp: testOtp }),
+        request(app)
+          .post(`/api/v1/appointments/${concurrentApt.id}/complete-with-subscription`)
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({ branchId: branchA1._id.toString(), otp: testOtp }),
+      ]);
+
+      const statuses = [res1.status, res2.status];
+      // Exactly 1 must succeed with 200, the other must be rejected (400 or 409)
+      expect(statuses).toContain(200);
+      expect(statuses.some((s) => s === 400 || s === 409)).toBe(true);
+
+      // Verify entitlement was decremented by exactly 1
+      const subAfter = await Subscription.findById(activeSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(remainingBefore - 1);
+
+      // Verify exactly 1 usage record exists for this appointment
+      const usages = await SubscriptionUsage.find({ appointmentId: concurrentApt.id });
+      expect(usages).toHaveLength(1);
+    });
   });
 });
