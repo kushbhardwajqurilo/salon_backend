@@ -31,6 +31,9 @@ const paymentSchema = new mongoose.Schema(
     voidedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     voidReason: { type: String, default: null, trim: true },
 
+    idempotencyKey: { type: String, default: null, trim: true },
+    requestPayloadHash: { type: String, default: null, trim: true },
+
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
   },
@@ -39,6 +42,16 @@ const paymentSchema = new mongoose.Schema(
 
 // Indexes
 paymentSchema.index({ organizationId: 1, paymentNumber: 1 }, { unique: true });
+paymentSchema.index(
+  { organizationId: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      isDeleted: false,
+      idempotencyKey: { $type: "string" },
+    },
+  }
+);
 paymentSchema.index({ organizationId: 1, invoiceId: 1, createdAt: -1 });
 paymentSchema.index({ organizationId: 1, branchId: 1, createdAt: -1 });
 

@@ -1142,4 +1142,639 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
 
     expect(notFoundRes.status).toBe(404);
   });
+
+  it("25. GET /billing/invoices returns aggregate summary in meta.summary when filtering by customerId", async () => {
+    // Create customer specific to this test
+    const targetCustomer = await Customer.create({
+      name: "Summary Test Customer",
+      phone: "+919888877777",
+      email: "summary_test@example.com",
+      gender: "female",
+      homeBranchId: branchA1Id,
+      organizationId: orgAId,
+      status: "active",
+    });
+
+    // Invoice 1: finalized, payableAmount 1500, paid 1500, amountDue 0
+    const apt1 = await createTestAppointment({ customerId: targetCustomer._id, totalAmount: 1500 });
+    const inv1Res = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: apt1._id.toString() });
+    const inv1Id = inv1Res.body.data._id;
+    await request(app)
+      .post(`/api/v1/billing/invoices/${inv1Id}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString());
+    await request(app)
+      .post(`/api/v1/billing/invoices/${inv1Id}/payments`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ amount: 1500, method: "cash" });
+
+    // Invoice 2: finalized, payableAmount 2000, partially paid 500, amountDue 1500
+    const apt2 = await createTestAppointment({ customerId: targetCustomer._id, totalAmount: 2000 });
+    const inv2Res = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: apt2._id.toString() });
+    const inv2Id = inv2Res.body.data._id;
+    await request(app)
+      .post(`/api/v1/billing/invoices/${inv2Id}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString());
+    await request(app)
+      .post(`/api/v1/billing/invoices/${inv2Id}/payments`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ amount: 500, method: "upi" });
+
+    // Fetch invoices filtering by customerId with pagination (e.g. limit=1)
+    const listRes = await request(app)
+      .get(`/api/v1/billing/invoices?customerId=${targetCustomer._id.toString()}&page=1&limit=1`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString());
+
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.success).toBe(true);
+    expect(listRes.body.status).toBe("success");
+    expect(listRes.body.data).toHaveLength(1);
+    expect(listRes.body.meta).toBeDefined();
+    expect(listRes.body.meta.total).toBe(2);
+    expect(listRes.body.meta.page).toBe(1);
+    expect(listRes.body.meta.limit).toBe(1);
+    expect(listRes.body.meta.totalPages).toBe(2);
+    expect(listRes.body.meta.summary).toEqual({
+      totalInvoices: 2,
+      totalBilled: 3800,
+      totalPaid: 2000,
+      totalOutstanding: 1800,
+    });
+
+    // Also check when filtering for a customer with 0 invoices
+    const emptyCustomer = await Customer.create({
+      name: "Empty Invoices Customer",
+      phone: "+919666655555",
+      gender: "male",
+      homeBranchId: branchA1Id,
+      organizationId: orgAId,
+      status: "active",
+    });
+
+    const emptyRes = await request(app)
+      .get(`/api/v1/billing/invoices?customerId=${emptyCustomer._id.toString()}`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString());
+
+    expect(emptyRes.status).toBe(200);
+    expect(emptyRes.body.data).toEqual([]);
+    expect(emptyRes.body.meta.total).toBe(0);
+    expect(emptyRes.body.meta.summary).toEqual({
+      totalInvoices: 0,
+      totalBilled: 0,
+      totalPaid: 0,
+      totalOutstanding: 0,
+    });
+  });
+
+  it("26. GET /billing/invoices summary honors subscription-coverage, mixed payment statuses, soft-deletes, branch & org isolation, and requests without customerId", async () => {
+    const cust = await Customer.create({
+      name: "Isolation & Subscription Customer",
+      phone: "+919555544444",
+      gender: "female",
+      homeBranchId: branchA1Id,
+      organizationId: orgAId,
+      status: "active",
+    });
+
+    const dummySubId = new mongoose.Types.ObjectId();
+    const dummyUsageId = new mongoose.Types.ObjectId();
+
+    // 1. Subscription-covered invoice in Branch A1: payableAmount=0, amountPaid=0, amountDue=0
+    const aptSub = await createTestAppointment({
+      customerId: cust._id,
+      services: [
+        {
+          serviceId: serviceHaircut._id,
+          name: serviceHaircut.name,
+          duration: 30,
+          price: 500,
+          isRedeemedViaSubscription: true,
+          appliedSubscriptionId: dummySubId,
+          subscriptionUsageId: dummyUsageId,
+        },
+      ],
+      pricing: { subtotal: 500, discount: 0, total: 500 },
+    });
+    const invSubRes = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: aptSub._id.toString() });
+    const invSubId = invSubRes.body.data._id;
+    await request(app)
+      .post(`/api/v1/billing/invoices/${invSubId}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString());
+
+    // 2. Unpaid invoice in Branch A1: payableAmount=1900, amountPaid=0, amountDue=1900
+    const aptUnpaid = await createTestAppointment({ customerId: cust._id });
+    const invUnpaidRes = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: aptUnpaid._id.toString() });
+    const invUnpaidId = invUnpaidRes.body.data._id;
+    await request(app)
+      .post(`/api/v1/billing/invoices/${invUnpaidId}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString());
+
+    // 3. Partially paid invoice in Branch A1: payableAmount=1900, amountPaid=700, amountDue=1200
+    const aptPartial = await createTestAppointment({ customerId: cust._id });
+    const invPartialRes = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: aptPartial._id.toString() });
+    const invPartialId = invPartialRes.body.data._id;
+    await request(app)
+      .post(`/api/v1/billing/invoices/${invPartialId}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString());
+    await request(app)
+      .post(`/api/v1/billing/invoices/${invPartialId}/payments`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ amount: 700, method: "cash" });
+
+    // 4. Soft-deleted invoice in Branch A1: should NOT be included in summary or list
+    const aptDeleted = await createTestAppointment({ customerId: cust._id });
+    const invDelRes = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: aptDeleted._id.toString() });
+    await Invoice.updateOne({ _id: invDelRes.body.data._id }, { isDeleted: true });
+
+    // 5. Invoice in Branch A2 for same customer: should NOT be included when filtering Branch A1
+    const aptBranchA2 = await createTestAppointment({
+      customerId: cust._id,
+      branchId: branchA2Id,
+    });
+    const invA2Res = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA2Id.toString())
+      .send({ appointmentId: aptBranchA2._id.toString() });
+    await request(app)
+      .post(`/api/v1/billing/invoices/${invA2Res.body.data._id}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA2Id.toString());
+
+    // Check Branch A1 summary: includes (1) Sub (0 billed, 0 paid, 0 due), (2) Unpaid (1900 billed, 0 paid, 1900 due), (3) Partial (1900 billed, 700 paid, 1200 due)
+    // Totals: totalInvoices=3, totalBilled=3800, totalPaid=700, totalOutstanding=3100
+    const branchA1SummaryRes = await request(app)
+      .get(`/api/v1/billing/invoices?customerId=${cust._id.toString()}`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString());
+
+    expect(branchA1SummaryRes.status).toBe(200);
+    expect(branchA1SummaryRes.body.meta.total).toBe(3);
+    expect(branchA1SummaryRes.body.meta.summary).toEqual({
+      totalInvoices: 3,
+      totalBilled: 3800,
+      totalPaid: 700,
+      totalOutstanding: 3100,
+    });
+
+    // Verify Organization Isolation: Org B querying for same customerId gets zero results
+    const orgBSummaryRes = await request(app)
+      .get(`/api/v1/billing/invoices?customerId=${cust._id.toString()}`)
+      .set("Authorization", `Bearer ${ownerTokenB}`)
+      .set("X-Branch-Id", branchB1Id.toString());
+
+    expect(orgBSummaryRes.status).toBe(200);
+    expect(orgBSummaryRes.body.data).toHaveLength(0);
+    expect(orgBSummaryRes.body.meta.total).toBe(0);
+    expect(orgBSummaryRes.body.meta.summary).toEqual({
+      totalInvoices: 0,
+      totalBilled: 0,
+      totalPaid: 0,
+      totalOutstanding: 0,
+    });
+
+    // Verify request WITHOUT customerId preserves response structure without meta.summary
+    const noCustomerRes = await request(app)
+      .get("/api/v1/billing/invoices?page=1&limit=5")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString());
+
+    expect(noCustomerRes.status).toBe(200);
+    expect(noCustomerRes.body.success).toBe(true);
+    expect(noCustomerRes.body.status).toBe("success");
+    expect(noCustomerRes.body.meta).toBeDefined();
+    expect(noCustomerRes.body.meta.summary).toBeUndefined();
+    expect(noCustomerRes.body.pagination).toBeDefined();
+    expect(noCustomerRes.body.pagination.summary).toBeUndefined();
+  });
+
+  it("27. Option B discount allocation: discount applies strictly to uncovered services, preserving subscription value and reconciling line totals with header", async () => {
+    const dummySubId = new mongoose.Types.ObjectId();
+    const dummyUsageId = new mongoose.Types.ObjectId();
+
+    // 1 covered haircut (₹500), 1 uncovered color (₹1500). Total subtotal = ₹2000.
+    // Invoice discount = ₹300.
+    const apt = await createTestAppointment({
+      services: [
+        {
+          serviceId: serviceHaircut._id,
+          name: serviceHaircut.name,
+          duration: 30,
+          price: 500,
+          isRedeemedViaSubscription: true,
+          appliedSubscriptionId: dummySubId,
+          subscriptionUsageId: dummyUsageId,
+        },
+        {
+          serviceId: serviceColor._id,
+          name: serviceColor.name,
+          duration: 60,
+          price: 1500,
+          isRedeemedViaSubscription: false,
+        },
+      ],
+      pricing: { subtotal: 2000, discount: 300, total: 1700 },
+    });
+
+    const res = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: apt._id.toString() });
+
+    expect(res.status).toBe(201);
+    const invoice = res.body.data;
+
+    // Header totals
+    expect(invoice.subtotal).toBe(2000);
+    expect(invoice.discountTotal).toBe(300);
+    expect(invoice.grossPayable).toBe(1700);
+    expect(invoice.subscriptionCoveredAmount).toBe(500);
+    expect(invoice.payableAmount).toBe(1200); // 1500 uncovered - 300 discount
+    expect(invoice.amountDue).toBe(1200);
+
+    // Line 0 (Haircut): covered line retains 100% economic coverage, 0 discount, 0 payable
+    expect(invoice.lines[0].isCoveredBySubscription).toBe(true);
+    expect(invoice.lines[0].subscriptionCoveredAmount).toBe(500);
+    expect(invoice.lines[0].discountAmount).toBe(0);
+    expect(invoice.lines[0].customerPayable).toBe(0);
+
+    // Line 1 (Color): absorbs the entire ₹300 discount
+    expect(invoice.lines[1].isCoveredBySubscription).toBe(false);
+    expect(invoice.lines[1].subscriptionCoveredAmount).toBe(0);
+    expect(invoice.lines[1].discountAmount).toBe(300);
+    expect(invoice.lines[1].customerPayable).toBe(1200);
+
+    // Exact reconciliation check: sum of line-level customerPayable === invoice.payableAmount
+    const sumLinePayables = invoice.lines.reduce((acc, l) => acc + l.customerPayable, 0);
+    expect(sumLinePayables).toBe(invoice.payableAmount);
+  });
+
+  it("28. discount capped at uncovered amount when discount exceeds eligible uncovered total", async () => {
+    const dummySubId = new mongoose.Types.ObjectId();
+    const dummyUsageId = new mongoose.Types.ObjectId();
+
+    // 1 covered haircut (₹500), 1 uncovered custom service (₹200). Subtotal = ₹700.
+    // Desired discount = ₹400 (exceeds uncovered ₹200).
+    const apt = await createTestAppointment({
+      services: [
+        {
+          serviceId: serviceHaircut._id,
+          name: serviceHaircut.name,
+          duration: 30,
+          price: 500,
+          isRedeemedViaSubscription: true,
+          appliedSubscriptionId: dummySubId,
+          subscriptionUsageId: dummyUsageId,
+        },
+        {
+          serviceId: serviceColor._id,
+          name: serviceColor.name,
+          duration: 15,
+          price: 200,
+          isRedeemedViaSubscription: false,
+        },
+      ],
+      pricing: { subtotal: 700, discount: 400, total: 300 },
+    });
+
+    const res = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: apt._id.toString() });
+
+    expect(res.status).toBe(201);
+    const invoice = res.body.data;
+
+    // Discount is capped at eligible uncovered total (200), not full 400
+    expect(invoice.discountTotal).toBe(200);
+    expect(invoice.grossPayable).toBe(500);
+    expect(invoice.subscriptionCoveredAmount).toBe(500);
+    expect(invoice.payableAmount).toBe(0);
+    expect(invoice.amountDue).toBe(0);
+    expect(invoice.paymentStatus).toBe("paid");
+
+    expect(invoice.lines[0].customerPayable).toBe(0);
+    expect(invoice.lines[1].discountAmount).toBe(200);
+    expect(invoice.lines[1].customerPayable).toBe(0);
+  });
+
+  it("29. decimal prices and discount allocation rounding reconciliation", async () => {
+    // 3 uncovered services with non-round decimal prices
+    const apt = await createTestAppointment({
+      services: [
+        {
+          serviceId: serviceHaircut._id,
+          name: "Item 1",
+          duration: 15,
+          price: 33.33,
+          isRedeemedViaSubscription: false,
+        },
+        {
+          serviceId: serviceHaircut._id,
+          name: "Item 2",
+          duration: 15,
+          price: 33.33,
+          isRedeemedViaSubscription: false,
+        },
+        {
+          serviceId: serviceHaircut._id,
+          name: "Item 3",
+          duration: 15,
+          price: 33.34,
+          isRedeemedViaSubscription: false,
+        },
+      ],
+      pricing: { subtotal: 100, discount: 10, total: 90 },
+    });
+
+    const res = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: apt._id.toString() });
+
+    expect(res.status).toBe(201);
+    const invoice = res.body.data;
+
+    expect(invoice.subtotal).toBe(100);
+    expect(invoice.discountTotal).toBe(10);
+    expect(invoice.payableAmount).toBe(90);
+
+    const sumDiscountAmounts = Number(invoice.lines.reduce((acc, l) => acc + l.discountAmount, 0).toFixed(2));
+    const sumLinePayables = Number(invoice.lines.reduce((acc, l) => acc + l.customerPayable, 0).toFixed(2));
+
+    expect(sumDiscountAmounts).toBe(10);
+    expect(sumLinePayables).toBe(90);
+  });
+
+  it("30. payment idempotency: identical retry returns original payment without modifying balances", async () => {
+    const apt = await createTestAppointment();
+    const createRes = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: apt._id.toString() });
+    const invoiceId = createRes.body.data._id;
+
+    await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send();
+
+    const idempotencyKey = `idemp-key-${Date.now()}`;
+
+    // First attempt
+    const pay1 = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .set("Idempotency-Key", idempotencyKey)
+      .send({
+        amount: 500,
+        method: "cash",
+      });
+
+    expect(pay1.status).toBe(201);
+    const originalPaymentId = pay1.body.data.payment._id;
+    expect(pay1.body.data.invoice.amountPaid).toBe(500);
+    expect(pay1.body.data.invoice.amountDue).toBe(1400);
+
+    // Second attempt with exact same key and payload
+    const pay2 = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .set("Idempotency-Key", idempotencyKey)
+      .send({
+        amount: 500,
+        method: "cash",
+      });
+
+    expect(pay2.status).toBe(201);
+    expect(pay2.body.data.payment._id).toBe(originalPaymentId);
+    expect(pay2.body.data.isIdempotentReplay).toBe(true);
+
+    // Balance must NOT have been double-incremented
+    expect(pay2.body.data.invoice.amountPaid).toBe(500);
+    expect(pay2.body.data.invoice.amountDue).toBe(1400);
+
+    // Verify only ONE Payment document exists in DB
+    const count = await Payment.countDocuments({ idempotencyKey });
+    expect(count).toBe(1);
+  });
+
+  it("31. payment idempotency conflict: reusing same key with different amount or method rejects with 409", async () => {
+    const apt = await createTestAppointment();
+    const createRes = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: apt._id.toString() });
+    const invoiceId = createRes.body.data._id;
+
+    await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send();
+
+    const idempotencyKey = `idemp-conflict-${Date.now()}`;
+
+    // First attempt: ₹500 via cash
+    const pay1 = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .set("Idempotency-Key", idempotencyKey)
+      .send({
+        amount: 500,
+        method: "cash",
+      });
+    expect(pay1.status).toBe(201);
+
+    // Attempt reuse with different amount (₹600)
+    const payConflictAmount = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .set("Idempotency-Key", idempotencyKey)
+      .send({
+        amount: 600,
+        method: "cash",
+      });
+    expect(payConflictAmount.status).toBe(409);
+    expect(payConflictAmount.body.message).toMatch(/Idempotency key reuse with differing payment parameters/);
+
+    // Attempt reuse with different method (card)
+    const payConflictMethod = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .set("Idempotency-Key", idempotencyKey)
+      .send({
+        amount: 500,
+        method: "card",
+      });
+    expect(payConflictMethod.status).toBe(409);
+  });
+
+  it("32. concurrent duplicate payment requests with same key process safely without race condition overpayment", async () => {
+    const apt = await createTestAppointment();
+    const createRes = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: apt._id.toString() });
+    const invoiceId = createRes.body.data._id;
+
+    await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send();
+
+    const idempotencyKey = `idemp-race-${Date.now()}`;
+
+    // Fire 2 concurrent requests simultaneously with same idempotency key
+    const [res1, res2] = await Promise.all([
+      request(app)
+        .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString())
+        .set("Idempotency-Key", idempotencyKey)
+        .send({ amount: 500, method: "upi" }),
+      request(app)
+        .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString())
+        .set("Idempotency-Key", idempotencyKey)
+        .send({ amount: 500, method: "upi" }),
+    ]);
+
+    // Either both succeed (one created, one replayed) or one throws race 409
+    const statuses = [res1.status, res2.status].sort();
+    expect([[201, 201], [201, 409]]).toContainEqual(statuses);
+
+    const invoice = await Invoice.findById(invoiceId);
+    expect(invoice.amountPaid).toBe(500);
+    expect(invoice.amountDue).toBe(1400);
+
+    const paymentCount = await Payment.countDocuments({ idempotencyKey });
+    expect(paymentCount).toBe(1);
+  });
+
+  it("33. legitimate separate partial payments succeed when using distinct idempotency keys", async () => {
+    const apt = await createTestAppointment();
+    const createRes = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: apt._id.toString() });
+    const invoiceId = createRes.body.data._id;
+
+    await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send();
+
+    const pay1 = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .set("Idempotency-Key", `legit-pay-1-${Date.now()}`)
+      .send({ amount: 500, method: "cash" });
+    expect(pay1.status).toBe(201);
+    expect(pay1.body.data.invoice.amountPaid).toBe(500);
+
+    const pay2 = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .set("Idempotency-Key", `legit-pay-2-${Date.now()}`)
+      .send({ amount: 1400, method: "upi" });
+    expect(pay2.status).toBe(201);
+    expect(pay2.body.data.invoice.amountPaid).toBe(1900);
+    expect(pay2.body.data.invoice.amountDue).toBe(0);
+    expect(pay2.body.data.invoice.paymentStatus).toBe("paid");
+  });
+
+  it("34. voiding an idempotent payment reverses balance accurately while keeping idempotency key record intact", async () => {
+    const apt = await createTestAppointment();
+    const createRes = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: apt._id.toString() });
+    const invoiceId = createRes.body.data._id;
+
+    await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send();
+
+    const idempotencyKey = `void-idemp-${Date.now()}`;
+
+    const pay = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .set("Idempotency-Key", idempotencyKey)
+      .send({ amount: 500, method: "cash" });
+
+    const paymentId = pay.body.data.payment._id;
+
+    // Void the payment
+    const voidRes = await request(app)
+      .post(`/api/v1/billing/payments/${paymentId}/void`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ reason: "Customer card chargeback void" });
+
+    expect(voidRes.status).toBe(200);
+    expect(voidRes.body.data.payment.status).toBe("voided");
+    expect(voidRes.body.data.payment.idempotencyKey).toBe(idempotencyKey);
+    expect(voidRes.body.data.invoice.amountPaid).toBe(0);
+    expect(voidRes.body.data.invoice.amountDue).toBe(1900);
+    expect(voidRes.body.data.invoice.paymentStatus).toBe("unpaid");
+  });
 });
+
+

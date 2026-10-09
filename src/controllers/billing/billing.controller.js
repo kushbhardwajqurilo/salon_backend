@@ -64,9 +64,19 @@ export const cancelInvoice = asyncHandler(async (req, res) => {
 
 export const recordPayment = asyncHandler(async (req, res) => {
   const branchId = req.branchId || req.body?.branchId;
+  const idempotencyKey =
+    req.headers["idempotency-key"] ||
+    req.headers["x-idempotency-key"] ||
+    req.body?.idempotencyKey;
+
+  const paymentPayload = {
+    ...req.body,
+    ...(idempotencyKey ? { idempotencyKey: String(idempotencyKey).trim() } : {}),
+  };
+
   const result = await billingService.recordPayment(
     req.params.id,
-    req.body,
+    paymentPayload,
     req.user.organizationId,
     branchId,
     req.user.id || req.user._id
@@ -127,7 +137,9 @@ export const listInvoices = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
+    status: "success",
     data: result.data,
+    meta: result.pagination,
     pagination: result.pagination,
   });
 });

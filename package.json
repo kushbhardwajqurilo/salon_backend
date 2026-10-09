@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "nodemon index.mjs",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
+    "test": "node --experimental-vm-modules --import ./src/tests/testSetup.js node_modules/jest/bin/jest.js --runInBand",
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch=\"**/permissionsSync.manual.js\" --runInBand",
     "seed": "node src/seed/seed.js",
     "seed:services": "node src/seed/serviceSeed.js",

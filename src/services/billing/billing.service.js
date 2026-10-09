@@ -9,11 +9,77 @@ import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 import { invoiceRepository } from "../../repositories/billing/invoice.repository.js";
 import { paymentRepository } from "../../repositories/billing/payment.repository.js";
 
+import crypto from "crypto";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Organization } from "../../models/organizations/organization.model.js";
 import { generateInvoicePdf as createInvoicePdf } from "./invoicePdf.service.js";
 
 export class BillingService {
+  /**
+   * Option B: Allocates discount only to uncovered, customer-payable services.
+   * Enforces exact reconciliation between invoice header and line items.
+   */
+  calculateInvoiceTotals(lines, desiredDiscount) {
+    let subtotal = 0;
+    let totalSubscriptionCoverage = 0;
+    let uncoveredTotal = 0;
+
+    for (const line of lines) {
+      subtotal = Number((subtotal + line.lineTotal).toFixed(2));
+      if (line.isCoveredBySubscription) {
+        totalSubscriptionCoverage = Number((totalSubscriptionCoverage + line.subscriptionCoveredAmount).toFixed(2));
+      } else {
+        uncoveredTotal = Number((uncoveredTotal + line.lineTotal).toFixed(2));
+      }
+    }
+
+    // Discount applies strictly to uncovered services, capped at their total
+    const effectiveDiscount = Math.min(
+      uncoveredTotal,
+      Math.max(0, Number(Number(desiredDiscount || 0).toFixed(2)))
+    );
+
+    let remainingDiscountToDistribute = effectiveDiscount;
+    const uncoveredLines = lines.filter((l) => !l.isCoveredBySubscription);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.isCoveredBySubscription) {
+        line.discountAmount = 0;
+        line.customerPayable = 0;
+      } else {
+        const isLastUncovered =
+          uncoveredLines.length > 0 &&
+          line.appointmentServiceId.toString() === uncoveredLines[uncoveredLines.length - 1].appointmentServiceId.toString();
+
+        if (uncoveredTotal === 0 || effectiveDiscount === 0) {
+          line.discountAmount = 0;
+          line.customerPayable = line.lineTotal;
+        } else if (isLastUncovered) {
+          line.discountAmount = Number(remainingDiscountToDistribute.toFixed(2));
+          line.customerPayable = Math.max(0, Number((line.lineTotal - line.discountAmount).toFixed(2)));
+          remainingDiscountToDistribute = 0;
+        } else {
+          const proportional = Number(((line.lineTotal / uncoveredTotal) * effectiveDiscount).toFixed(2));
+          const allocated = Math.min(remainingDiscountToDistribute, proportional);
+          line.discountAmount = allocated;
+          line.customerPayable = Math.max(0, Number((line.lineTotal - allocated).toFixed(2)));
+          remainingDiscountToDistribute = Number((remainingDiscountToDistribute - allocated).toFixed(2));
+        }
+      }
+    }
+
+    const grossPayable = Math.max(0, Number((subtotal - effectiveDiscount).toFixed(2)));
+    const payableAmount = Math.max(0, Number((grossPayable - totalSubscriptionCoverage).toFixed(2)));
+
+    return {
+      subtotal: Number(subtotal.toFixed(2)),
+      discountTotal: Number(effectiveDiscount.toFixed(2)),
+      grossPayable,
+      subscriptionCoveredAmount: Number(totalSubscriptionCoverage.toFixed(2)),
+      payableAmount,
+    };
+  }
   /**
    * Generates sequential organization-scoped Invoice number: INV-YYYYMMDD-XXXX
    */
@@ -176,19 +242,12 @@ export class BillingService {
     };
 
     // Map service snapshots to invoice lines
-    let calculatedSubtotal = 0;
-    let totalSubscriptionCoverage = 0;
-
     const invoiceLines = (appointment.services || []).map((s) => {
       const unitPrice = Number(s.price); // Authoritative snapshot price from appointment
       const quantity = 1;
       const lineTotal = Number((unitPrice * quantity).toFixed(2));
-      calculatedSubtotal += lineTotal;
-
       const isCovered = Boolean(s.isRedeemedViaSubscription);
       const subscriptionCoveredAmount = isCovered ? lineTotal : 0;
-      totalSubscriptionCoverage += subscriptionCoveredAmount;
-      const customerPayable = Math.max(0, Number((lineTotal - subscriptionCoveredAmount).toFixed(2)));
 
       return {
         serviceId: s.serviceId,
@@ -202,7 +261,8 @@ export class BillingService {
         appliedSubscriptionId: s.appliedSubscriptionId || null,
         subscriptionUsageId: s.subscriptionUsageId || null,
         subscriptionCoveredAmount,
-        customerPayable,
+        discountAmount: 0,
+        customerPayable: Math.max(0, Number((lineTotal - subscriptionCoveredAmount).toFixed(2))),
       };
     });
 
@@ -215,14 +275,12 @@ export class BillingService {
     if (initialDiscount < 0) {
       throw new AppError("Discount cannot be negative", 400);
     }
-    if (initialDiscount > calculatedSubtotal) {
-      throw new AppError("Discount cannot exceed invoice subtotal", 400);
-    }
 
-    const grossPayable = Math.max(0, Number((calculatedSubtotal - initialDiscount).toFixed(2)));
-    const payableAmount = Math.max(0, Number((grossPayable - totalSubscriptionCoverage).toFixed(2)));
+    // Calculate totals and allocate discount to uncovered lines strictly
+    const totals = this.calculateInvoiceTotals(invoiceLines, initialDiscount);
+
     const amountPaid = 0;
-    const amountDue = payableAmount;
+    const amountDue = totals.payableAmount;
     const paymentStatus = this.derivePaymentStatus(amountPaid, amountDue);
 
     const invoiceNumber = await this.generateInvoiceNumber(organizationId);
@@ -237,11 +295,11 @@ export class BillingService {
       customerId: customer._id,
       customerSnapshot,
       lines: invoiceLines,
-      subtotal: Number(calculatedSubtotal.toFixed(2)),
-      discountTotal: initialDiscount,
-      grossPayable,
-      subscriptionCoveredAmount: Number(totalSubscriptionCoverage.toFixed(2)),
-      payableAmount,
+      subtotal: totals.subtotal,
+      discountTotal: totals.discountTotal,
+      grossPayable: totals.grossPayable,
+      subscriptionCoveredAmount: totals.subscriptionCoveredAmount,
+      payableAmount: totals.payableAmount,
       amountPaid,
       amountDue,
       status: "draft",
@@ -271,8 +329,8 @@ export class BillingService {
       metadata: {
         invoiceNumber,
         appointmentCode: appointment.appointmentCode,
-        payableAmount,
-        discountTotal: initialDiscount,
+        payableAmount: totals.payableAmount,
+        discountTotal: totals.discountTotal,
       },
     });
 
@@ -310,16 +368,15 @@ export class BillingService {
       if (newDiscount < 0) {
         throw new AppError("Discount cannot be negative", 400);
       }
-      if (newDiscount > invoice.subtotal) {
-        throw new AppError("Discount cannot exceed invoice subtotal", 400);
-      }
 
-      invoice.discountTotal = newDiscount;
-      invoice.grossPayable = Math.max(0, Number((invoice.subtotal - newDiscount).toFixed(2)));
-      invoice.payableAmount = Math.max(
-        0,
-        Number((invoice.grossPayable - invoice.subscriptionCoveredAmount).toFixed(2))
-      );
+      const lines = invoice.lines.map((l) => (l.toObject ? l.toObject() : { ...l }));
+      const totals = this.calculateInvoiceTotals(lines, newDiscount);
+
+      invoice.lines = lines;
+      invoice.discountTotal = totals.discountTotal;
+      invoice.grossPayable = totals.grossPayable;
+      invoice.subscriptionCoveredAmount = totals.subscriptionCoveredAmount;
+      invoice.payableAmount = totals.payableAmount;
       invoice.amountDue = Math.max(0, Number((invoice.payableAmount - invoice.amountPaid).toFixed(2)));
       invoice.paymentStatus = this.derivePaymentStatus(invoice.amountPaid, invoice.amountDue);
     }
@@ -432,7 +489,7 @@ export class BillingService {
    * 5. RECORD PAYMENT AGAINST FINALIZED INVOICE
    */
   async recordPayment(invoiceId, paymentData, organizationId, branchId, userId) {
-    const { amount, referenceNote = "" } = paymentData;
+    const { amount, referenceNote = "", idempotencyKey } = paymentData;
     const method = paymentData.method || paymentData.paymentMethod;
     const paymentAmount = Number(Number(amount).toFixed(2));
 
@@ -443,7 +500,70 @@ export class BillingService {
       throw new AppError("Payment method is required", 400);
     }
 
+    // Canonical payload string to verify request fingerprint for idempotency
+    const canonicalPayloadString = JSON.stringify({
+      invoiceId: invoiceId.toString(),
+      amount: paymentAmount,
+      method,
+    });
+    const requestPayloadHash = crypto
+      .createHash("sha256")
+      .update(canonicalPayloadString)
+      .digest("hex");
+
+    // Idempotency lookup prior to starting transaction
+    if (idempotencyKey) {
+      const existingPayment = await Payment.findOne({
+        organizationId,
+        idempotencyKey,
+        isDeleted: false,
+      });
+
+      if (existingPayment) {
+        if (existingPayment.requestPayloadHash !== requestPayloadHash || existingPayment.invoiceId.toString() !== invoiceId.toString()) {
+          throw new AppError("Idempotency key reuse with differing payment parameters or target invoice", 409);
+        }
+
+        const invoice = await Invoice.findOne({
+          _id: invoiceId,
+          organizationId,
+          isDeleted: false,
+        });
+
+        return {
+          payment: existingPayment,
+          invoice,
+          isIdempotentReplay: true,
+        };
+      }
+    }
+
     return await this.executeTransaction(async (session) => {
+      // Re-check idempotency key within transaction to guard against concurrent attempts
+      if (idempotencyKey) {
+        const racePayment = await Payment.findOne({
+          organizationId,
+          idempotencyKey,
+          isDeleted: false,
+        }).session(session);
+
+        if (racePayment) {
+          if (racePayment.requestPayloadHash !== requestPayloadHash || racePayment.invoiceId.toString() !== invoiceId.toString()) {
+            throw new AppError("Idempotency key reuse with differing payment parameters or target invoice", 409);
+          }
+          const invoice = await Invoice.findOne({
+            _id: invoiceId,
+            organizationId,
+            isDeleted: false,
+          }).session(session);
+          return {
+            payment: racePayment,
+            invoice,
+            isIdempotentReplay: true,
+          };
+        }
+      }
+
       // Load and verify invoice state
       const invoice = await Invoice.findOne({
         _id: invoiceId,
@@ -506,12 +626,21 @@ export class BillingService {
         amount: paymentAmount,
         method,
         referenceNote,
+        idempotencyKey: idempotencyKey || null,
+        requestPayloadHash: idempotencyKey ? requestPayloadHash : null,
         status: "completed",
         recordedBy: userId,
         paymentDate: new Date(),
       });
 
-      await paymentDoc.save({ session });
+      try {
+        await paymentDoc.save({ session });
+      } catch (err) {
+        if (err.code === 11000 && idempotencyKey && err.keyPattern?.idempotencyKey) {
+          throw new AppError("Concurrent payment submission with identical idempotency key detected", 409);
+        }
+        throw err;
+      }
 
       // Audit log
       const auditLog = new AuditLog({
@@ -527,6 +656,7 @@ export class BillingService {
           paymentNumber,
           amount: paymentAmount,
           method,
+          idempotencyKey: idempotencyKey || null,
           remainingDue: updatedInvoice.amountDue,
         },
       });

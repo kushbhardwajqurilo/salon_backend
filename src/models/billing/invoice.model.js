@@ -33,6 +33,7 @@ const invoiceLineSchema = new mongoose.Schema(
     appliedSubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
     subscriptionUsageId: { type: mongoose.Schema.Types.ObjectId, ref: "SubscriptionUsage", default: null },
     subscriptionCoveredAmount: { type: Number, default: 0, min: 0, required: true },
+    discountAmount: { type: Number, default: 0, min: 0, required: true },
 
     customerPayable: { type: Number, required: true, min: 0 },
   },

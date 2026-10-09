@@ -324,6 +324,12 @@ export const CANONICAL_PERMISSIONS = [
     description: "Validate and apply coupon discounts during POS checkout."
   },
   {
+    name: "billing.create",
+    module: "Billing & POS",
+    action: "Create",
+    description: "Create draft invoices from appointments."
+  },
+  {
     name: "billing.view",
     module: "Billing & POS",
     action: "View",
@@ -333,7 +339,7 @@ export const CANONICAL_PERMISSIONS = [
     name: "billing.checkout",
     module: "Billing & POS",
     action: "Checkout",
-    description: "Generate invoice details, apply taxes (GST), and complete checkout."
+    description: "Generate invoice details, apply discounts, and complete checkout."
   },
   {
     name: "billing.void",

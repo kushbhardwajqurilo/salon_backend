@@ -56,6 +56,7 @@ export const recordPaymentSchema = z.object({
         })
         .optional(),
       referenceNote: z.string().max(255).optional().default(""),
+      idempotencyKey: z.string().trim().min(1).max(255).optional(),
     })
     .transform((data) => {
       const resolvedMethod = data.method || data.paymentMethod;

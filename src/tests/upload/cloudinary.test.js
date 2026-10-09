@@ -143,15 +143,15 @@ describe("Cloudinary Presigned Upload & Zero-Orphan Media Lifecycle", () => {
         data: expect.objectContaining({
           signature: "test_hmac_signature",
           folder: "employees/avatars",
-          tags: "temp_avatar",
-          publicId: expect.stringMatching(/^employees\/avatars\/avatar_\d+_[a-f0-9]+$/),
+          tags: "temp_upload",
+          publicId: expect.stringMatching(/^employees\/avatars\/\d+_[a-f0-9]+$/),
           uploadUrl: expect.stringContaining("/image/upload"),
         }),
       });
       expect(mockApiSignRequest).toHaveBeenCalledWith(
         expect.objectContaining({
           folder: "employees/avatars",
-          tags: "temp_avatar",
+          tags: "temp_upload",
         }),
         expect.anything()
       );
