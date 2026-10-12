@@ -6,12 +6,31 @@ import { asyncHandler } from "../../utils/errors.js";
 const appointmentService = new AppointmentService();
 
 export const createAppointment = asyncHandler(async (req, res) => {
-  const appointment = await appointmentService.createAppointment(req.body, req.organizationId);
-  return sendResponse(res, 201, "Appointment created successfully", appointment);
+  const appointment = await appointmentService.createAppointment(
+    req.body,
+    req.organizationId,
+  );
+  return sendResponse(
+    res,
+    201,
+    "Appointment created successfully",
+    appointment,
+  );
 });
 
 export const listAppointments = asyncHandler(async (req, res) => {
-  const { page, limit, sortBy, sortOrder, status, search, customerName, customerId, staffId, date } = req.query;
+  const {
+    page,
+    limit,
+    sortBy,
+    sortOrder,
+    status,
+    search,
+    customerName,
+    customerId,
+    staffId,
+    date,
+  } = req.query;
 
   const filter = {};
   if (status) filter.status = status;
@@ -35,7 +54,7 @@ export const listAppointments = asyncHandler(async (req, res) => {
       if (filter.customerId) {
         // If customerId was also provided, ensure it is among the matched customer IDs
         filter.customerId = matchedCustomerIds.some(
-          (id) => id.toString() === filter.customerId.toString()
+          (id) => id.toString() === filter.customerId.toString(),
         )
           ? filter.customerId
           : { $in: [] };
@@ -56,40 +75,64 @@ export const listAppointments = asyncHandler(async (req, res) => {
     filter,
     { page, limit, sortBy, sortOrder },
     req.organizationId,
-    branchId
+    branchId,
   );
 
-  return sendResponse(res, 200, "Appointments retrieved successfully", result.data, result.pagination);
+  return sendResponse(
+    res,
+    200,
+    "Appointments retrieved successfully",
+    result.data,
+    result.pagination,
+  );
 });
 
 export const getAppointmentById = asyncHandler(async (req, res) => {
-  const appointment = await appointmentService.getAppointmentById(req.params.id, req.organizationId);
-  return sendResponse(res, 200, "Appointment retrieved successfully", appointment);
+  const appointment = await appointmentService.getAppointmentById(
+    req.params.id,
+    req.organizationId,
+  );
+  return sendResponse(
+    res,
+    200,
+    "Appointment retrieved successfully",
+    appointment,
+  );
 });
 
 export const updateAppointment = asyncHandler(async (req, res) => {
   const appointment = await appointmentService.updateAppointment(
     req.params.id,
     req.body,
-    req.organizationId
+    req.organizationId,
   );
-  return sendResponse(res, 200, "Appointment updated successfully", appointment);
+  return sendResponse(
+    res,
+    200,
+    "Appointment updated successfully",
+    appointment,
+  );
 });
 
 export const rescheduleAppointment = asyncHandler(async (req, res) => {
   const appointment = await appointmentService.rescheduleAppointment(
     req.params.id,
     req.body,
-    req.organizationId
+    req.organizationId,
   );
-  return sendResponse(res, 200, "Appointment rescheduled successfully", appointment);
+  return sendResponse(
+    res,
+    200,
+    "Appointment rescheduled successfully",
+    appointment,
+  );
 });
 
 export const assignStaff = asyncHandler(async (req, res) => {
   const appointment = await appointmentService.assignStaff(
     req.params.id,
     req.body,
-    req.organizationId
+    req.organizationId,
   );
   return sendResponse(res, 200, "Staff assigned successfully", appointment);
 });
@@ -99,30 +142,49 @@ export const updateStatus = asyncHandler(async (req, res) => {
     req.params.id,
     req.body,
     req.organizationId,
-    req.user.id
+    req.user.id,
   );
-  return sendResponse(res, 200, "Appointment status updated successfully", appointment);
+  return sendResponse(
+    res,
+    200,
+    "Appointment status updated successfully",
+    appointment,
+  );
 });
 
 export const deleteAppointment = asyncHandler(async (req, res) => {
   const { branchId } = req.body;
-  await appointmentService.deleteAppointment(req.params.id, branchId, req.organizationId);
+  await appointmentService.deleteAppointment(
+    req.params.id,
+    branchId,
+    req.organizationId,
+  );
   return sendResponse(res, 200, "Appointment deleted successfully");
 });
 
 export const triggerReminder = asyncHandler(async (req, res) => {
   const { branchId } = req.body;
-  const appointment = await appointmentService.triggerReminder(req.params.id, branchId, req.organizationId);
-  return sendResponse(res, 200, "Reminder dispatched successfully", appointment);
+  const appointment = await appointmentService.triggerReminder(
+    req.params.id,
+    branchId,
+    req.organizationId,
+  );
+  return sendResponse(
+    res,
+    200,
+    "Reminder dispatched successfully",
+    appointment,
+  );
 });
 
 export const requestConsumptionOTP = asyncHandler(async (req, res) => {
-  const branchId = req.body.branchId || req.branchId || req.headers["x-branch-id"];
+  const branchId =
+    req.body.branchId || req.branchId || req.headers["x-branch-id"];
   const result = await appointmentService.requestConsumptionOTP(
     req.params.id,
     branchId,
     req.organizationId,
-    req.user?.id || req.user?._id
+    req.user?.id || req.user?._id,
   );
   return sendResponse(res, 200, result.message, result.data);
 });
@@ -132,12 +194,12 @@ export const completeWithSubscription = asyncHandler(async (req, res) => {
     req.params.id,
     req.body,
     req.organizationId,
-    req.user?.id || req.user?._id
+    req.user?.id || req.user?._id,
   );
   return sendResponse(
     res,
     200,
     "Appointment completed and subscription entitlement consumed successfully",
-    appointment
+    appointment,
   );
 });

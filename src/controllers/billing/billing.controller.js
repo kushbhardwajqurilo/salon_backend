@@ -117,13 +117,29 @@ export const getInvoiceById = asyncHandler(async (req, res) => {
 });
 
 export const listInvoices = asyncHandler(async (req, res) => {
-  const { page, limit, sortBy, sortOrder, status, paymentStatus, customerId, branchId, appointmentId } = req.query;
+  const {
+    page,
+    limit,
+    sortBy,
+    sortOrder,
+    status,
+    paymentStatus,
+    customerId,
+    branchId,
+    appointmentId,
+    startDate,
+    endDate,
+    search,
+  } = req.query;
 
   const filter = {};
   if (status) filter.status = status;
   if (paymentStatus) filter.paymentStatus = paymentStatus;
   if (customerId) filter.customerId = customerId;
   if (appointmentId) filter.appointmentId = appointmentId;
+  if (startDate) filter.startDate = startDate;
+  if (endDate) filter.endDate = endDate;
+  if (search) filter.search = search;
 
   // Branch filter: if caller provides query branchId and user has access, or fallback to header branchId
   const effectiveBranchId = branchId || req.branchId;
@@ -139,7 +155,7 @@ export const listInvoices = asyncHandler(async (req, res) => {
     success: true,
     status: "success",
     data: result.data,
-    meta: result.pagination,
+    meta: result.meta,
     pagination: result.pagination,
   });
 });

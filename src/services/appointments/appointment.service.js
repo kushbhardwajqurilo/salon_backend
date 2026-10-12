@@ -1350,7 +1350,6 @@ export class AppointmentService {
           appointmentDate: updatedAppointmentDate,
           startTime: updatedStartTime,
           endTime: updatedEndTime,
-          status: "in_progress",
         },
         organizationId,
       );

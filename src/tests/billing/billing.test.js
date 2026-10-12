@@ -401,6 +401,62 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
     expect(invoice.amountDue).toBe(1500);
   });
 
+  it("4b. subscription coverage & pricing deduction when service has appliedSubscriptionId without isRedeemedViaSubscription", async () => {
+    const dummySubId = new mongoose.Types.ObjectId();
+
+    // Haircut has appliedSubscriptionId but isRedeemedViaSubscription is false/unset
+    const apt = await createTestAppointment({
+      services: [
+        {
+          serviceId: serviceHaircut._id,
+          name: serviceHaircut.name,
+          duration: 30,
+          price: 500,
+          appliedSubscriptionId: dummySubId,
+          isRedeemedViaSubscription: false,
+        },
+        {
+          serviceId: serviceColor._id,
+          name: serviceColor.name,
+          duration: 60,
+          price: 1500,
+          isRedeemedViaSubscription: false,
+        },
+      ],
+      pricing: { subtotal: 2000, discount: 0, total: 2000 },
+    });
+
+    const res = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: apt._id.toString() });
+
+    expect(res.status).toBe(201);
+    const invoice = res.body.data;
+
+    // Line 0 (Haircut): covered via appliedSubscriptionId
+    expect(invoice.lines[0].unitPrice).toBe(500);
+    expect(invoice.lines[0].isCoveredBySubscription).toBe(true);
+    expect(invoice.lines[0].appliedSubscriptionId).toBe(dummySubId.toString());
+    expect(invoice.lines[0].subscriptionCoveredAmount).toBe(500);
+    expect(invoice.lines[0].customerPayable).toBe(0);
+
+    // Line 1 (Color): not covered
+    expect(invoice.lines[1].unitPrice).toBe(1500);
+    expect(invoice.lines[1].isCoveredBySubscription).toBe(false);
+    expect(invoice.lines[1].subscriptionCoveredAmount).toBe(0);
+    expect(invoice.lines[1].customerPayable).toBe(1500);
+
+    // Invoice Totals
+    expect(invoice.subtotal).toBe(2000);
+    expect(invoice.subscriptionCoveredAmount).toBe(500);
+    expect(invoice.grossPayable).toBe(2000);
+    expect(invoice.payableAmount).toBe(1500);
+    expect(invoice.amountPaid).toBe(0);
+    expect(invoice.amountDue).toBe(1500);
+  });
+
   it("5. discount is not double-counted between appointment and invoice", async () => {
     // Appointment has discount: 100. Subtotal: 2000. Total: 1900.
     const apt = await createTestAppointment({
@@ -1366,7 +1422,7 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
       totalOutstanding: 0,
     });
 
-    // Verify request WITHOUT customerId preserves response structure without meta.summary
+    // Verify request WITHOUT customerId also returns global meta.summary matching frontend contract
     const noCustomerRes = await request(app)
       .get("/api/v1/billing/invoices?page=1&limit=5")
       .set("Authorization", `Bearer ${ownerTokenA}`)
@@ -1376,9 +1432,11 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
     expect(noCustomerRes.body.success).toBe(true);
     expect(noCustomerRes.body.status).toBe("success");
     expect(noCustomerRes.body.meta).toBeDefined();
-    expect(noCustomerRes.body.meta.summary).toBeUndefined();
+    expect(noCustomerRes.body.meta.summary).toBeDefined();
+    expect(typeof noCustomerRes.body.meta.summary.totalInvoices).toBe("number");
+    expect(typeof noCustomerRes.body.meta.summary.totalBilled).toBe("number");
     expect(noCustomerRes.body.pagination).toBeDefined();
-    expect(noCustomerRes.body.pagination.summary).toBeUndefined();
+    expect(noCustomerRes.body.pagination.summary).toBeDefined();
   });
 
   it("27. Option B discount allocation: discount applies strictly to uncovered services, preserving subscription value and reconciling line totals with header", async () => {
@@ -1775,6 +1833,106 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
     expect(voidRes.body.data.invoice.amountDue).toBe(1900);
     expect(voidRes.body.data.invoice.paymentStatus).toBe("unpaid");
   });
+
+  describe("35. GET /billing/invoices Server-Side Summary Aggregation & Filtering", () => {
+    it("should return meta.summary matching frontend contract with totalBilled, totalPaid, totalOutstanding, totalInvoices", async () => {
+      const apt = await createTestAppointment();
+      await request(app)
+        .post("/api/v1/billing/invoices")
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString())
+        .send({ appointmentId: apt._id.toString() });
+
+      const res = await request(app)
+        .get("/api/v1/billing/invoices")
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString());
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.status).toBe("success");
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(res.body.meta).toBeDefined();
+      expect(res.body.meta.summary).toBeDefined();
+
+      const { summary } = res.body.meta;
+      expect(typeof summary.totalInvoices).toBe("number");
+      expect(typeof summary.totalBilled).toBe("number");
+      expect(typeof summary.totalPaid).toBe("number");
+      expect(typeof summary.totalOutstanding).toBe("number");
+      expect(summary.totalInvoices).toBeGreaterThanOrEqual(1);
+    });
+
+    it("should return zeroed summary when filter matches 0 records", async () => {
+      const futureDate = "2099-01-01";
+      const res = await request(app)
+        .get(`/api/v1/billing/invoices?startDate=${futureDate}&endDate=${futureDate}`)
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString());
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual([]);
+      expect(res.body.meta.total).toBe(0);
+      expect(res.body.meta.summary).toEqual({
+        totalInvoices: 0,
+        totalBilled: 0,
+        totalPaid: 0,
+        totalOutstanding: 0,
+      });
+    });
+
+    it("should filter invoices by startDate and endDate accurately", async () => {
+      const apt = await createTestAppointment();
+      const createRes = await request(app)
+        .post("/api/v1/billing/invoices")
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString())
+        .send({ appointmentId: apt._id.toString() });
+
+      expect(createRes.status).toBe(201);
+      const invoiceCreatedAt = createRes.body.data.createdAt;
+      const todayStr = new Date(invoiceCreatedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+      const res = await request(app)
+        .get(`/api/v1/billing/invoices?startDate=${todayStr}&endDate=${todayStr}`)
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString());
+
+      expect(res.status).toBe(200);
+      expect(res.body.meta.total).toBeGreaterThanOrEqual(1);
+      expect(res.body.meta.summary.totalInvoices).toBe(res.body.meta.total);
+    });
+
+    it("should filter invoices and compute summary matching search parameter", async () => {
+      const apt = await createTestAppointment();
+      const createRes = await request(app)
+        .post("/api/v1/billing/invoices")
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString())
+        .send({ appointmentId: apt._id.toString() });
+
+      const invoiceNumber = createRes.body.data.invoiceNumber;
+      const res = await request(app)
+        .get(`/api/v1/billing/invoices?search=${invoiceNumber}`)
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString());
+
+      expect(res.status).toBe(200);
+      expect(res.body.meta.total).toBe(1);
+      expect(res.body.meta.summary.totalInvoices).toBe(1);
+      expect(res.body.data[0].invoiceNumber).toBe(invoiceNumber);
+    });
+
+    it("should reject invalid date range where endDate is before startDate", async () => {
+      const res = await request(app)
+        .get("/api/v1/billing/invoices?startDate=2026-10-10&endDate=2026-10-01")
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString());
+
+      expect(res.status).toBe(400);
+    });
+  });
 });
+
 
 

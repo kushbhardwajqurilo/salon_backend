@@ -246,7 +246,11 @@ export class BillingService {
       const unitPrice = Number(s.price); // Authoritative snapshot price from appointment
       const quantity = 1;
       const lineTotal = Number((unitPrice * quantity).toFixed(2));
-      const isCovered = Boolean(s.isRedeemedViaSubscription);
+      const isCovered = Boolean(
+        s.appliedSubscriptionId ||
+        s.isRedeemedViaSubscription ||
+        s.subscriptionUsageId
+      );
       const subscriptionCoveredAmount = isCovered ? lineTotal : 0;
 
       return {
@@ -794,7 +798,45 @@ export class BillingService {
    * 8. LIST INVOICES
    */
   async listInvoices(filter, pagination, organizationId, branchId = null) {
-    return await invoiceRepository.list(filter, pagination, organizationId, branchId);
+    const listFilter = { ...filter };
+
+    // Respect branch timezone if configured (default Asia/Kolkata)
+    if (listFilter.startDate || listFilter.endDate) {
+      let timezone = "Asia/Kolkata";
+      if (branchId && mongoose.Types.ObjectId.isValid(branchId)) {
+        const branch = await Branch.findOne({ _id: branchId, organizationId }).select("timezone").lean();
+        if (branch?.timezone) {
+          timezone = branch.timezone;
+        }
+      }
+
+      const getTimezoneOffsetMs = (date, tz) => {
+        try {
+          const utcDate = new Date(date.toLocaleString("en-US", { timeZone: "UTC" }));
+          const tzDate = new Date(date.toLocaleString("en-US", { timeZone: tz }));
+          return tzDate.getTime() - utcDate.getTime();
+        } catch {
+          return 5.5 * 60 * 60 * 1000;
+        }
+      };
+
+      const parseLocalToUTC = (dateStr, timeStr, tz) => {
+        const [year, month, day] = dateStr.split("-").map(Number);
+        const [hours, minutes, seconds = 0, ms = 0] = timeStr.split(/[:.]/).map(Number);
+        const nominalUtc = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds, ms));
+        const offsetMs = getTimezoneOffsetMs(nominalUtc, tz);
+        return new Date(nominalUtc.getTime() - offsetMs);
+      };
+
+      if (listFilter.startDate) {
+        listFilter.startDateBoundary = parseLocalToUTC(listFilter.startDate, "00:00:00.000", timezone);
+      }
+      if (listFilter.endDate) {
+        listFilter.endDateBoundary = parseLocalToUTC(listFilter.endDate, "23:59:59.999", timezone);
+      }
+    }
+
+    return await invoiceRepository.list(listFilter, pagination, organizationId, branchId);
   }
 
   /**

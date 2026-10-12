@@ -531,6 +531,35 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       expect(res.status).toBe(200);
       expect(res.body.data.appointmentDate).toBe("2026-10-21");
       expect(res.body.data.startTime).toBe("11:00");
+      expect(res.body.data.status).toBe("scheduled");
+    });
+
+    it("assign-staff assigns staff without modifying status to in_progress", async () => {
+      const createRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          serviceIds: [serviceHaircut._id.toString()],
+          appointmentDate: "2026-10-20",
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+
+      const aptId = createRes.body.data.id;
+
+      const res = await request(app)
+        .patch(`/api/v1/appointments/${aptId}/assign-staff`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          staffId: staffA._id.toString(),
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.staffId._id.toString()).toBe(staffA._id.toString());
+      expect(res.body.data.status).toBe("scheduled");
     });
 
     it("rejects cross-branch rescheduling (Invariant 5)", async () => {

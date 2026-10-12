@@ -40,7 +40,7 @@ const validateMutationBranch = asyncHandler(async (req, res, next) => {
     req.branchId;
 
   if (!branchId || branchId === "all") {
-    throw new AppError("branchId (body or X-Branch-Id header) is required for this mutation", 400);
+    throw new AppError("Please select a Branch", 400);
   }
 
   // Populate req.body.branchId so validation schemas and controllers receive it consistently

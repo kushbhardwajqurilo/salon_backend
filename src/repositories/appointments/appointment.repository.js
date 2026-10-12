@@ -38,7 +38,7 @@ export class AppointmentRepository {
       page = 1,
       limit = 10,
       sortBy = "startAt",
-      sortOrder = "asc",
+      sortOrder = "desc",
     } = pagination;
     const skip = (page - 1) * limit;
 

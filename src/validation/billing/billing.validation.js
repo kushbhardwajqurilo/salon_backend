@@ -78,16 +78,38 @@ export const voidPaymentSchema = z.object({
   }),
 });
 
+const dateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
+
 export const listInvoicesQuerySchema = z.object({
-  query: z.object({
-    page: z.coerce.number().int().min(1).optional().default(1),
-    limit: z.coerce.number().int().min(1).max(100).optional().default(10),
-    status: z.enum(["draft", "finalized", "cancelled"]).optional(),
-    paymentStatus: z.enum(["unpaid", "partially_paid", "paid"]).optional(),
-    customerId: objectIdSchema.optional(),
-    branchId: objectIdSchema.optional(),
-    appointmentId: objectIdSchema.optional(),
-    sortBy: z.string().optional().default("createdAt"),
-    sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
-  }),
+  query: z
+    .object({
+      page: z.coerce.number().int().min(1).optional().default(1),
+      limit: z.coerce.number().int().min(1).max(100).optional().default(10),
+      status: z.enum(["draft", "finalized", "cancelled"]).optional(),
+      paymentStatus: z.enum(["unpaid", "partially_paid", "paid"]).optional(),
+      customerId: objectIdSchema.optional(),
+      branchId: objectIdSchema.optional(),
+      appointmentId: objectIdSchema.optional(),
+      startDate: z
+        .string()
+        .regex(dateOnlyRegex, "Invalid startDate format (YYYY-MM-DD)")
+        .optional(),
+      endDate: z
+        .string()
+        .regex(dateOnlyRegex, "Invalid endDate format (YYYY-MM-DD)")
+        .optional(),
+      search: z.string().trim().optional(),
+      sortBy: z.string().optional().default("createdAt"),
+      sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
+    })
+    .superRefine((data, ctx) => {
+      if (data.startDate && data.endDate && data.startDate > data.endDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["endDate"],
+          message: "endDate must be greater than or equal to startDate",
+        });
+      }
+    }),
 });
+

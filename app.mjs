@@ -89,7 +89,10 @@ const corsOptions = {
     "Authorization",
     "X-Branch-Id",
     "x-branch-id",
+    "Idempotency-Key",
+    "X-Idempotency-Key",
   ],
+  exposedHeaders: ["Idempotency-Key", "X-Idempotency-Key"],
 };
 
 app.use(cors(corsOptions));
