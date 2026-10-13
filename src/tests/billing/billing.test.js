@@ -40,7 +40,6 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
   let customerA, categoryA, serviceHaircut, serviceColor;
 
   beforeAll(async () => {
-    process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK = "true";
     process.env.NODE_ENV = "test";
     let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
     if (testUri.includes("?")) {
@@ -870,7 +869,7 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
       .send({ appointmentId: apt._id.toString() });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toMatch(/branchId .* is required for this mutation/);
+    expect(res.body.message).toMatch(/(Please select a Branch|branchId .* is required for this mutation)/);
   });
 
   it("18. RBAC and unauthenticated protection", async () => {

@@ -165,6 +165,7 @@ export const syncPermissionsLogic = async () => {
   await redis.del("rbac:role:manager:permissions");
   await redis.del("rbac:role:receptionist:permissions");
   await redis.del("rbac:modules");
+
   logger.info(
     "Owner, Manager & Receptionist role permissions and modules cache invalidated.",
   );

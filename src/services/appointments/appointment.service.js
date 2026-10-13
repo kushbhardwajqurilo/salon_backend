@@ -15,6 +15,7 @@ import { emailQueue, smsQueue } from "../../queues/client.js";
 import { logger } from "../../utils/logger.js";
 import mongoose from "mongoose";
 import crypto from "crypto";
+import { runInTransaction } from "../../utils/transaction.js";
 
 const appointmentRepo = new AppointmentRepository();
 
@@ -1456,77 +1457,7 @@ export class AppointmentService {
    * Helper to execute a sequence of operations in a MongoDB transaction with controlled enforcement
    */
   async executeTransaction(callback, { requireTransaction = false } = {}) {
-    let session = null;
-    try {
-      // Multi-document ACID transactions in MongoDB require a replica set or sharded cluster
-      const topologyType = mongoose.connection.client?.topology?.description?.type;
-      const isReplicaSetOrSharded = ["ReplicaSetWithPrimary", "ReplicaSetNoPrimary", "Sharded"].includes(topologyType);
-      const isStandaloneFallbackAllowed = process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK === "true";
-
-      // If in a non-replica environment (e.g. local standalone test) and standalone fallback is allowed:
-      if (!isReplicaSetOrSharded && isStandaloneFallbackAllowed) {
-        return await callback(null);
-      }
-
-      if (!isReplicaSetOrSharded && !isStandaloneFallbackAllowed) {
-        if (requireTransaction) {
-          throw new AppError(
-            "ACID transaction support is required for this operation but unavailable in the database environment (MongoDB replica set required)",
-            500
-          );
-        }
-        return await callback(null);
-      }
-
-      if (
-        mongoose.connection.db &&
-        typeof mongoose.connection.startSession === "function"
-      ) {
-        session = await mongoose.connection.startSession();
-        session.startTransaction();
-
-        const result = await callback(session);
-
-        await session.commitTransaction();
-        session.endSession();
-        return result;
-      }
-    } catch (err) {
-      if (session) {
-        try {
-          await session.abortTransaction();
-          session.endSession();
-        } catch (_) {}
-      }
-
-      const isSessionError =
-        err.message &&
-        (err.message.includes("Transaction numbers") ||
-          err.message.includes("does not support retryable writes") ||
-          err.message.includes("replica set") ||
-          err.message.includes("IllegalOperation"));
-
-      if (!isSessionError) {
-        throw err;
-      }
-
-      if (requireTransaction && process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK !== "true") {
-        throw new AppError(
-          "ACID transaction support is required for this operation but unavailable in the database environment",
-          500
-        );
-      }
-    }
-
-    if (requireTransaction && process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK !== "true") {
-      throw new AppError(
-        "ACID transaction support is required for this operation but unavailable in the database environment",
-        500
-      );
-    }
-
-    // Fallback: run without transaction only when allowed for non-critical/fallback paths
-    return await callback(null);
+    return await runInTransaction(callback, { requireTransaction });
   }
 
   /**

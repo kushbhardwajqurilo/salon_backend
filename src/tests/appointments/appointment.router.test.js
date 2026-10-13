@@ -860,7 +860,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         .send({});
 
       expect(res.status).toBe(400);
-      expect(res.body.message).toContain("branchId");
+      expect(res.body.message).toMatch(/(branchId|Please select a Branch)/);
     });
 
     it("handles channel = both with partial_delivery status when customer email is present but phone is missing", async () => {

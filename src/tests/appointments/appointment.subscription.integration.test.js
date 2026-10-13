@@ -39,7 +39,6 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
   let staffMember;
 
   beforeAll(async () => {
-    process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK = "true";
     let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
     if (testUri.includes("?")) {
       const parts = testUri.split("?");
@@ -51,7 +50,6 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
   });
 
   afterAll(async () => {
-    delete process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK;
     await SubscriptionConsumptionChallenge.deleteMany({});
     await Appointment.deleteMany({});
     await SubscriptionUsage.deleteMany({});

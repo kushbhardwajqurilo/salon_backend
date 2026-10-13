@@ -5,6 +5,7 @@ import { logger } from "../../utils/logger.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 import { smsQueue } from "../../queues/client.js";
+import { runInTransaction } from "../../utils/transaction.js";
 
 export class SubscriptionService {
   constructor(
@@ -24,47 +25,11 @@ export class SubscriptionService {
   }
 
   /**
-   * Helper to execute a sequence of actions within a MongoDB session/transaction,
-   * with graceful fallback for standalone replica-less environments.
+   * Helper to execute a sequence of actions within a MongoDB session/transaction.
+   * Default requires ACID transaction for consistency.
    */
-  async executeTransaction(callback) {
-    let session = null;
-    try {
-      if (
-        mongoose.connection.db &&
-        typeof mongoose.connection.startSession === "function"
-      ) {
-        session = await mongoose.connection.startSession();
-        session.startTransaction();
-
-        const result = await callback(session);
-
-        await session.commitTransaction();
-        session.endSession();
-        return result;
-      }
-    } catch (err) {
-      if (session) {
-        try {
-          await session.abortTransaction();
-          session.endSession();
-        } catch (_) {}
-      }
-
-      const isSessionError =
-        err.message &&
-        (err.message.includes("Transaction numbers") ||
-          err.message.includes("does not support retryable writes") ||
-          err.message.includes("replica set") ||
-          err.message.includes("IllegalOperation"));
-
-      if (!isSessionError) {
-        throw err;
-      }
-    }
-
-    // Fallback: run without transaction if MongoDB doesn't support transactions
-    return await callback(null);
+  async executeTransaction(callback, { requireTransaction = true } = {}) {
+    return await runInTransaction(callback, { requireTransaction });
   }
 
   /**

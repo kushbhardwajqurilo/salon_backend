@@ -13,6 +13,7 @@ import crypto from "crypto";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Organization } from "../../models/organizations/organization.model.js";
 import { generateInvoicePdf as createInvoicePdf } from "./invoicePdf.service.js";
+import { runInTransaction } from "../../utils/transaction.js";
 
 export class BillingService {
   /**
@@ -117,42 +118,10 @@ export class BillingService {
   }
 
   /**
-   * Transaction execution helper with standalone fallback support for testing
+   * Transaction execution helper for financial operations (payment recording, voiding)
    */
-  async executeTransaction(callback) {
-    let session = null;
-    try {
-      const topologyType = mongoose.connection.client?.topology?.description?.type;
-      const isReplicaSetOrSharded = ["ReplicaSetWithPrimary", "ReplicaSetNoPrimary", "Sharded"].includes(topologyType);
-      const isStandaloneFallbackAllowed = process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK === "true";
-
-      if (!isReplicaSetOrSharded && isStandaloneFallbackAllowed) {
-        return await callback(null);
-      }
-
-      if (
-        mongoose.connection.db &&
-        typeof mongoose.connection.startSession === "function" &&
-        isReplicaSetOrSharded
-      ) {
-        session = await mongoose.connection.startSession();
-        session.startTransaction();
-        const result = await callback(session);
-        await session.commitTransaction();
-        session.endSession();
-        return result;
-      }
-
-      return await callback(null);
-    } catch (err) {
-      if (session) {
-        try {
-          await session.abortTransaction();
-          session.endSession();
-        } catch (_) {}
-      }
-      throw err;
-    }
+  async executeTransaction(callback, { requireTransaction = true } = {}) {
+    return await runInTransaction(callback, { requireTransaction });
   }
 
   /**
