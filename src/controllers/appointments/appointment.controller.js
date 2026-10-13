@@ -30,13 +30,27 @@ export const listAppointments = asyncHandler(async (req, res) => {
     customerId,
     staffId,
     date,
+    startDate,
+    endDate,
   } = req.query;
 
   const filter = {};
   if (status) filter.status = status;
   if (customerId) filter.customerId = customerId;
   if (staffId) filter.staffId = staffId;
-  if (date) filter.appointmentDate = date;
+  if (date) {
+    filter.appointmentDate = date;
+  } else if (startDate && endDate) {
+    if (startDate === endDate) {
+      filter.appointmentDate = startDate;
+    } else {
+      filter.appointmentDate = { $gte: startDate, $lte: endDate };
+    }
+  } else if (startDate) {
+    filter.appointmentDate = { $gte: startDate };
+  } else if (endDate) {
+    filter.appointmentDate = { $lte: endDate };
+  }
 
   // Filter by customer name if provided
   const searchName = customerName || search;

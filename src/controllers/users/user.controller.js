@@ -131,23 +131,28 @@ export const createUser = asyncHandler(async (req, res) => {
     throw new AppError("Role not found", 404);
   }
 
-  // 4. Role delegation guard
-  const adminRoleObj = await mongoose
-    .model("Role")
-    .findOne({ name: req.user.role.toLowerCase() })
-    .populate("permissions");
-  const adminPermissions = adminRoleObj
-    ? adminRoleObj.permissions.map((p) => p.name)
-    : [];
-  const targetPermissions = role.permissions.map((p) => p.name);
-  const hasAllPermissions = targetPermissions.every((p) =>
-    adminPermissions.includes(p),
-  );
-  if (!hasAllPermissions) {
-    throw new AppError(
-      "Access denied. You cannot assign a role with permissions you do not possess.",
-      403,
+  // 4. Role delegation guard (Owner / org-wide access users inherently have all permissions)
+  const isOwner =
+    req.user.role?.toLowerCase() === "owner" || req.user.hasOrgWideAccess;
+
+  if (!isOwner) {
+    const adminRoleObj = await mongoose
+      .model("Role")
+      .findOne({ name: req.user.role.toLowerCase() })
+      .populate("permissions");
+    const adminPermissions = adminRoleObj
+      ? adminRoleObj.permissions.map((p) => p.name)
+      : [];
+    const targetPermissions = role.permissions.map((p) => p.name);
+    const hasAllPermissions = targetPermissions.every((p) =>
+      adminPermissions.includes(p),
     );
+    if (!hasAllPermissions) {
+      throw new AppError(
+        "Access denied. You cannot assign a role with permissions you do not possess.",
+        403,
+      );
+    }
   }
 
   // 5. Generate temporary password
@@ -198,7 +203,15 @@ export const createUser = asyncHandler(async (req, res) => {
 
 export const updateUser = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
-  const { name, username, phone, branchAccess, hasOrgWideAccess } = req.body;
+  const {
+    name,
+    username,
+    email,
+    phone,
+    roleId,
+    branchAccess,
+    hasOrgWideAccess,
+  } = req.body;
 
   // Check if user exists
   const existingUser = await userRepo.findById(req.params.id, organizationId);
@@ -220,6 +233,55 @@ export const updateUser = asyncHandler(async (req, res) => {
   }
 
   const updateData = {};
+
+  // Email update with uniqueness check
+  if (email !== undefined) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const existingWithEmail = await userRepo.findByEmail(
+      normalizedEmail,
+      organizationId,
+    );
+    if (
+      existingWithEmail &&
+      existingWithEmail._id.toString() !== req.params.id.toString()
+    ) {
+      throw new AppError("Email is already in use by another account.", 400);
+    }
+    updateData.email = normalizedEmail;
+  }
+
+  // Role update with validation and delegation guard
+  if (roleId !== undefined) {
+    const role = await Role.findById(roleId).populate("permissions");
+    if (!role) {
+      throw new AppError("Role not found", 404);
+    }
+
+    const isOwner =
+      req.user.role?.toLowerCase() === "owner" || req.user.hasOrgWideAccess;
+
+    if (!isOwner) {
+      const adminRoleObj = await mongoose
+        .model("Role")
+        .findOne({ name: req.user.role.toLowerCase() })
+        .populate("permissions");
+      const adminPermissions = adminRoleObj
+        ? adminRoleObj.permissions.map((p) => p.name)
+        : [];
+      const targetPermissions = role.permissions.map((p) => p.name);
+      const hasAllPermissions = targetPermissions.every((p) =>
+        adminPermissions.includes(p),
+      );
+      if (!hasAllPermissions) {
+        throw new AppError(
+          "Access denied. You cannot assign a role with permissions you do not possess.",
+          403,
+        );
+      }
+    }
+    updateData.role = roleId;
+  }
+
   // Cross-tenant branch references protection and branchName resolution
   if (branchAccess !== undefined) {
     if (branchAccess.length > 0) {

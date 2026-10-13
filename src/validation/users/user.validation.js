@@ -59,10 +59,17 @@ export const updateUserSchema = z.object({
           "Username can only contain lowercase letters, numbers, dots, underscores, or hyphens",
         )
         .optional(),
+      email: z
+        .string()
+        .email("Invalid email address")
+        .trim()
+        .toLowerCase()
+        .optional(),
       phone: z
         .string()
         .regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format (E.164)")
         .optional(),
+      roleId: objectIdSchema.optional(),
       branchAccess: z
         .array(
           z.object({

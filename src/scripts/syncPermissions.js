@@ -149,12 +149,24 @@ export const syncPermissionsLogic = async () => {
     `Manager role updated with ${managerPermDocs.length} permissions.`,
   );
 
-  // 4. Invalidate Cache
+  // 4. Update Receptionist Role if exists
+  const receptionistRole = await Role.findOne({ name: "receptionist" });
+  if (receptionistRole) {
+    const branchesViewPerm = await Permission.findOne({ name: "branches.view" });
+    if (branchesViewPerm && !receptionistRole.permissions.some((p) => p.toString() === branchesViewPerm._id.toString())) {
+      receptionistRole.permissions.push(branchesViewPerm._id);
+      await receptionistRole.save();
+      logger.info("Added branches.view to receptionist role.");
+    }
+  }
+
+  // 5. Invalidate Cache
   await redis.del("rbac:role:owner:permissions");
   await redis.del("rbac:role:manager:permissions");
+  await redis.del("rbac:role:receptionist:permissions");
   await redis.del("rbac:modules");
   logger.info(
-    "Owner & Manager role permissions and modules cache invalidated.",
+    "Owner, Manager & Receptionist role permissions and modules cache invalidated.",
   );
 
   // Return summary for testing/logs

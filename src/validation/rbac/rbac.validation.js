@@ -29,7 +29,7 @@ export const createRoleSchema = z.object({
       .string()
       .min(2, "Role name must be at least 2 characters")
       .trim(),
-    description: z.string().min(3, "Description must be at least 3 characters").trim(),
+    description: z.string().optional(),
   }),
 });
 
