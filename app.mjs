@@ -23,6 +23,7 @@ import auditLogRouter from "./src/routers/audit/auditLog.routes.js";
 import subscriptionRouter from "./src/routers/subscriptions/subscription.routes.js";
 import subscriptionPlanRouter from "./src/routers/subscriptions/subscriptionPlan.routes.js";
 import billingRouter from "./src/routers/billing/billing.router.js";
+import loyaltyRouter from "./src/routers/loyalty/loyalty.router.js";
 import uploadRouter from "./src/routers/upload.routes.js";
 import {
   apiLimiter,
@@ -123,6 +124,7 @@ app.use("/api/v1/audit-logs", auditLogRouter);
 app.use("/api/v1/subscriptions", subscriptionRouter);
 app.use("/api/v1/subscription-plans", subscriptionPlanRouter);
 app.use("/api/v1/billing", billingRouter);
+app.use("/api/v1/loyalty", loyaltyRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/api/v1/upload", uploadRouter);
 

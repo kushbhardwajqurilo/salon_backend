@@ -118,7 +118,10 @@ export class LeaveRepository extends BaseRepository {
     const hasStartDate = queryFilter.startDate !== undefined && queryFilter.startDate !== null && queryFilter.startDate !== "";
     const hasEndDate = queryFilter.endDate !== undefined && queryFilter.endDate !== null && queryFilter.endDate !== "";
 
-    if (hasStartDate || hasEndDate) {
+    const isStartObject = typeof queryFilter.startDate === "object" && queryFilter.startDate !== null && !(queryFilter.startDate instanceof Date);
+    const isEndObject = typeof queryFilter.endDate === "object" && queryFilter.endDate !== null && !(queryFilter.endDate instanceof Date);
+
+    if ((hasStartDate || hasEndDate) && !isStartObject && !isEndObject) {
       const parseDateSafe = (val) => {
         if (!val) return null;
         if (val instanceof Date) return Number.isNaN(val.getTime()) ? null : val;

@@ -59,6 +59,10 @@ const invoiceSchema = new mongoose.Schema(
     // Financial breakdown (NO TAX / NO GST)
     subtotal: { type: Number, required: true, min: 0 },
     discountTotal: { type: Number, required: true, min: 0, default: 0 },
+    loyaltyRedeemedPoints: { type: Number, default: 0, min: 0 },
+    loyaltyDiscountAmount: { type: Number, default: 0, min: 0 },
+    loyaltyPointsEarned: { type: Number, default: 0, min: 0 },
+    loyaltyTransactionId: { type: mongoose.Schema.Types.ObjectId, ref: "LoyaltyTransaction", default: null },
     grossPayable: { type: Number, required: true, min: 0 },
     subscriptionCoveredAmount: { type: Number, required: true, min: 0, default: 0 },
     payableAmount: { type: Number, required: true, min: 0 },

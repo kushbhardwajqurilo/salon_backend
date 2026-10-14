@@ -14,6 +14,7 @@ import { Branch } from "../../models/branches/branch.model.js";
 import { Organization } from "../../models/organizations/organization.model.js";
 import { generateInvoicePdf as createInvoicePdf } from "./invoicePdf.service.js";
 import { runInTransaction } from "../../utils/transaction.js";
+import { loyaltyService } from "../loyalty/loyalty.service.js";
 
 export class BillingService {
   /**
@@ -144,7 +145,7 @@ export class BillingService {
    * 1. CREATE DRAFT INVOICE FROM APPOINTMENT
    */
   async createInvoiceFromAppointment(data, organizationId, userId) {
-    const { appointmentId, branchId, discount, notes = "" } = data;
+    const { appointmentId, branchId, discount, redeemLoyaltyPoints, notes = "" } = data;
 
     // Load target appointment strictly scoped to organization
     const appointment = await Appointment.findOne({
@@ -240,17 +241,39 @@ export class BillingService {
     });
 
     // Discount resolution: use override if explicitly provided, else seed from appointment
-    const initialDiscount =
+    let standardDiscount =
       discount !== undefined && discount !== null
         ? Number(Number(discount).toFixed(2))
         : Number((appointmentPricingSnapshot.discount || 0).toFixed(2));
 
-    if (initialDiscount < 0) {
+    if (standardDiscount < 0) {
       throw new AppError("Discount cannot be negative", 400);
     }
 
+    // Optional loyalty redemption calculation
+    let loyaltyRedeemedPoints = 0;
+    let loyaltyDiscountAmount = 0;
+
+    if (redeemLoyaltyPoints && Number(redeemLoyaltyPoints) > 0) {
+      // Preliminary calculation to find eligible uncovered amount before loyalty
+      const preTotals = this.calculateInvoiceTotals(invoiceLines, standardDiscount);
+      const eligibleAmount = preTotals.payableAmount;
+
+      const preview = await loyaltyService.previewRedemption(
+        customer._id,
+        eligibleAmount,
+        redeemLoyaltyPoints,
+        organizationId
+      );
+
+      loyaltyRedeemedPoints = preview.appliedPoints;
+      loyaltyDiscountAmount = preview.appliedDiscount;
+    }
+
+    const totalDiscountToAllocate = Number((standardDiscount + loyaltyDiscountAmount).toFixed(2));
+
     // Calculate totals and allocate discount to uncovered lines strictly
-    const totals = this.calculateInvoiceTotals(invoiceLines, initialDiscount);
+    const totals = this.calculateInvoiceTotals(invoiceLines, totalDiscountToAllocate);
 
     const amountPaid = 0;
     const amountDue = totals.payableAmount;
@@ -270,6 +293,8 @@ export class BillingService {
       lines: invoiceLines,
       subtotal: totals.subtotal,
       discountTotal: totals.discountTotal,
+      loyaltyRedeemedPoints,
+      loyaltyDiscountAmount,
       grossPayable: totals.grossPayable,
       subscriptionCoveredAmount: totals.subscriptionCoveredAmount,
       payableAmount: totals.payableAmount,
@@ -336,17 +361,46 @@ export class BillingService {
       invoice.notes = updates.notes;
     }
 
-    if (updates.discountTotal !== undefined) {
-      const newDiscount = Number(Number(updates.discountTotal).toFixed(2));
-      if (newDiscount < 0) {
+    if (updates.discountTotal !== undefined || updates.redeemLoyaltyPoints !== undefined) {
+      let standardDiscount = updates.discountTotal !== undefined
+        ? Number(Number(updates.discountTotal).toFixed(2))
+        : (invoice.discountTotal - (invoice.loyaltyDiscountAmount || 0));
+
+      if (standardDiscount < 0) {
         throw new AppError("Discount cannot be negative", 400);
       }
 
+      let pointsToRedeem = updates.redeemLoyaltyPoints !== undefined
+        ? Number(updates.redeemLoyaltyPoints)
+        : (invoice.loyaltyRedeemedPoints || 0);
+
+      let loyaltyDiscountAmount = 0;
+      let loyaltyRedeemedPoints = 0;
+
       const lines = invoice.lines.map((l) => (l.toObject ? l.toObject() : { ...l }));
-      const totals = this.calculateInvoiceTotals(lines, newDiscount);
+
+      if (pointsToRedeem > 0) {
+        const preTotals = this.calculateInvoiceTotals(lines, standardDiscount);
+        const eligibleAmount = preTotals.payableAmount;
+
+        const preview = await loyaltyService.previewRedemption(
+          invoice.customerId,
+          eligibleAmount,
+          pointsToRedeem,
+          organizationId
+        );
+
+        loyaltyRedeemedPoints = preview.appliedPoints;
+        loyaltyDiscountAmount = preview.appliedDiscount;
+      }
+
+      const totalDiscount = Number((standardDiscount + loyaltyDiscountAmount).toFixed(2));
+      const totals = this.calculateInvoiceTotals(lines, totalDiscount);
 
       invoice.lines = lines;
       invoice.discountTotal = totals.discountTotal;
+      invoice.loyaltyRedeemedPoints = loyaltyRedeemedPoints;
+      invoice.loyaltyDiscountAmount = loyaltyDiscountAmount;
       invoice.grossPayable = totals.grossPayable;
       invoice.subscriptionCoveredAmount = totals.subscriptionCoveredAmount;
       invoice.payableAmount = totals.payableAmount;
@@ -362,100 +416,137 @@ export class BillingService {
    * 3. FINALIZE INVOICE (FREEZE FINANCIAL TOTALS)
    */
   async finalizeInvoice(id, payload, organizationId, branchId, userId) {
-    const invoice = await Invoice.findOne({
-      _id: id,
-      organizationId,
-      isDeleted: false,
+    return await this.executeTransaction(async (session) => {
+      const invoice = await Invoice.findOne({
+        _id: id,
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (!invoice) {
+        throw new AppError("Invoice not found", 404);
+      }
+
+      if (invoice.branchId.toString() !== branchId.toString()) {
+        throw new AppError("Target branchId does not match invoice branch", 400);
+      }
+
+      if (invoice.status !== "draft") {
+        throw new AppError(`Cannot finalize invoice with status '${invoice.status}'. Must be 'draft'.`, 400);
+      }
+
+      if (payload?.notes) {
+        invoice.notes = payload.notes;
+      }
+
+      // If loyalty points were redeemed on this invoice, commit them atomically
+      if (invoice.loyaltyRedeemedPoints && invoice.loyaltyRedeemedPoints > 0) {
+        const redemptionTx = await loyaltyService.commitRedemption({
+          organizationId,
+          customerId: invoice.customerId,
+          branchId,
+          invoiceId: invoice._id,
+          points: invoice.loyaltyRedeemedPoints,
+          discountAmount: invoice.loyaltyDiscountAmount,
+          actorId: userId,
+          session,
+        });
+
+        if (redemptionTx) {
+          invoice.loyaltyTransactionId = redemptionTx._id;
+        }
+      }
+
+      invoice.status = "finalized";
+      invoice.finalizedAt = new Date();
+      invoice.finalizedBy = userId;
+      invoice.paymentStatus = this.derivePaymentStatus(invoice.amountPaid, invoice.amountDue);
+
+      await invoice.save({ session });
+
+      const auditLog = new AuditLog({
+        organizationId,
+        branchId,
+        actorId: userId,
+        action: AUDIT_ACTIONS.INVOICE_FINALIZED,
+        entityType: "Invoice",
+        entityId: invoice._id,
+        description: `Invoice ${invoice.invoiceNumber} finalized`,
+        metadata: {
+          invoiceNumber: invoice.invoiceNumber,
+          payableAmount: invoice.payableAmount,
+          loyaltyRedeemedPoints: invoice.loyaltyRedeemedPoints,
+          loyaltyDiscountAmount: invoice.loyaltyDiscountAmount,
+        },
+      });
+      await auditLog.save({ session });
+
+      return invoice;
     });
-
-    if (!invoice) {
-      throw new AppError("Invoice not found", 404);
-    }
-
-    if (invoice.branchId.toString() !== branchId.toString()) {
-      throw new AppError("Target branchId does not match invoice branch", 400);
-    }
-
-    if (invoice.status !== "draft") {
-      throw new AppError(`Cannot finalize invoice with status '${invoice.status}'. Must be 'draft'.`, 400);
-    }
-
-    if (payload?.notes) {
-      invoice.notes = payload.notes;
-    }
-
-    invoice.status = "finalized";
-    invoice.finalizedAt = new Date();
-    invoice.finalizedBy = userId;
-    invoice.paymentStatus = this.derivePaymentStatus(invoice.amountPaid, invoice.amountDue);
-
-    await invoice.save();
-
-    await AuditLog.create({
-      organizationId,
-      branchId,
-      actorId: userId,
-      action: AUDIT_ACTIONS.INVOICE_FINALIZED,
-      entityType: "Invoice",
-      entityId: invoice._id,
-      description: `Invoice ${invoice.invoiceNumber} finalized`,
-      metadata: {
-        invoiceNumber: invoice.invoiceNumber,
-        payableAmount: invoice.payableAmount,
-      },
-    });
-
-    return invoice;
   }
 
   /**
    * 4. CANCEL INVOICE
    */
   async cancelInvoice(id, reason, organizationId, branchId, userId) {
-    const invoice = await Invoice.findOne({
-      _id: id,
-      organizationId,
-      isDeleted: false,
+    return await this.executeTransaction(async (session) => {
+      const invoice = await Invoice.findOne({
+        _id: id,
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (!invoice) {
+        throw new AppError("Invoice not found", 404);
+      }
+
+      if (invoice.branchId.toString() !== branchId.toString()) {
+        throw new AppError("Target branchId does not match invoice branch", 400);
+      }
+
+      if (invoice.status === "cancelled") {
+        throw new AppError("Invoice is already cancelled", 400);
+      }
+
+      if (invoice.amountPaid > 0) {
+        throw new AppError("Cannot cancel an invoice with recorded payments. Void all payments first.", 400);
+      }
+
+      // Restore redeemed loyalty points if any were consumed on finalization
+      if (invoice.loyaltyRedeemedPoints && invoice.loyaltyRedeemedPoints > 0) {
+        await loyaltyService.restoreRedemptionForCancelledInvoice({
+          invoice,
+          actorId: userId,
+          reason,
+          session,
+        });
+      }
+
+      invoice.status = "cancelled";
+      invoice.cancelledAt = new Date();
+      invoice.cancelledBy = userId;
+      invoice.cancellationReason = reason;
+
+      await invoice.save({ session });
+
+      const auditLog = new AuditLog({
+        organizationId,
+        branchId,
+        actorId: userId,
+        action: AUDIT_ACTIONS.INVOICE_CANCELLED,
+        entityType: "Invoice",
+        entityId: invoice._id,
+        description: `Invoice ${invoice.invoiceNumber} cancelled`,
+        metadata: {
+          invoiceNumber: invoice.invoiceNumber,
+          reason,
+          loyaltyRestored: invoice.loyaltyRedeemedPoints || 0,
+        },
+      });
+      await auditLog.save({ session });
+
+      return invoice;
     });
-
-    if (!invoice) {
-      throw new AppError("Invoice not found", 404);
-    }
-
-    if (invoice.branchId.toString() !== branchId.toString()) {
-      throw new AppError("Target branchId does not match invoice branch", 400);
-    }
-
-    if (invoice.status === "cancelled") {
-      throw new AppError("Invoice is already cancelled", 400);
-    }
-
-    if (invoice.amountPaid > 0) {
-      throw new AppError("Cannot cancel an invoice with recorded payments. Void all payments first.", 400);
-    }
-
-    invoice.status = "cancelled";
-    invoice.cancelledAt = new Date();
-    invoice.cancelledBy = userId;
-    invoice.cancellationReason = reason;
-
-    await invoice.save();
-
-    await AuditLog.create({
-      organizationId,
-      branchId,
-      actorId: userId,
-      action: AUDIT_ACTIONS.INVOICE_CANCELLED,
-      entityType: "Invoice",
-      entityId: invoice._id,
-      description: `Invoice ${invoice.invoiceNumber} cancelled`,
-      metadata: {
-        invoiceNumber: invoice.invoiceNumber,
-        reason,
-      },
-    });
-
-    return invoice;
   }
 
   /**
@@ -635,6 +726,16 @@ export class BillingService {
       });
       await auditLog.save({ session });
 
+      // If invoice has now reached fully settled 'paid' status, award loyalty points atomically
+      if (updatedInvoice.paymentStatus === "paid") {
+        await loyaltyService.awardPointsForSettledInvoice({
+          invoice: updatedInvoice,
+          payment: paymentDoc,
+          actorId: userId,
+          session,
+        });
+      }
+
       return {
         payment: paymentDoc,
         invoice: updatedInvoice,
@@ -720,6 +821,16 @@ export class BillingService {
         },
       });
       await auditLog.save({ session });
+
+      // If the invoice was previously paid/settled, reverse any earned loyalty points atomically
+      if (invoice.paymentStatus === "paid" && updatedInvoice.paymentStatus !== "paid") {
+        await loyaltyService.reverseEarningForVoidedPayment({
+          invoice: updatedInvoice,
+          payment,
+          actorId: userId,
+          session,
+        });
+      }
 
       return {
         payment,

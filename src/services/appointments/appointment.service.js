@@ -478,12 +478,12 @@ export class AppointmentService {
       );
     }
 
-    // 2. Leave check (using existing Leave model rules)
+    // 2. Leave check (only approved leaves block appointment booking)
     const leaveExists = await Leave.findOne({
       organizationId,
       staffId,
       dates: dateStr,
-      status: { $in: ["pending", "approved"] },
+      status: "approved",
     });
 
     if (leaveExists) {

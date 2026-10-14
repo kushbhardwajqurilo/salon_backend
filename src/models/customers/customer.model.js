@@ -39,6 +39,10 @@ const customerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    loyaltyPointsDebt: {
+      type: Number,
+      default: 0,
+    },
     gender: {
       type: String,
       enum: ["male", "female", "other", "prefer_not_to_say"],

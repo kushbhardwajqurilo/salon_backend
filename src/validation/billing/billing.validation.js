@@ -10,6 +10,7 @@ export const createInvoiceSchema = z.object({
     branchId: objectIdSchema,
     appointmentId: objectIdSchema,
     discount: z.coerce.number().min(0, "Discount must be non-negative").optional(),
+    redeemLoyaltyPoints: z.coerce.number().int().min(0, "redeemLoyaltyPoints must be non-negative").optional(),
     notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional().default(""),
   }),
 });
@@ -19,9 +20,10 @@ export const updateDraftInvoiceSchema = z.object({
     .object({
       branchId: objectIdSchema.optional(),
       discountTotal: z.coerce.number().min(0, "Discount must be non-negative").optional(),
+      redeemLoyaltyPoints: z.coerce.number().int().min(0, "redeemLoyaltyPoints must be non-negative").optional(),
       notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional(),
     })
-    .strict("Only discountTotal and notes may be modified on a draft invoice"),
+    .strict("Only discountTotal, redeemLoyaltyPoints, and notes may be modified on a draft invoice"),
 });
 
 export const finalizeInvoiceSchema = z.object({
