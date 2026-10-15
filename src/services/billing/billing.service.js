@@ -991,6 +991,204 @@ export class BillingService {
       invoice,
     };
   }
+
+  /**
+   * Authoritative POS Checkout Queue Aggregation.
+   * Returns appointments waiting for billing at the counter (status in_progress or completed)
+   * that do not have an active (non-cancelled, non-deleted) invoice.
+   */
+  async getCheckoutQueue({ organizationId, branchId, date }) {
+    const matchStage = {
+      organizationId: new mongoose.Types.ObjectId(organizationId),
+      status: { $in: ["in_progress", "completed"] },
+      isDeleted: { $ne: true },
+    };
+
+    if (branchId) {
+      matchStage.branchId = new mongoose.Types.ObjectId(branchId);
+    }
+
+    if (date) {
+      matchStage.$or = [{ appointmentDate: date }, { date: date }];
+    } else {
+      // Default to today's date in YYYY-MM-DD (UTC/local ISO string)
+      const todayStr = new Date().toISOString().split("T")[0];
+      matchStage.$or = [{ appointmentDate: todayStr }, { date: todayStr }];
+    }
+
+    const pipeline = [
+      { $match: matchStage },
+
+      // Left outer join against the Invoices collection
+      {
+        $lookup: {
+          from: "invoices",
+          let: { aptId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$appointmentId", "$$aptId"] },
+                    { $ne: ["$status", "cancelled"] },
+                    { $ne: ["$isDeleted", true] },
+                  ],
+                },
+              },
+            },
+            { $project: { _id: 1, status: 1, paymentStatus: 1 } },
+          ],
+          as: "activeInvoices",
+        },
+      },
+
+      // Anti-join: Keep only appointments without any active invoice
+      {
+        $match: {
+          activeInvoices: { $size: 0 },
+        },
+      },
+
+      // Populate Customer info
+      {
+        $lookup: {
+          from: "customers",
+          localField: "customerId",
+          foreignField: "_id",
+          as: "customerDoc",
+        },
+      },
+      { $unwind: { path: "$customerDoc", preserveNullAndEmptyArrays: true } },
+
+      // Populate Staff info
+      {
+        $lookup: {
+          from: "staffs",
+          localField: "staffId",
+          foreignField: "_id",
+          as: "staffDoc",
+        },
+      },
+      { $unwind: { path: "$staffDoc", preserveNullAndEmptyArrays: true } },
+
+      // Sort: 'completed' first, then startTime descending
+      {
+        $addFields: {
+          statusOrder: {
+            $cond: [{ $eq: ["$status", "completed"] }, 0, 1],
+          },
+        },
+      },
+      {
+        $sort: {
+          statusOrder: 1,
+          startTime: -1,
+        },
+      },
+
+      // Format output fields according to API specification
+      {
+        $project: {
+          _id: 1,
+          appointmentCode: 1,
+          status: 1,
+          bookingType: 1,
+          date: { $ifNull: ["$appointmentDate", "$date"] },
+          startTime: 1,
+          customer: {
+            $cond: [
+              { $ifNull: ["$customerDoc", false] },
+              {
+                id: { $toString: "$customerDoc._id" },
+                name: "$customerDoc.name",
+                phone: "$customerDoc.phone",
+              },
+              null,
+            ],
+          },
+          staff: {
+            $cond: [
+              { $ifNull: ["$staffDoc", false] },
+              {
+                id: { $toString: "$staffDoc._id" },
+                name: "$staffDoc.name",
+              },
+              null,
+            ],
+          },
+          services: {
+            $map: {
+              input: "$services",
+              as: "svc",
+              in: {
+                serviceId: { $toString: "$$svc.serviceId" },
+                name: "$$svc.name",
+                duration: "$$svc.duration",
+                price: "$$svc.price",
+                appliedSubscriptionId: {
+                  $cond: [
+                    { $ifNull: ["$$svc.appliedSubscriptionId", false] },
+                    { $toString: "$$svc.appliedSubscriptionId" },
+                    null,
+                  ],
+                },
+                isRedeemedViaSubscription: {
+                  $ifNull: ["$$svc.isRedeemedViaSubscription", false],
+                },
+              },
+            },
+          },
+          pricing: {
+            subtotal: "$pricing.subtotal",
+            discount: "$pricing.discount",
+            total: "$pricing.total",
+          },
+          estimatedPayable: {
+            $ifNull: [
+              "$pricing.total",
+              { $subtract: ["$pricing.subtotal", { $ifNull: ["$pricing.discount", 0] }] },
+            ],
+          },
+        },
+      },
+    ];
+
+    const results = await Appointment.aggregate(pipeline);
+
+    let completedCount = 0;
+    let inProgressCount = 0;
+
+    const formattedData = results.map((item) => {
+      if (item.status === "completed") {
+        completedCount++;
+      } else if (item.status === "in_progress") {
+        inProgressCount++;
+      }
+
+      return {
+        id: item._id.toString(),
+        appointmentCode: item.appointmentCode,
+        status: item.status,
+        bookingType: item.bookingType,
+        date: item.date,
+        startTime: item.startTime,
+        customer: item.customer,
+        staff: item.staff,
+        services: item.services,
+        pricing: item.pricing,
+        estimatedPayable: item.estimatedPayable,
+      };
+    });
+
+    return {
+      data: formattedData,
+      meta: {
+        total: formattedData.length,
+        completedCount,
+        inProgressCount,
+      },
+    };
+  }
 }
 
 export const billingService = new BillingService();

@@ -155,6 +155,8 @@ const appointmentSchema = new mongoose.Schema(
 
 // Indexes
 appointmentSchema.index({ organizationId: 1, branchId: 1, startAt: 1 });
+appointmentSchema.index({ organizationId: 1, branchId: 1, status: 1, appointmentDate: 1 });
+appointmentSchema.index({ organizationId: 1, status: 1, appointmentDate: 1 });
 appointmentSchema.index(
   { organizationId: 1, appointmentCode: 1 },
   { unique: true, partialFilterExpression: { isDeleted: false } },

@@ -126,7 +126,14 @@ export const requirePermission = (requiredPermission) => {
       permissions = roleObj.permissions.map((p) => p.name);
     }
 
-    const hasPermission = permissions.includes(requiredPermission);
+    const requiredList = Array.isArray(requiredPermission)
+      ? requiredPermission
+      : [requiredPermission];
+
+    const hasPermission = requiredList.some((perm) =>
+      permissions.includes(perm)
+    );
+
     if (!hasPermission) {
       throw new AppError(
         "Access denied. You do not have the required permissions.",

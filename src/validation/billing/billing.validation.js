@@ -115,3 +115,13 @@ export const listInvoicesQuerySchema = z.object({
     }),
 });
 
+export const getCheckoutQueueQuerySchema = z.object({
+  query: z.object({
+    branchId: objectIdSchema.optional(),
+    date: z
+      .string()
+      .regex(dateOnlyRegex, "Invalid date format (YYYY-MM-DD)")
+      .optional(),
+  }),
+});
+

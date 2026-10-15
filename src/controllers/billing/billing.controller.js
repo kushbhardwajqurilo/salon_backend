@@ -192,3 +192,21 @@ export const getInvoicePdf = asyncHandler(async (req, res) => {
 
   res.status(200).send(pdfBuffer);
 });
+
+export const getCheckoutQueue = asyncHandler(async (req, res) => {
+  const { date, branchId } = req.query;
+  const effectiveBranchId = branchId || req.branchId;
+
+  const result = await billingService.getCheckoutQueue({
+    organizationId: req.user.organizationId,
+    branchId: effectiveBranchId,
+    date,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Checkout queue retrieved successfully",
+    data: result.data,
+    meta: result.meta,
+  });
+});

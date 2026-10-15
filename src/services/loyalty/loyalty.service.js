@@ -180,6 +180,19 @@ export class LoyaltyService {
       };
     }
 
+    if (calculatedEligibleAmount <= 0) {
+      return {
+        isEligible: false,
+        reason: "Bill amount must be greater than zero to redeem loyalty points",
+        availablePoints,
+        maxRedeemablePoints: 0,
+        maxRedemptionDiscount: 0,
+        appliedPoints: 0,
+        appliedDiscount: 0,
+        effectivePayable: 0,
+      };
+    }
+
     // Maximum discount in currency allowed by percentage cap
     const maxDiscountAllowed = Number(
       ((calculatedEligibleAmount * config.maxRedemptionPercentage) / 100).toFixed(2)
@@ -193,9 +206,12 @@ export class LoyaltyService {
     const maxRedemptionDiscount = Number((maxRedeemablePoints * config.redemptionRate).toFixed(2));
 
     if (maxRedeemablePoints < config.minRedemptionPoints) {
+      const minBillRequired = Math.ceil(
+        (config.minRedemptionPoints * config.redemptionRate * 100) / config.maxRedemptionPercentage
+      );
       return {
         isEligible: false,
-        reason: `Maximum allowed redemption (${maxRedeemablePoints} points) is below minimum threshold of ${config.minRedemptionPoints} points for this bill value`,
+        reason: `Bill amount of ₹${calculatedEligibleAmount} allows maximum redemption of ${pointsForMaxDiscount} points (${config.maxRedemptionPercentage}% cap), which is below the minimum redemption requirement of ${config.minRedemptionPoints} points (minimum bill amount required: ₹${minBillRequired})`,
         availablePoints,
         maxRedeemablePoints: 0,
         maxRedemptionDiscount: 0,

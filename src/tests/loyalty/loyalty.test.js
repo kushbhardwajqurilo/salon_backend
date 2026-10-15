@@ -519,6 +519,74 @@ describe("Loyalty Module Comprehensive Test Suite", () => {
       expect(ledger.balanceAfter).toBe(40);
     });
 
+    it("3.3b updating draft invoice via PATCH with discountTotal and redeemLoyaltyPoints recalculates correctly and deducts points on finalization", async () => {
+      const apt = await createTestAppointment();
+
+      // Create draft invoice with initial manual discount of 50
+      const createRes = await request(app)
+        .post("/api/v1/billing/invoices")
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString())
+        .send({
+          appointmentId: apt._id.toString(),
+          discount: 50,
+        });
+
+      const invoiceId = createRes.body.data.id;
+      expect(createRes.body.data.discountTotal).toBe(50);
+      expect(createRes.body.data.payableAmount).toBe(1950);
+
+      // Customer points should still be 100
+      expect((await Customer.findById(customerA._id)).loyaltyPoints).toBe(100);
+
+      // PATCH draft invoice updating manual discountTotal to 100 and redeemLoyaltyPoints to 40
+      const updateRes = await request(app)
+        .patch(`/api/v1/billing/invoices/${invoiceId}`)
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString())
+        .send({
+          discountTotal: 100,
+          redeemLoyaltyPoints: 40,
+        });
+
+      expect(updateRes.status).toBe(200);
+      const updated = updateRes.body.data;
+      // Subtotal = 2000
+      // Manual discount = 100, Loyalty discount (40 pts * ₹1) = 40 => Total discount = 140
+      expect(updated.subtotal).toBe(2000);
+      expect(updated.discountTotal).toBe(140);
+      expect(updated.loyaltyRedeemedPoints).toBe(40);
+      expect(updated.loyaltyDiscountAmount).toBe(40);
+      expect(updated.payableAmount).toBe(1860);
+      expect(updated.amountDue).toBe(1860);
+      expect(updated.paymentStatus).toBe("unpaid");
+
+      // Points still NOT deducted on draft update
+      expect((await Customer.findById(customerA._id)).loyaltyPoints).toBe(100);
+
+      // Finalize the invoice
+      const finalRes = await request(app)
+        .post(`/api/v1/billing/invoices/${invoiceId}/finalize`)
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString())
+        .send({});
+
+      expect(finalRes.status).toBe(200);
+      expect(finalRes.body.data.status).toBe("finalized");
+
+      // Now customer points must be deducted: 100 - 40 = 60
+      expect((await Customer.findById(customerA._id)).loyaltyPoints).toBe(60);
+
+      const ledger = await LoyaltyTransaction.findOne({
+        invoiceId,
+        type: LOYALTY_TRANSACTION_TYPES.REDEEMED,
+      });
+      expect(ledger).toBeTruthy();
+      expect(ledger.pointsDelta).toBe(-40);
+      expect(ledger.balanceBefore).toBe(100);
+      expect(ledger.balanceAfter).toBe(60);
+    });
+
     it("3.4 cancelling finalized invoice with redeemed points restores customer points atomically", async () => {
       const apt = await createTestAppointment();
 

@@ -12,6 +12,7 @@ import {
   recordPaymentSchema,
   voidPaymentSchema,
   listInvoicesQuerySchema,
+  getCheckoutQueueQuerySchema,
 } from "../../validation/billing/billing.validation.js";
 import {
   createInvoice,
@@ -24,6 +25,7 @@ import {
   listInvoices,
   getPaymentsByInvoiceId,
   getInvoicePdf,
+  getCheckoutQueue,
 } from "../../controllers/billing/billing.controller.js";
 
 const router = express.Router();
@@ -68,6 +70,15 @@ const validateMutationBranch = asyncHandler(async (req, res, next) => {
 // All billing endpoints require authentication and organization scope
 router.use(authenticate);
 router.use(requireOrganizationScope);
+
+// POS Checkout Queue
+router.get(
+  "/checkout-queue",
+  requireBranchScope,
+  validate(getCheckoutQueueQuerySchema),
+  requirePermission(["billing.view", "billing.checkout"]),
+  getCheckoutQueue
+);
 
 // Invoices
 router.post(
