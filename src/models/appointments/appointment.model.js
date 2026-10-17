@@ -74,7 +74,10 @@ const appointmentSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    startedAt: { type: Date, default: null },
+    arrivedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
+    version: { type: Number, default: 1 },
 
     bookingType: { type: String, enum: ["advance", "walk_in"], required: true },
     pricing: {
@@ -155,7 +158,12 @@ const appointmentSchema = new mongoose.Schema(
 
 // Indexes
 appointmentSchema.index({ organizationId: 1, branchId: 1, startAt: 1 });
-appointmentSchema.index({ organizationId: 1, branchId: 1, status: 1, appointmentDate: 1 });
+appointmentSchema.index({
+  organizationId: 1,
+  branchId: 1,
+  status: 1,
+  appointmentDate: 1,
+});
 appointmentSchema.index({ organizationId: 1, status: 1, appointmentDate: 1 });
 appointmentSchema.index(
   { organizationId: 1, appointmentCode: 1 },
@@ -171,6 +179,7 @@ appointmentSchema.index(
       isDeleted: false,
       status: { $in: ["scheduled", "in_progress"] },
       staffId: { $type: "objectId" },
+      slotMinutes: { $type: "string" },
     },
   },
 );

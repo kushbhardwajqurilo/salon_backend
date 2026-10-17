@@ -13,6 +13,8 @@ import {
   triggerReminderSchema,
   requestConsumptionOtpSchema,
   completeAppointmentWithSubscriptionSchema,
+  previewServiceModificationSchema,
+  commitServiceModificationSchema,
 } from "../../validation/appointments/appointment.validation.js";
 import {
   createAppointment,
@@ -26,6 +28,8 @@ import {
   triggerReminder,
   requestConsumptionOTP,
   completeWithSubscription,
+  previewServiceModification,
+  commitServiceModification,
 } from "../../controllers/appointments/appointment.controller.js";
 import { asyncHandler } from "../../utils/errors.js";
 import { AppError } from "../../utils/errors.js";
@@ -123,9 +127,24 @@ router.patch(
   validate(updateAppointmentStatusSchema),
   validateMutationBranch,
   asyncHandler(async (req, res, next) => {
-    // Dynamic permission check: status 'cancelled' requires appointments.cancel or update_status
-    const requiredPermission = req.body.status === "cancelled" ? "appointments.cancel" : "appointments.update_status";
-    return requirePermission(requiredPermission)(req, res, next);
+    // Dynamic permission check:
+    // 1. status 'cancelled' requires appointments.cancel or update_status
+    const basePermission = req.body.status === "cancelled" ? "appointments.cancel" : "appointments.update_status";
+    
+    // 2. forceEarlyStart requires dedicated appointments.force_early_start permission
+    const requiredPermissions = [basePermission];
+    if (req.body.forceEarlyStart) {
+      requiredPermissions.push("appointments.force_early_start");
+    }
+
+    // Check base permission first
+    return requirePermission(basePermission)(req, res, async (err) => {
+      if (err) return next(err);
+      if (req.body.forceEarlyStart) {
+        return requirePermission("appointments.force_early_start")(req, res, next);
+      }
+      next();
+    });
   }),
   updateStatus
 );
@@ -162,6 +181,23 @@ router.post(
   requirePermission("appointments.update_status"),
   requirePermission("subscriptions.redeem"),
   completeWithSubscription
+);
+
+// Service Modification & Cascading Rescheduling Flow
+router.post(
+  "/:id/services/preview",
+  validateMutationBranch,
+  validate(previewServiceModificationSchema),
+  requirePermission("appointments.edit"),
+  previewServiceModification
+);
+
+router.post(
+  "/:id/services/commit",
+  validateMutationBranch,
+  validate(commitServiceModificationSchema),
+  requirePermission("appointments.edit"),
+  commitServiceModification
 );
 
 export default router;

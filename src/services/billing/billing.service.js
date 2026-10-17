@@ -1011,8 +1011,19 @@ export class BillingService {
     if (date) {
       matchStage.$or = [{ appointmentDate: date }, { date: date }];
     } else {
-      // Default to today's date in YYYY-MM-DD (UTC/local ISO string)
-      const todayStr = new Date().toISOString().split("T")[0];
+      // Default to today's date in YYYY-MM-DD interpreted in Branch Timezone
+      let tz = "Asia/Kolkata";
+      if (branchId) {
+        const branchDoc = await Branch.findOne({ _id: branchId, organizationId }).lean();
+        if (branchDoc?.timezone) tz = branchDoc.timezone;
+      }
+      const formatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone: tz,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      const todayStr = formatter.format(new Date());
       matchStage.$or = [{ appointmentDate: todayStr }, { date: todayStr }];
     }
 
@@ -1092,6 +1103,7 @@ export class BillingService {
           _id: 1,
           appointmentCode: 1,
           status: 1,
+          branchId: 1,
           bookingType: 1,
           date: { $ifNull: ["$appointmentDate", "$date"] },
           startTime: 1,
@@ -1177,6 +1189,7 @@ export class BillingService {
         services: item.services,
         pricing: item.pricing,
         estimatedPayable: item.estimatedPayable,
+        branchId: item.branchId ? item?.branchId?.toString() : (branchId ? branchId.toString() : null),
       };
     });
 

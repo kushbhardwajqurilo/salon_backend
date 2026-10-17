@@ -217,3 +217,36 @@ export const completeWithSubscription = asyncHandler(async (req, res) => {
     appointment,
   );
 });
+
+export const previewServiceModification = asyncHandler(async (req, res) => {
+  const result = await appointmentService.previewServiceModification(
+    req.params.id,
+    req.body,
+    req.organizationId,
+  );
+  return sendResponse(
+    res,
+    200,
+    "Service modification proposal and cascade schedule preview generated",
+    result,
+  );
+});
+
+export const commitServiceModification = asyncHandler(async (req, res) => {
+  const result = await appointmentService.commitServiceModification(
+    req.params.id,
+    req.body,
+    req.organizationId,
+    req.user?.id || req.user?._id,
+  );
+  return sendResponse(
+    res,
+    200,
+    result.message,
+    {
+      initiatingAppointment: result.initiatingAppointment,
+      shiftedAppointments: result.shiftedAppointments,
+    },
+  );
+});
+

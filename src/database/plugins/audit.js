@@ -1,6 +1,9 @@
 import mongoose from "mongoose";
 
 export const auditPlugin = (schema) => {
+  if (schema.options._id === false) {
+    return;
+  }
   // Add fields
   schema.add({
     isDeleted: {

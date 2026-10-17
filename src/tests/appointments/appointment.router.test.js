@@ -39,6 +39,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_apt_test");
     }
     dbConnection = await mongoose.connect(testUri);
+    await Appointment.syncIndexes();
   });
 
   afterAll(async () => {
@@ -57,6 +58,18 @@ describe("Appointment Module Comprehensive Test Suite", () => {
   });
 
   beforeEach(async () => {
+    await Appointment.deleteMany({});
+    await Leave.deleteMany({});
+    await Service.deleteMany({});
+    await ServiceCategory.deleteMany({});
+    await Staff.deleteMany({});
+    await Customer.deleteMany({});
+    await User.deleteMany({});
+    await Role.deleteMany({});
+    await Permission.deleteMany({});
+    await Branch.deleteMany({});
+    await Organization.deleteMany({});
+
     // 1. Create Organization & Branches
     const org = await Organization.create({ name: "Appointment Test Salon Org" });
     orgId = org._id;
@@ -78,6 +91,8 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       "appointments.cancel",
       "appointments.delete",
       "appointments.reminders.send",
+      "appointments.edit",
+      "appointments.force_early_start",
     ];
 
     const perms = await Promise.all(
@@ -353,7 +368,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       expect(res.body.message).toContain("on leave");
     });
 
-    it("supports walk-in appointment creation with immediate in_progress status", async () => {
+    it("supports walk-in appointment creation with scheduled status and recorded arrivedAt", async () => {
       const today = new Date();
       const yyyy = today.getFullYear();
       const mm = String(today.getMonth() + 1).padStart(2, "0");
@@ -374,7 +389,9 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         });
 
       expect(res.status).toBe(201);
-      expect(res.body.data.status).toBe("in_progress");
+      expect(res.body.data.status).toBe("scheduled");
+      expect(res.body.data.arrivedAt).toBeDefined();
+      expect(new Date(res.body.data.arrivedAt).getTime()).not.toBeNaN();
     });
   });
 
@@ -608,8 +625,8 @@ describe("Appointment Module Comprehensive Test Suite", () => {
 
       const aptId = createRes.body.data.id;
 
-      // 1. scheduled -> in_progress
-      const startRes = await request(app)
+      // 1. scheduled -> in_progress (future appointment requires forceEarlyStart or starting within window)
+      const rejectFutureStart = await request(app)
         .patch(`/api/v1/appointments/${aptId}/status`)
         .set("Authorization", `Bearer ${ownerToken}`)
         .send({
@@ -617,8 +634,22 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           status: "in_progress",
         });
 
+      expect(rejectFutureStart.status).toBe(400);
+      expect(rejectFutureStart.body.message).toContain("Cannot start future appointment early");
+
+      // Now start with forceEarlyStart: true
+      const startRes = await request(app)
+        .patch(`/api/v1/appointments/${aptId}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          status: "in_progress",
+          forceEarlyStart: true,
+        });
+
       expect(startRes.status).toBe(200);
       expect(startRes.body.data.status).toBe("in_progress");
+      expect(startRes.body.data.startedAt).toBeDefined();
 
       // 2. in_progress -> completed
       const completeRes = await request(app)
@@ -653,7 +684,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       await request(app)
         .patch(`/api/v1/appointments/${aptId}/status`)
         .set("Authorization", `Bearer ${ownerToken}`)
-        .send({ branchId: branchAId.toString(), status: "in_progress" });
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
 
       await request(app)
         .patch(`/api/v1/appointments/${aptId}/status`)
@@ -1004,4 +1035,640 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       expect(res.body.message).toMatch(/invalid, inactive, or belong to a different organization/i);
     });
   });
+
+  describe("Cascading Rescheduling Engine & Service Modifications", () => {
+    it("previews service modification extending in-progress appointment and detects affected subsequent bookings", async () => {
+      const targetDate = "2026-11-20";
+
+      // 1. Create first appointment (10:00 - 10:45)
+      const apt1Res = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString(), customPrice: 1500 }],
+          appointmentDate: targetDate,
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+      expect(apt1Res.status).toBe(201);
+      const apt1Id = apt1Res.body.data.id;
+
+      // 2. Create second appointment immediately following (10:45 - 11:30)
+      const apt2Res = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          appointmentDate: targetDate,
+          startTime: "10:45",
+          bookingType: "advance",
+        });
+      expect(apt2Res.status).toBe(201);
+      const apt2Id = apt2Res.body.data.id;
+
+      // Transition apt1 to in_progress with forceEarlyStart
+      await request(app)
+        .patch(`/api/v1/appointments/${apt1Id}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
+
+      // 3. Preview adding serviceColor (60 mins) to apt1
+      const previewRes = await request(app)
+        .post(`/api/v1/appointments/${apt1Id}/services/preview`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          services: [
+            { serviceId: serviceHaircut._id.toString() }, // Agreed price 1500 should be preserved
+            { serviceId: serviceColor._id.toString(), customPrice: 2000 },
+          ],
+        });
+
+      expect(previewRes.status).toBe(200);
+      expect(previewRes.body.data.previewToken).toBeDefined();
+      expect(previewRes.body.data.canCommit).toBe(true);
+      expect(previewRes.body.data.initiatingAppointment.services[0].price).toBe(1500); // Preserved customPrice
+      expect(previewRes.body.data.initiatingAppointment.services[1].price).toBe(2000);
+      expect(previewRes.body.data.affectedAppointments.length).toBe(1);
+      expect(previewRes.body.data.affectedAppointments[0].id).toBe(apt2Id);
+      expect(previewRes.body.data.affectedAppointments[0].reason).toContain("Cascaded");
+
+      const previewToken = previewRes.body.data.previewToken;
+
+      // 4. Commit the cascade
+      const commitRes = await request(app)
+        .post(`/api/v1/appointments/${apt1Id}/services/commit`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          previewToken,
+          services: [
+            { serviceId: serviceHaircut._id.toString() },
+            { serviceId: serviceColor._id.toString(), customPrice: 2000 },
+          ],
+        });
+
+      if (commitRes.status !== 200) {
+        console.error("COMMIT ERROR:", JSON.stringify(commitRes.body, null, 2));
+      }
+      expect(commitRes.status).toBe(200);
+      expect(commitRes.body.message).toContain("committed successfully");
+
+      // Verify apt2 has shifted start time
+      const updatedApt2 = await Appointment.findById(apt2Id);
+      expect(updatedApt2.startTime).not.toBe("10:45");
+      expect(new Date(updatedApt2.startAt).getTime()).toBeGreaterThan(new Date(`${targetDate}T10:45:00`).getTime());
+
+      // 5. Re-committing with the same preview token should fail with 409 (Stale Proposal)
+      const staleCommitRes = await request(app)
+        .post(`/api/v1/appointments/${apt1Id}/services/commit`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          previewToken,
+          services: [
+            { serviceId: serviceHaircut._id.toString() },
+            { serviceId: serviceColor._id.toString() },
+          ],
+        });
+      expect(staleCommitRes.status).toBe(409);
+      expect(staleCommitRes.body.message).toContain("stale");
+    });
+
+    it("rejects forceEarlyStart if user lacks appointments.force_early_start permission", async () => {
+      // Create a staff-level role with appointments.update_status only
+      const staffPerms = await Permission.find({
+        name: { $in: ["appointments.view", "appointments.update_status"] },
+      });
+      const staffRole = await Role.create({
+        name: "staff_member",
+        permissions: staffPerms.map((p) => p._id),
+      });
+      const staffUser = await User.create({
+        name: "Regular Staff",
+        email: `staff_${Date.now()}@salon.com`,
+        phone: "+919876500000",
+        password: "Password@123",
+        role: staffRole._id,
+        organizationId: orgId,
+        status: "active",
+        hasOrgWideAccess: false,
+        branchAccess: [{ branchId: branchAId, branchName: "Branch Downtown", isActive: true }],
+      });
+      const staffToken = jwt.sign({ id: staffUser._id, role: "staff_member" }, env.JWT_SECRET, { expiresIn: "1h" });
+
+      // Create future appointment
+      const futureAptRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          appointmentDate: "2026-11-25",
+          startTime: "14:00",
+          bookingType: "advance",
+        });
+      expect(futureAptRes.status).toBe(201);
+      const futureAptId = futureAptRes.body.data.id;
+
+      // Staff user attempts forceEarlyStart -> should be rejected with 403 Forbidden
+      const unauthorizedRes = await request(app)
+        .patch(`/api/v1/appointments/${futureAptId}/status`)
+        .set("Authorization", `Bearer ${staffToken}`)
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
+
+      expect(unauthorizedRes.status).toBe(403);
+      expect(unauthorizedRes.body.message).toMatch(/permission/i);
+
+      // Owner (has appointments.force_early_start) -> succeeds
+      const authorizedRes = await request(app)
+        .patch(`/api/v1/appointments/${futureAptId}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
+
+      expect(authorizedRes.status).toBe(200);
+      expect(authorizedRes.body.data.status).toBe("in_progress");
+    });
+
+    it("detects conflict when cascading reschedule extends beyond branch closing hours", async () => {
+      // Set branch operating hours: 09:00 - 12:00 on Friday
+      await Branch.findByIdAndUpdate(branchAId, {
+        operatingHours: {
+          friday: { openTime: "09:00", closeTime: "12:00", isOpen: true },
+        },
+      });
+
+      const targetDate = "2026-11-20"; // Friday
+
+      const apt1Res = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          appointmentDate: targetDate,
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+      const apt1Id = apt1Res.body.data.id;
+
+      // Followed by apt2: 10:45 - 11:45 (60 min)
+      await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceColor._id.toString() }],
+          appointmentDate: targetDate,
+          startTime: "10:45",
+          bookingType: "advance",
+        });
+
+      // Put apt1 in progress
+      await request(app)
+        .patch(`/api/v1/appointments/${apt1Id}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
+
+      // Add a 60 min service to apt1 -> apt1 will now end around 11:45
+      // Shifting apt2 (60 min) will push apt2 to end at ~12:45, exceeding 12:00 closing time!
+      const previewRes = await request(app)
+        .post(`/api/v1/appointments/${apt1Id}/services/preview`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          services: [
+            { serviceId: serviceHaircut._id.toString() },
+            { serviceId: serviceColor._id.toString() },
+          ],
+        });
+
+      expect(previewRes.status).toBe(200);
+      expect(previewRes.body.data.canCommit).toBe(false);
+      expect(previewRes.body.data.conflicts.length).toBeGreaterThanOrEqual(1);
+      expect(previewRes.body.data.conflicts[0].reason).toContain("exceeds branch closing time");
+    });
+
+    it("factors branch bufferMinutes into cascading reschedule slots", async () => {
+      // Configure 15 minutes turnaround buffer on Branch
+      await Branch.findByIdAndUpdate(branchAId, {
+        bufferMinutes: 15,
+        operatingHours: null,
+      });
+
+      const targetDate = "2026-11-20";
+
+      const apt1Res = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }], // 30 min + 15 min buffer = 45 min
+          appointmentDate: targetDate,
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+      const apt1Id = apt1Res.body.data.id;
+
+      const apt2Res = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          appointmentDate: targetDate,
+          startTime: "11:00",
+          bookingType: "advance",
+        });
+      const apt2Id = apt2Res.body.data.id;
+
+      // Start apt1
+      await request(app)
+        .patch(`/api/v1/appointments/${apt1Id}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
+
+      // Extend apt1 with 60 min service (ends at 11:30)
+      // With 15 min buffer, apt2 should be cascaded to start at 11:45
+      const previewRes = await request(app)
+        .post(`/api/v1/appointments/${apt1Id}/services/preview`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          services: [
+            { serviceId: serviceHaircut._id.toString() },
+            { serviceId: serviceColor._id.toString() },
+          ],
+        });
+
+      expect(previewRes.status).toBe(200);
+      expect(previewRes.body.data.canCommit).toBe(true);
+      expect(previewRes.body.data.affectedAppointments[0].id).toBe(apt2Id);
+      // Initiating ends at 11:30, buffer 15 min -> 11:45
+      expect(previewRes.body.data.affectedAppointments[0].proposedStartTime).toBe("11:45");
+    });
+
+    it("rejects commit when modified payload does not match preview token", async () => {
+      const targetDate = "2026-11-20";
+      const aptRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          appointmentDate: targetDate,
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+      const aptId = aptRes.body.data.id;
+
+      await request(app)
+        .patch(`/api/v1/appointments/${aptId}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
+
+      // Preview with custom price 1000
+      const previewRes = await request(app)
+        .post(`/api/v1/appointments/${aptId}/services/preview`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString(), customPrice: 1000 }],
+        });
+      const previewToken = previewRes.body.data.previewToken;
+
+      // Attempt to commit with tampered custom price 500
+      const tamperedCommitRes = await request(app)
+        .post(`/api/v1/appointments/${aptId}/services/commit`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          previewToken,
+          services: [{ serviceId: serviceHaircut._id.toString(), customPrice: 500 }],
+        });
+
+      expect(tamperedCommitRes.status).toBe(409);
+      expect(tamperedCommitRes.body.message).toContain("stale");
+    });
+
+    it("rejects commit when discount is altered after preview", async () => {
+      const targetDate = "2026-11-21";
+      const aptRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          appointmentDate: targetDate,
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+      const aptId = aptRes.body.data.id;
+
+      await request(app)
+        .patch(`/api/v1/appointments/${aptId}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
+
+      // Preview with discount 50
+      const previewRes = await request(app)
+        .post(`/api/v1/appointments/${aptId}/services/preview`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          discount: 50,
+        });
+      const previewToken = previewRes.body.data.previewToken;
+
+      // Commit with modified discount 100
+      const commitRes = await request(app)
+        .post(`/api/v1/appointments/${aptId}/services/commit`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          previewToken,
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          discount: 100,
+        });
+
+      expect(commitRes.status).toBe(409);
+      expect(commitRes.body.message).toContain("stale");
+    });
+
+    it("detects conflict when initiating appointment itself overflows branch closing hours", async () => {
+      // Branch with Sunday closing at 19:00
+      const branchSunday = await Branch.create({
+        organizationId: orgId,
+        name: "Branch Sunday Closing",
+        operatingHours: {
+          sunday: { openTime: "09:00", closeTime: "19:00", isOpen: true },
+        },
+      });
+
+      const targetDate = "2026-11-22"; // Sunday (close 19:00)
+      const aptRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchSunday._id.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }], // 30 min (18:30 - 19:00)
+          appointmentDate: targetDate,
+          startTime: "18:30",
+          bookingType: "advance",
+        });
+      const aptId = aptRes.body.data.id;
+
+      // Propose adding color (60 min) -> new end 19:30 (exceeds 19:00 close)
+      const previewRes = await request(app)
+        .post(`/api/v1/appointments/${aptId}/services/preview`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchSunday._id.toString(),
+          services: [
+            { serviceId: serviceHaircut._id.toString() },
+            { serviceId: serviceColor._id.toString() },
+          ],
+        });
+
+      expect(previewRes.status).toBe(200);
+      expect(previewRes.body.data.canCommit).toBe(false);
+      expect(previewRes.body.data.conflicts.length).toBeGreaterThan(0);
+      expect(previewRes.body.data.conflicts[0].appointmentId).toBe(aptId);
+      expect(previewRes.body.data.conflicts[0].reason).toContain("exceeds branch closing time of 19:00");
+    });
+
+    it("permits extension that exactly finishes at branch closing time (valid boundary case)", async () => {
+      const branchBoundary = await Branch.create({
+        organizationId: orgId,
+        name: "Branch Boundary Close",
+        operatingHours: {
+          sunday: { openTime: "09:00", closeTime: "19:00", isOpen: true },
+        },
+      });
+
+      const targetDate = "2026-11-22"; // Sunday
+      const aptRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchBoundary._id.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }], // 30 min (18:00 - 18:30)
+          appointmentDate: targetDate,
+          startTime: "18:00",
+          bookingType: "advance",
+        });
+      const aptId = aptRes.body.data.id;
+
+      // Propose adding another haircut (30 min) -> finishes exactly at 19:00
+      const previewRes = await request(app)
+        .post(`/api/v1/appointments/${aptId}/services/preview`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchBoundary._id.toString(),
+          services: [
+            { serviceId: serviceHaircut._id.toString() },
+            { serviceId: serviceHaircut._id.toString() },
+          ],
+        });
+
+      expect(previewRes.status).toBe(200);
+      expect(previewRes.body.data.canCommit).toBe(true);
+      expect(previewRes.body.data.conflicts).toHaveLength(0);
+      expect(previewRes.body.data.initiatingAppointment.proposedEndTime).toBe("19:00");
+    });
+
+    it("rejects commit when branch scope is tampered / mismatched", async () => {
+      const targetDate = "2026-11-23";
+      const aptRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          appointmentDate: targetDate,
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+      const aptId = aptRes.body.data.id;
+
+      await request(app)
+        .patch(`/api/v1/appointments/${aptId}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
+
+      const previewRes = await request(app)
+        .post(`/api/v1/appointments/${aptId}/services/preview`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+        });
+      const previewToken = previewRes.body.data.previewToken;
+
+      // Commit with different branchId (branchBId)
+      const commitRes = await request(app)
+        .post(`/api/v1/appointments/${aptId}/services/commit`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchBId.toString(),
+          previewToken,
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+        });
+
+      expect(commitRes.status).toBe(400);
+      expect(commitRes.body.message).toContain("Target branchId does not match appointment branch");
+    });
+
+    it("rejects commit when initiating appointment version changes concurrently after preview", async () => {
+      const targetDate = "2026-11-24";
+      const aptRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          appointmentDate: targetDate,
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+      const aptId = aptRes.body.data.id;
+
+      await request(app)
+        .patch(`/api/v1/appointments/${aptId}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
+
+      const previewRes = await request(app)
+        .post(`/api/v1/appointments/${aptId}/services/preview`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          services: [
+            { serviceId: serviceHaircut._id.toString() },
+            { serviceId: serviceColor._id.toString() },
+          ],
+        });
+      const previewToken = previewRes.body.data.previewToken;
+
+      // Concurrently update initiating appointment version in database
+      await Appointment.findByIdAndUpdate(aptId, { $inc: { version: 1 } });
+
+      // Commit with the original preview token
+      const commitRes = await request(app)
+        .post(`/api/v1/appointments/${aptId}/services/commit`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          previewToken,
+          services: [
+            { serviceId: serviceHaircut._id.toString() },
+            { serviceId: serviceColor._id.toString() },
+          ],
+        });
+
+      expect(commitRes.status).toBe(409);
+      expect(commitRes.body.message).toContain("stale");
+    });
+
+    it("rejects commit when an affected appointment version changes concurrently after preview", async () => {
+      const targetDate = "2026-11-25";
+      const apt1Res = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          appointmentDate: targetDate,
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+      const apt1Id = apt1Res.body.data.id;
+
+      const apt2Res = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          services: [{ serviceId: serviceHaircut._id.toString() }],
+          appointmentDate: targetDate,
+          startTime: "10:30",
+          bookingType: "advance",
+        });
+      const apt2Id = apt2Res.body.data.id;
+
+      await request(app)
+        .patch(`/api/v1/appointments/${apt1Id}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
+
+      // Preview adding color (60 min) to apt1 -> will cascade apt2
+      const previewRes = await request(app)
+        .post(`/api/v1/appointments/${apt1Id}/services/preview`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          services: [
+            { serviceId: serviceHaircut._id.toString() },
+            { serviceId: serviceColor._id.toString() },
+          ],
+        });
+      expect(previewRes.status).toBe(200);
+      expect(previewRes.body.data.affectedAppointments).toHaveLength(1);
+      const previewToken = previewRes.body.data.previewToken;
+
+      // Concurrently update affected appointment apt2 version
+      await Appointment.findByIdAndUpdate(apt2Id, { $inc: { version: 1 } });
+
+      // Commit should detect that recomputed preview token does not match previewToken (or version mismatch)
+      const commitRes = await request(app)
+        .post(`/api/v1/appointments/${apt1Id}/services/commit`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          previewToken,
+          services: [
+            { serviceId: serviceHaircut._id.toString() },
+            { serviceId: serviceColor._id.toString() },
+          ],
+        });
+
+      expect(commitRes.status).toBe(409);
+      expect(commitRes.body.message).toContain("stale");
+    });
+  });
 });
+
+

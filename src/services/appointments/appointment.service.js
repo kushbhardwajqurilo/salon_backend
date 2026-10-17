@@ -841,13 +841,10 @@ export class AppointmentService {
     const appointmentCode = await this.generateAppointmentCode(organizationId);
     const slotMinutes = staffId ? generateSlotMinutes(startAt, endAt) : [];
 
-    // Floor Queue & Status: If walk-in without staff (floor queue), status is 'scheduled'. Only if staff is assigned does it start as 'in_progress'.
-    const initialStatus =
-      bookingType === "walk_in"
-        ? staffId
-          ? "in_progress"
-          : "scheduled"
-        : "scheduled";
+    // Floor Queue & Status: All new appointments start as 'scheduled'. Staff assignment does NOT imply service has started.
+    // For walk-ins arriving at the salon, arrivedAt is recorded immediately to establish queue arrival order.
+    const initialStatus = "scheduled";
+    const arrivedAt = bookingType === "walk_in" ? new Date() : null;
 
     // Reminders: Walk-in clients are physically at the parlour today, skip automated reminders.
     const isWalkIn = bookingType === "walk_in";
@@ -874,6 +871,7 @@ export class AppointmentService {
         totalDuration,
         slotMinutes,
         status: initialStatus,
+        arrivedAt,
         bookingType,
         pricing: {
           subtotal: Number(subtotal.toFixed(2)),
@@ -1024,6 +1022,9 @@ export class AppointmentService {
         );
       }
 
+      // Map existing services to preserve historical agreed price, isRedeemedViaSubscription, subscriptionUsageId
+      const existingServices = appointment.services || [];
+
       // Validate or auto-resolve appliedSubscriptionId deterministically
       const customerId = appointment.customerId?._id || appointment.customerId;
       for (const item of normalizedServiceInputs) {
@@ -1057,10 +1058,20 @@ export class AppointmentService {
         const s = dbServices.find(
           (serv) => serv._id.toString() === item.serviceId.toString(),
         );
-        const resolvedPrice =
-          item.customPrice !== undefined
-            ? item.customPrice
-            : (s.pricing?.basePrice ?? 0);
+
+        // Find existing matching service line to preserve agreed price and subscription redemption history
+        const existingLine = existingServices.find(
+          (es) => es.serviceId.toString() === item.serviceId.toString()
+        );
+
+        let resolvedPrice;
+        if (item.customPrice !== undefined && item.customPrice !== null) {
+          resolvedPrice = Number(item.customPrice);
+        } else if (existingLine && existingLine.price !== undefined && existingLine.price !== null) {
+          resolvedPrice = existingLine.price;
+        } else {
+          resolvedPrice = s.pricing?.basePrice ?? 0;
+        }
 
         totalDuration += s.duration;
         subtotal += resolvedPrice;
@@ -1070,14 +1081,23 @@ export class AppointmentService {
           name: s.name,
           duration: s.duration,
           price: resolvedPrice,
-          appliedSubscriptionId: item.appliedSubscriptionId || null,
-          isRedeemedViaSubscription: false,
-          subscriptionUsageId: null,
+          appliedSubscriptionId: item.appliedSubscriptionId || (existingLine?.appliedSubscriptionId ? existingLine.appliedSubscriptionId.toString() : null),
+          isRedeemedViaSubscription: existingLine ? existingLine.isRedeemedViaSubscription : false,
+          subscriptionUsageId: existingLine ? existingLine.subscriptionUsageId : null,
         };
       });
 
+      // Calculate start and end times
       const startAt = appointment.startAt;
-      const endAt = new Date(startAt.getTime() + totalDuration * 60000);
+      let endAt;
+      if (appointment.status === "in_progress") {
+        const startedAt = appointment.startedAt ? new Date(appointment.startedAt) : startAt;
+        const elapsedMinutes = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 60000));
+        const remainingMinutes = Math.max(0, totalDuration - elapsedMinutes);
+        endAt = new Date(Date.now() + remainingMinutes * 60000);
+      } else {
+        endAt = new Date(startAt.getTime() + totalDuration * 60000);
+      }
       const formattedEnd = formatUTCToLocal(endAt);
 
       const effectiveDiscount =
@@ -1096,6 +1116,12 @@ export class AppointmentService {
         discount: Number(effectiveDiscount.toFixed(2)),
         total,
       };
+
+      // Invalidate any pending OTP consumption challenge on service modifications
+      await SubscriptionConsumptionChallenge.deleteMany({
+        appointmentId: appointment._id,
+        status: "pending",
+      });
 
       const targetStaffId =
         staffId !== undefined ? staffId : appointment.staffId;
@@ -1412,6 +1438,18 @@ export class AppointmentService {
           400,
         );
       }
+
+      // Future start rejection guard:
+      // Allow early start within 15 minutes window; reject if appointment is scheduled further in the future unless forceEarlyStart is provided.
+      const EARLY_START_WINDOW_MS = 15 * 60 * 1000;
+      const scheduledStartMs = new Date(appointment.startAt).getTime();
+      const nowMs = Date.now();
+      if (scheduledStartMs - nowMs > EARLY_START_WINDOW_MS && !data.forceEarlyStart) {
+        throw new AppError(
+          `Cannot start future appointment early. Appointment is scheduled for ${appointment.startTime} on ${appointment.appointmentDate}. Use forceEarlyStart override with authorization to proceed.`,
+          400,
+        );
+      }
     } else if (status === "completed") {
       if (currentStatus !== "in_progress") {
         throw new AppError(
@@ -1433,7 +1471,9 @@ export class AppointmentService {
 
     const updates = { status };
 
-    if (status === "completed") {
+    if (status === "in_progress") {
+      updates.startedAt = new Date();
+    } else if (status === "completed") {
       updates.completedAt = new Date();
       updates.slotMinutes = []; // Release slot minutes
     } else if (status === "cancelled" || status === "no_show") {
@@ -1450,7 +1490,34 @@ export class AppointmentService {
       updates["reminder.status"] = "cancelled";
     }
 
-    return await appointmentRepo.update(id, updates, organizationId);
+    const updated = await appointmentRepo.update(id, updates, organizationId);
+
+    // Audit log for appointment status changes
+    if (userId) {
+      try {
+        await AuditLog.create({
+          organizationId,
+          branchId,
+          actorId: userId,
+          action: AUDIT_ACTIONS.APPOINTMENT_STATUS_UPDATED || "APPOINTMENT_STATUS_UPDATED",
+          entityType: "Appointment",
+          entityId: appointment._id,
+          description: `Appointment ${appointment.appointmentCode} status transitioned from ${currentStatus} to ${status}`,
+          metadata: {
+            appointmentCode: appointment.appointmentCode,
+            previousStatus: currentStatus,
+            newStatus: status,
+            reason,
+            startedAt: updates.startedAt || null,
+            completedAt: updates.completedAt || null,
+          },
+        });
+      } catch (auditErr) {
+        logger.warn(`Failed to create audit log for status change: ${auditErr.message}`);
+      }
+    }
+
+    return updated;
   }
 
   /**
@@ -1750,7 +1817,7 @@ export class AppointmentService {
             "entitlements.$.remainingQuantity": -1,
           },
         };
-        const options = { new: true };
+        const options = { returnDocument: "after" };
         if (session) options.session = session;
 
         const updatedSub = await Subscription.findOneAndUpdate(query, update, options);
@@ -1836,7 +1903,7 @@ export class AppointmentService {
         },
       };
 
-      const aptOptions = { new: true };
+      const aptOptions = { returnDocument: "after" };
       if (session) aptOptions.session = session;
 
       const finalAppointment = await appointmentRepo.model
@@ -1908,4 +1975,616 @@ export class AppointmentService {
 
     return await appointmentRepo.softDelete(id, organizationId);
   }
+
+  /**
+   * CASCADING RESCHEDULE ENGINE: PREVIEW
+   * Simulates adding/removing services on an appointment (scheduled or in_progress),
+   * recalculates end time, identifies subsequent scheduled bookings for the staff member,
+   * calculates proposed shifted slots and detects conflicts, returning a cryptographic preview token.
+   */
+  async previewServiceModification(id, data, organizationId) {
+    const { branchId, services, serviceIds, discount } = data;
+
+    const appointment = await appointmentRepo.findById(id, organizationId);
+    if (!appointment) {
+      throw new AppError("Appointment not found", 404);
+    }
+
+    const aptBranchId = appointment.branchId?._id
+      ? appointment.branchId._id.toString()
+      : appointment.branchId.toString();
+    if (aptBranchId !== branchId.toString()) {
+      throw new AppError("Target branchId does not match appointment branch", 400);
+    }
+
+    if (["completed", "cancelled", "no_show"].includes(appointment.status)) {
+      throw new AppError(
+        `Cannot modify services on appointment with terminal status '${appointment.status}'`,
+        400
+      );
+    }
+
+    // Normalize incoming service selections
+    let normalizedServiceInputs = null;
+    if (Array.isArray(services) && services.length > 0) {
+      normalizedServiceInputs = services.map((item) => {
+        if (typeof item === "string") {
+          return { serviceId: item, customPrice: undefined, appliedSubscriptionId: null };
+        }
+        return {
+          serviceId: item.serviceId ? item.serviceId.toString() : item.toString(),
+          customPrice:
+            item.customPrice !== undefined && item.customPrice !== null
+              ? Number(item.customPrice)
+              : undefined,
+          appliedSubscriptionId: item.appliedSubscriptionId
+            ? item.appliedSubscriptionId.toString()
+            : null,
+        };
+      });
+    } else if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+      normalizedServiceInputs = serviceIds.map((sid) => ({
+        serviceId: sid.toString(),
+        customPrice: undefined,
+        appliedSubscriptionId: null,
+      }));
+    } else {
+      throw new AppError("At least one service must be selected", 400);
+    }
+
+    const uniqueIds = [...new Set(normalizedServiceInputs.map((item) => item.serviceId))];
+    const dbServices = await Service.find({
+      _id: { $in: uniqueIds },
+      organizationId,
+      isDeleted: false,
+      status: "active",
+    });
+
+    if (dbServices.length !== uniqueIds.length) {
+      throw new AppError(
+        "One or more selected services are invalid or inactive for this organization",
+        400
+      );
+    }
+
+    const existingServices = appointment.services || [];
+    let totalDuration = 0;
+    let subtotal = 0;
+
+    const proposedServiceSnapshots = normalizedServiceInputs.map((item) => {
+      const s = dbServices.find((serv) => serv._id.toString() === item.serviceId.toString());
+      const existingLine = existingServices.find(
+        (es) => es.serviceId.toString() === item.serviceId.toString()
+      );
+
+      let resolvedPrice;
+      if (item.customPrice !== undefined && item.customPrice !== null) {
+        resolvedPrice = Number(item.customPrice);
+      } else if (existingLine && existingLine.price !== undefined && existingLine.price !== null) {
+        resolvedPrice = existingLine.price;
+      } else {
+        resolvedPrice = s.pricing?.basePrice ?? 0;
+      }
+
+      totalDuration += s.duration;
+      subtotal += resolvedPrice;
+
+      return {
+        serviceId: s._id.toString(),
+        name: s.name,
+        duration: s.duration,
+        price: resolvedPrice,
+        appliedSubscriptionId: item.appliedSubscriptionId || (existingLine?.appliedSubscriptionId ? existingLine.appliedSubscriptionId.toString() : null),
+        isRedeemedViaSubscription: existingLine ? existingLine.isRedeemedViaSubscription : false,
+        subscriptionUsageId: existingLine ? existingLine.subscriptionUsageId : null,
+      };
+    });
+
+    const branch = await Branch.findOne({ _id: branchId, organizationId });
+    const tz = branch?.timezone || DEFAULT_TIMEZONE;
+
+    // Calculate proposed start and end for initiating appointment
+    const startAt = new Date(appointment.startAt);
+    let proposedEndAt;
+    let remainingMinutes = totalDuration;
+
+    if (appointment.status === "in_progress") {
+      const startedAt = appointment.startedAt ? new Date(appointment.startedAt) : null;
+      // If startedAt was recorded today and startAt was today, elapsed is Date.now() - startedAt.
+      // If appointment is for a future test date or startedAt is null, remaining duration starts from startAt.
+      const now = Date.now();
+      let elapsedMinutes = 0;
+      if (startedAt && startedAt.getTime() <= now && Math.abs(now - startAt.getTime()) < 24 * 60 * 60 * 1000) {
+        elapsedMinutes = Math.max(0, Math.floor((now - startedAt.getTime()) / 60000));
+      }
+      remainingMinutes = Math.max(0, totalDuration - elapsedMinutes);
+      proposedEndAt = new Date(startAt.getTime() + (elapsedMinutes + remainingMinutes) * 60000);
+    } else {
+      proposedEndAt = new Date(startAt.getTime() + totalDuration * 60000);
+    }
+
+    const originalEndAt = new Date(appointment.endAt);
+    const initiatingFormattedProposedEnd = formatUTCToLocal(proposedEndAt, tz);
+    const initiatingFormattedStart = formatUTCToLocal(startAt, tz);
+
+    const effectiveDiscount = discount !== undefined ? discount : appointment.pricing.discount;
+    const total = Math.max(0, Number((subtotal - effectiveDiscount).toFixed(2)));
+
+    const initiatingAppointmentProposal = {
+      id: appointment._id.toString(),
+      appointmentCode: appointment.appointmentCode,
+      status: appointment.status,
+      version: appointment.version || 1,
+      originalStartAt: appointment.startAt,
+      originalEndAt: appointment.endAt,
+      originalStartTime: appointment.startTime,
+      originalEndTime: appointment.endTime,
+      proposedStartAt: startAt,
+      proposedEndAt,
+      proposedStartTime: initiatingFormattedStart.timeStr,
+      proposedEndTime: initiatingFormattedProposedEnd.timeStr,
+      totalDuration,
+      remainingMinutes,
+      pricing: {
+        subtotal: Number(subtotal.toFixed(2)),
+        discount: Number(effectiveDiscount.toFixed(2)),
+        total,
+      },
+      services: proposedServiceSnapshots,
+    };
+
+    const affectedAppointments = [];
+    const conflicts = [];
+
+    // Validate initiating appointment against branch operating hours and midnight boundary
+    if (initiatingFormattedStart.dateStr !== initiatingFormattedProposedEnd.dateStr) {
+      conflicts.push({
+        appointmentId: appointment._id.toString(),
+        appointmentCode: appointment.appointmentCode,
+        reason: `Initiating appointment exceeds calendar day boundary (${initiatingFormattedProposedEnd.dateStr}).`,
+        actionRequired: "shorten_duration_or_reschedule",
+      });
+    }
+
+    if (branch?.operatingHours) {
+      const dayOfWeek = new Date(startAt).toLocaleDateString("en-US", {
+        weekday: "long",
+        timeZone: tz,
+      }).toLowerCase();
+
+      const hoursForDay = branch.operatingHours.get
+        ? branch.operatingHours.get(dayOfWeek)
+        : branch.operatingHours[dayOfWeek];
+
+      if (hoursForDay) {
+        if (hoursForDay.isOpen === false) {
+          conflicts.push({
+            appointmentId: appointment._id.toString(),
+            appointmentCode: appointment.appointmentCode,
+            reason: `Branch is closed on ${dayOfWeek}s.`,
+            actionRequired: "reschedule_different_day",
+          });
+        } else if (hoursForDay.closeTime && initiatingFormattedProposedEnd.timeStr > hoursForDay.closeTime) {
+          conflicts.push({
+            appointmentId: appointment._id.toString(),
+            appointmentCode: appointment.appointmentCode,
+            reason: `Proposed service extension ends at ${initiatingFormattedProposedEnd.timeStr}, which exceeds branch closing time of ${hoursForDay.closeTime}.`,
+            actionRequired: "shorten_duration_or_reschedule",
+            closingTime: hoursForDay.closeTime,
+          });
+        }
+      }
+    }
+
+    // If staff member is assigned and proposed end extends beyond original end, inspect subsequent bookings
+    if (appointment.staffId && proposedEndAt > originalEndAt) {
+      // Find subsequent bookings for the same staff member on the same appointmentDate
+      const subsequentAppointments = await Appointment.find({
+        organizationId,
+        branchId,
+        staffId: appointment.staffId,
+        _id: { $ne: appointment._id },
+        appointmentDate: appointment.appointmentDate,
+        isDeleted: false,
+        status: { $in: ["scheduled", "in_progress"] },
+      }).sort({ startAt: 1 });
+
+      let currentChainEnd = proposedEndAt;
+
+      for (const nextApt of subsequentAppointments) {
+        const nextStartAt = new Date(nextApt.startAt);
+        const nextEndAt = new Date(nextApt.endAt);
+
+        // Check if next appointment overlaps with the advancing chain end
+        if (nextStartAt < currentChainEnd) {
+          // Invariant: Do not silently shift in_progress appointments
+          if (nextApt.status === "in_progress") {
+            conflicts.push({
+              appointmentId: nextApt._id.toString(),
+              appointmentCode: nextApt.appointmentCode,
+              customerName: nextApt.customerId?.name || "Customer",
+              reason: "Cannot shift an appointment that is already in progress.",
+              actionRequired: "reassign_or_shorten",
+              conflictingWithEndAt: currentChainEnd,
+            });
+            break;
+          }
+
+          // Determine applicable buffer between appointments:
+          // Check branch-configured bufferMinutes or previous service-configured bufferMinutes
+          const branchBuffer = (branch?.bufferMinutes && branch.bufferMinutes > 0) ? branch.bufferMinutes : 0;
+          let serviceBuffer = 0;
+          // Determine buffer from previous appointment in chain
+          const prevServices = affectedAppointments.length > 0
+            ? null // handled by previous appointment in chain
+            : proposedServiceSnapshots;
+          if (prevServices) {
+            for (const ps of prevServices) {
+              const matchedSvc = dbServices.find((s) => s._id.toString() === ps.serviceId);
+              if (matchedSvc?.bufferMinutes && matchedSvc.bufferMinutes > serviceBuffer) {
+                serviceBuffer = matchedSvc.bufferMinutes;
+              }
+            }
+          }
+          const effectiveBuffer = Math.max(branchBuffer, serviceBuffer);
+
+          // Propose shifting next appointment so it starts after previous service ends + buffer
+          const shiftedStartAt = new Date(currentChainEnd.getTime() + effectiveBuffer * 60000);
+          const shiftedEndAt = new Date(shiftedStartAt.getTime() + nextApt.totalDuration * 60000);
+          const shiftedStartLocal = formatUTCToLocal(shiftedStartAt, tz);
+          const shiftedEndLocal = formatUTCToLocal(shiftedEndAt, tz);
+
+          // Check midnight boundary constraint
+          if (shiftedStartLocal.dateStr !== shiftedEndLocal.dateStr || shiftedStartLocal.dateStr !== nextApt.appointmentDate) {
+            conflicts.push({
+              appointmentId: nextApt._id.toString(),
+              appointmentCode: nextApt.appointmentCode,
+              reason: `Shifted appointment would exceed branch operating calendar day (${shiftedEndLocal.dateStr}).`,
+              actionRequired: "reschedule_different_day_or_reassign",
+            });
+            break;
+          }
+
+          // Check branch configured operating hours
+          if (branch?.operatingHours) {
+            const dayOfWeek = new Date(shiftedStartAt).toLocaleDateString("en-US", {
+              weekday: "long",
+              timeZone: tz,
+            }).toLowerCase(); // e.g. "friday"
+
+            const hoursForDay = branch.operatingHours.get
+              ? branch.operatingHours.get(dayOfWeek)
+              : branch.operatingHours[dayOfWeek];
+
+            if (hoursForDay) {
+              if (hoursForDay.isOpen === false) {
+                conflicts.push({
+                  appointmentId: nextApt._id.toString(),
+                  appointmentCode: nextApt.appointmentCode,
+                  reason: `Branch is closed on ${dayOfWeek}s.`,
+                  actionRequired: "reschedule_different_day",
+                });
+                break;
+              }
+              if (hoursForDay.closeTime && shiftedEndLocal.timeStr > hoursForDay.closeTime) {
+                conflicts.push({
+                  appointmentId: nextApt._id.toString(),
+                  appointmentCode: nextApt.appointmentCode,
+                  reason: `Shifted appointment ends at ${shiftedEndLocal.timeStr}, which exceeds branch closing time of ${hoursForDay.closeTime}.`,
+                  actionRequired: "reschedule_different_day_or_reassign",
+                  closingTime: hoursForDay.closeTime,
+                });
+                break;
+              }
+            }
+          }
+
+          // Check staff approved leave
+          const leaveOnDate = await Leave.findOne({
+            organizationId,
+            staffId: appointment.staffId,
+            dates: shiftedStartLocal.dateStr,
+            status: "approved",
+          });
+          if (leaveOnDate) {
+            conflicts.push({
+              appointmentId: nextApt._id.toString(),
+              appointmentCode: nextApt.appointmentCode,
+              reason: `Assigned staff member is on approved leave on ${shiftedStartLocal.dateStr}.`,
+              actionRequired: "reassign_staff",
+            });
+            break;
+          }
+
+          affectedAppointments.push({
+            id: nextApt._id.toString(),
+            appointmentCode: nextApt.appointmentCode,
+            customerName: nextApt.customerId?.name || "Customer",
+            staffId: appointment.staffId.toString(),
+            version: nextApt.version || 1,
+            originalStartAt: nextApt.startAt,
+            originalEndAt: nextApt.endAt,
+            originalStartTime: nextApt.startTime,
+            originalEndTime: nextApt.endTime,
+            proposedStartAt: shiftedStartAt,
+            proposedEndAt: shiftedEndAt,
+            proposedStartTime: shiftedStartLocal.timeStr,
+            proposedEndTime: shiftedEndLocal.timeStr,
+            delayMinutes: Math.round((shiftedStartAt.getTime() - nextStartAt.getTime()) / 60000),
+            reason: "Cascaded due to service extension on preceding appointment.",
+          });
+
+          // Advance chain end to this shifted appointment's end time
+          currentChainEnd = shiftedEndAt;
+        }
+      }
+    }
+
+    // Generate cryptographic preview token bound to the entire canonical proposal state:
+    // initiatingId, initiatingVersion, branchId, organizationId, proposedEndAt,
+    // canonical services snapshot (sorted serviceId + customPrice), effectiveDiscount, and affectedIdsAndVersions
+    const canonicalServices = proposedServiceSnapshots
+      .map((s) => `${s.serviceId}:${s.price}`)
+      .sort()
+      .join("|");
+
+    const tokenPayload = JSON.stringify({
+      organizationId: organizationId.toString(),
+      branchId: branchId.toString(),
+      initiatingId: appointment._id.toString(),
+      initiatingVersion: appointment.version || 1,
+      proposedEndAt: proposedEndAt.toISOString(),
+      canonicalServices,
+      effectiveDiscount,
+      affectedIdsAndVersions: affectedAppointments.map((a) => `${a.id}:${a.version}`),
+    });
+    const previewToken = crypto.createHash("sha256").update(tokenPayload).digest("hex");
+
+    return {
+      canCommit: conflicts.length === 0,
+      previewToken,
+      initiatingAppointment: initiatingAppointmentProposal,
+      affectedAppointments,
+      conflicts,
+      requiresManagerOverride: conflicts.length > 0,
+    };
+  }
+
+  /**
+   * CASCADING RESCHEDULE ENGINE: ATOMIC COMMIT
+   * Revalidates snapshot versions and staff availability, then applies the service modification
+   * and slot shift across all affected appointments in an ACID transaction boundary.
+   */
+  async commitServiceModification(id, data, organizationId, userId) {
+    const {
+      branchId,
+      previewToken,
+      services,
+      serviceIds,
+      discount,
+      affectedAppointments = [],
+      managerOverrideReason = null,
+    } = data;
+
+    if (!previewToken) {
+      throw new AppError("Preview token is required to commit schedule modification", 400);
+    }
+
+    const appointment = await appointmentRepo.findById(id, organizationId);
+    if (!appointment) {
+      throw new AppError("Appointment not found", 404);
+    }
+
+    const aptBranchId = appointment.branchId?._id
+      ? appointment.branchId._id.toString()
+      : appointment.branchId.toString();
+    if (aptBranchId !== branchId.toString()) {
+      throw new AppError("Target branchId does not match appointment branch", 400);
+    }
+
+    if (["completed", "cancelled", "no_show"].includes(appointment.status)) {
+      throw new AppError(
+        `Cannot modify services on appointment with terminal status '${appointment.status}'`,
+        400
+      );
+    }
+
+    // Execute preview revalidation to verify proposal freshness
+    const freshPreview = await this.previewServiceModification(
+      id,
+      { branchId, services, serviceIds, discount },
+      organizationId
+    );
+
+    if (freshPreview.previewToken !== previewToken) {
+      throw new AppError(
+        "The schedule proposal is stale due to a concurrent update. Please preview again before committing.",
+        409
+      );
+    }
+
+    if (!freshPreview.canCommit && !managerOverrideReason) {
+      throw new AppError(
+        "Cannot commit schedule modification due to unresolved conflicts. Manager override reason is required if permitted by policy.",
+        409
+      );
+    }
+
+    const branch = await Branch.findOne({ _id: branchId, organizationId });
+    const tz = branch?.timezone || DEFAULT_TIMEZONE;
+
+    let commitResult;
+    try {
+      commitResult = await this.executeTransaction(async (session) => {
+        // 1. Invalidate pending subscription OTP challenges for initiating appointment
+        await SubscriptionConsumptionChallenge.deleteMany(
+          { appointmentId: appointment._id, status: "pending" },
+          { session }
+        );
+
+        // Pass 1: Temporarily clear slotMinutes on initiating and affected appointments to release old slots
+        const initProposal = freshPreview.initiatingAppointment;
+        await Appointment.updateOne(
+          { _id: appointment._id, organizationId },
+          { $set: { slotMinutes: [] } },
+          { session }
+        );
+
+        for (const aff of freshPreview.affectedAppointments) {
+          await Appointment.updateOne(
+            { _id: aff.id, organizationId },
+            { $set: { slotMinutes: [] } },
+            { session }
+          );
+        }
+
+        // Shift all affected subsequent appointments atomically first to free up slots
+        const updatedAffected = [];
+        for (const aff of freshPreview.affectedAppointments) {
+          const affSlotMinutes = generateSlotMinutes(
+            new Date(aff.proposedStartAt),
+            new Date(aff.proposedEndAt)
+          );
+
+          // Handle documents where version may not have been explicitly set (legacy records default to 1)
+          const versionFilter =
+            aff.version === 1
+              ? { $in: [1, null, undefined] }
+              : aff.version;
+
+          const shiftedApt = await Appointment.findOneAndUpdate(
+            {
+              _id: aff.id,
+              organizationId,
+              version: versionFilter,
+              status: "scheduled",
+            },
+            {
+              $set: {
+                startAt: aff.proposedStartAt,
+                endAt: aff.proposedEndAt,
+                startTime: aff.proposedStartTime,
+                endTime: aff.proposedEndTime,
+                slotMinutes: affSlotMinutes,
+              },
+              $inc: { version: 1 },
+            },
+            { returnDocument: "after", session }
+          );
+
+          if (!shiftedApt) {
+            throw new AppError(
+              `Subsequent appointment ${aff.appointmentCode} was modified concurrently. Commit aborted to prevent partial shift.`,
+              409
+            );
+          }
+          updatedAffected.push(shiftedApt);
+        }
+
+        // Now expand initiating appointment into its newly vacated slots
+        const initSlotMinutes = appointment.staffId
+          ? generateSlotMinutes(new Date(initProposal.proposedStartAt), new Date(initProposal.proposedEndAt))
+          : [];
+
+        const initVersionFilter =
+          initProposal.version === 1
+            ? { $in: [1, null, undefined] }
+            : initProposal.version;
+
+        const initiatingUpdated = await Appointment.findOneAndUpdate(
+          {
+            _id: appointment._id,
+            organizationId,
+            version: initVersionFilter,
+          },
+          {
+            $set: {
+              services: initProposal.services,
+              totalDuration: initProposal.totalDuration,
+              endAt: initProposal.proposedEndAt,
+              endTime: initProposal.proposedEndTime,
+              pricing: initProposal.pricing,
+              slotMinutes: initSlotMinutes,
+            },
+            $inc: { version: 1 },
+          },
+          { returnDocument: "after", session }
+        );
+
+        if (!initiatingUpdated) {
+          throw new AppError("Initiating appointment was modified concurrently. Commit aborted.", 409);
+        }
+
+        // 4. Record Audit Log for cascading reschedule
+        if (userId) {
+          const cascadeAudit = new AuditLog({
+            organizationId,
+            branchId,
+            actorId: userId,
+            action: AUDIT_ACTIONS.APPOINTMENT_CASCADE_RESCHEDULED || "APPOINTMENT_CASCADE_RESCHEDULED",
+            entityType: "Appointment",
+            entityId: appointment._id,
+            description: `Appointment ${appointment.appointmentCode} services modified and cascaded ${updatedAffected.length} subsequent appointments`,
+            metadata: {
+              appointmentCode: appointment.appointmentCode,
+              initiatingAppointmentId: appointment._id,
+              shiftedAppointmentsCount: updatedAffected.length,
+              shiftedAppointmentCodes: updatedAffected.map((a) => a.appointmentCode),
+              managerOverrideReason: managerOverrideReason || null,
+            },
+          });
+          await cascadeAudit.save({ session });
+        }
+
+        return {
+          initiatingAppointment: initiatingUpdated,
+          shiftedAppointments: updatedAffected,
+        };
+      }, { requireTransaction: true });
+    } catch (err) {
+      console.error("COMMIT INNER ERROR:", {
+        message: err.message,
+        code: err.code,
+        keyPattern: err.keyPattern,
+        keyValue: err.keyValue,
+      });
+      if (err.code === 11000 && err.keyPattern?.slotMinutes) {
+        throw new AppError(
+          "Staff member slot assignment conflict during schedule commit. Concurrently overlapping booking detected.",
+          409
+        );
+      }
+      throw err;
+    }
+
+    // 5. Post-commit operations (BullMQ reminders & notifications)
+    try {
+      for (const shifted of commitResult.shiftedAppointments) {
+        await this.cancelReminders(shifted);
+        if (shifted.reminder?.enabled) {
+          await this.scheduleReminders(shifted);
+        }
+        const cust = await Customer.findById(shifted.customerId).lean();
+        if (cust?.phone) {
+          await smsQueue.add("sendAppointmentRescheduledSMS", {
+            phone: cust.phone,
+            customerName: cust.name,
+            appointmentCode: shifted.appointmentCode,
+            newStartTime: shifted.startTime,
+            date: shifted.appointmentDate,
+          });
+        }
+      }
+    } catch (postErr) {
+      console.error("Post-commit reminder/notification dispatch error:", postErr.message);
+    }
+
+    return {
+      message: "Services updated and cascading schedule committed successfully",
+      initiatingAppointment: commitResult.initiatingAppointment,
+      shiftedAppointments: commitResult.shiftedAppointments,
+    };
+  }
 }
+
+

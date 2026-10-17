@@ -27,6 +27,11 @@ const serviceSchema = new mongoose.Schema(
       type: Number, // positive integer in minutes
       required: true,
     },
+    bufferMinutes: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     pricing: {
       basePrice: {
         type: Number,

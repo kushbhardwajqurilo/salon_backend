@@ -180,6 +180,12 @@ export const CANONICAL_PERMISSIONS = [
     description: "Manually trigger or send appointment reminder notifications."
   },
   {
+    name: "appointments.force_early_start",
+    module: "Appointments",
+    action: "Force Early Start",
+    description: "Authorize starting an appointment earlier than 15 minutes before its scheduled start."
+  },
+  {
     name: "employees.view",
     module: "Employees",
     action: "View",

@@ -111,6 +111,7 @@ export const updateAppointmentStatusSchema = z.object({
       "scheduled",
     ]),
     reason: z.string().max(1000).optional(),
+    forceEarlyStart: z.boolean().optional(),
   }),
 });
 
@@ -146,3 +147,36 @@ export const completeAppointmentWithSubscriptionSchema = z.object({
     otp: z.string().trim().min(4, "OTP is required"),
   }),
 });
+
+export const previewServiceModificationSchema = z.object({
+  body: z.object({
+    branchId: objectIdSchema,
+    serviceIds: z.array(objectIdSchema).min(1).optional(),
+    services: z.array(appointmentServiceItemSchema).min(1).optional(),
+    discount: z.number().min(0).optional(),
+  }).refine(
+    (data) => (data.services && data.services.length > 0) || (data.serviceIds && data.serviceIds.length > 0),
+    {
+      message: "At least one service must be selected (provide services or serviceIds)",
+      path: ["services"],
+    }
+  ),
+});
+
+export const commitServiceModificationSchema = z.object({
+  body: z.object({
+    branchId: objectIdSchema,
+    previewToken: z.string().min(10, "Valid previewToken is required"),
+    serviceIds: z.array(objectIdSchema).min(1).optional(),
+    services: z.array(appointmentServiceItemSchema).min(1).optional(),
+    discount: z.number().min(0).optional(),
+    managerOverrideReason: z.string().max(1000).optional(),
+  }).refine(
+    (data) => (data.services && data.services.length > 0) || (data.serviceIds && data.serviceIds.length > 0),
+    {
+      message: "At least one service must be selected (provide services or serviceIds)",
+      path: ["services"],
+    }
+  ),
+});
+

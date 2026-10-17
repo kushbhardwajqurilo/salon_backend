@@ -29,10 +29,27 @@ const branchSchema = new mongoose.Schema(
       default: "Asia/Kolkata",
       trim: true,
     },
+    operatingHours: {
+      type: Map,
+      of: new mongoose.Schema(
+        {
+          openTime: { type: String, default: null }, // e.g. "09:00"
+          closeTime: { type: String, default: null }, // e.g. "20:00"
+          isOpen: { type: Boolean, default: true },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
+    bufferMinutes: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 branchSchema.index({ organizationId: 1, name: 1 }, { unique: true });

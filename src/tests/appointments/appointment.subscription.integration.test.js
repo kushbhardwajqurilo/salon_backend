@@ -252,7 +252,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
               appliedSubscriptionId: sub._id.toString(),
             },
           ],
-          appointmentDate: "2026-10-15",
+          appointmentDate: "2026-11-15",
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -515,7 +515,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
               appliedSubscriptionId: sub._id.toString(),
             },
           ],
-          appointmentDate: "2026-10-15",
+          appointmentDate: "2026-11-15",
           startTime: "10:00",
           bookingType: "advance",
         });
