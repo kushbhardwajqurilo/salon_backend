@@ -21,7 +21,7 @@ export const requireOrganizationScope = asyncHandler(async (req, res, next) => {
   Requires and validates the X-Branch-Id header against organization and authorization constraints.
  */
 export const requireBranchScope = asyncHandler(async (req, res, next) => {
-  const branchId = req.headers["x-branch-id"] || req.headers["X-Branch-Id"];
+  const branchId = req.headers["x-branch-id"] || req.headers["X-Branch-Id"] || req.query.branchId;
 
   if (!req.user) {
     throw new AppError("User authentication required", 401);
