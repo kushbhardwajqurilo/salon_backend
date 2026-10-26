@@ -29,6 +29,8 @@ export const createSubscriptionSchema = z.object({
     ),
     planId: objectIdSchema.optional().nullable(),
     notes: z.string().trim().max(1000).optional().default(""),
+    billImmediately: z.boolean().optional().default(false),
+    branchId: objectIdSchema.optional().nullable(),
   }),
 });
 
@@ -47,6 +49,26 @@ export const updateSubscriptionSchema = z.object({
 export const cancelSubscriptionSchema = z.object({
   body: z.object({
     reason: z.string().trim().max(500).optional().default(""),
+    refund: z.boolean().optional().default(false),
+  }),
+});
+
+export const renewSubscriptionSchema = z.object({
+  body: z.object({
+    price: z.number().min(0, "Price must be non-negative").optional(),
+    startDate: z
+      .string()
+      .datetime("Invalid ISO date for startDate")
+      .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)"))
+      .optional(),
+    endDate: z
+      .string()
+      .datetime("Invalid ISO date for endDate")
+      .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)")),
+    permittedBranchIds: z.array(objectIdSchema).optional(),
+    notes: z.string().trim().max(1000).optional().default(""),
+    billImmediately: z.boolean().optional().default(false),
+    branchId: objectIdSchema.optional().nullable(),
   }),
 });
 
@@ -90,7 +112,7 @@ export const querySubscriptionSchema = z.object({
     page: z.string().regex(/^\d+$/).transform(Number).optional().default("1"),
     limit: z.string().regex(/^\d+$/).transform(Number).optional().default("20"),
     customerId: objectIdSchema.optional(),
-    status: z.enum(["active", "expired", "exhausted", "cancelled"]).optional(),
+    status: z.enum(["active", "pending_payment", "expired", "exhausted", "cancelled"]).optional(),
     branchId: objectIdSchema.optional(),
     search: z.string().trim().optional(),
   }),

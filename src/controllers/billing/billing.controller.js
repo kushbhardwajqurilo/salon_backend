@@ -2,11 +2,20 @@ import { asyncHandler } from "../../utils/errors.js";
 import { billingService } from "../../services/billing/billing.service.js";
 
 export const createInvoice = asyncHandler(async (req, res) => {
-  const invoice = await billingService.createInvoiceFromAppointment(
-    req.body,
-    req.user.organizationId,
-    req.user.id || req.user._id
-  );
+  let invoice;
+  if (req.body.subscriptionId) {
+    invoice = await billingService.createInvoiceForSubscriptionSale(
+      req.body,
+      req.user.organizationId,
+      req.user.id || req.user._id
+    );
+  } else {
+    invoice = await billingService.createInvoiceFromAppointment(
+      req.body,
+      req.user.organizationId,
+      req.user.id || req.user._id
+    );
+  }
   res.status(201).json({
     success: true,
     message: "Draft invoice created successfully",
@@ -81,9 +90,10 @@ export const recordPayment = asyncHandler(async (req, res) => {
     branchId,
     req.user.id || req.user._id
   );
-  res.status(201).json({
+  const statusCode = result?.isIdempotentReplay ? 200 : 201;
+  res.status(statusCode).json({
     success: true,
-    message: "Payment recorded successfully",
+    message: result?.isIdempotentReplay ? "Payment already processed (idempotent replay)" : "Payment recorded successfully",
     data: result,
   });
 });

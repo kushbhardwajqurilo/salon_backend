@@ -58,6 +58,15 @@ router.patch(
   subscriptionController.cancelSubscription
 );
 
+// 5b. Renew Subscription
+router.post(
+  "/:id/renew",
+  requireOrganizationScope,
+  authorize("subscriptions.sell"),
+  validate(subscriptionValidation.renewSubscriptionSchema),
+  subscriptionController.renewSubscription
+);
+
 // 6. Send Redemption OTP (Branch-scoped)
 router.post(
   "/:id/send-otp",

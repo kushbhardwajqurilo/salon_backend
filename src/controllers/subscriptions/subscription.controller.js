@@ -70,9 +70,20 @@ export const cancelSubscription = asyncHandler(async (req, res) => {
     req.params.id,
     req.organizationId,
     req.user?.id || req.user?._id,
-    reason
+    reason,
+    { refund: req.body.refund }
   );
   return sendResponse(res, 200, "Subscription cancelled successfully", result);
+});
+
+export const renewSubscription = asyncHandler(async (req, res) => {
+  const result = await subscriptionService.renewSubscription(
+    req.params.id,
+    req.body,
+    req.organizationId,
+    req.user?.id || req.user?._id
+  );
+  return sendResponse(res, 201, "Subscription renewed successfully", result);
 });
 
 export const sendRedemptionOTP = asyncHandler(async (req, res) => {

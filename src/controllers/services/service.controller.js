@@ -63,7 +63,7 @@ export const toggleServiceStatus = asyncHandler(async (req, res) => {
 export const listServices = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
 
-  const { page, limit, sort, search, status, categoryId, all, query } = req.query;
+  const { page, limit, sort, search, status, categoryId, gender, all, query } = req.query;
 
   const isFetchAll =
     limit === "all" ||
@@ -81,6 +81,10 @@ export const listServices = asyncHandler(async (req, res) => {
 
   if (categoryId) {
     andConditions.push({ categoryId });
+  }
+
+  if (gender) {
+    andConditions.push({ gender });
   }
 
   if (andConditions.length > 0) {

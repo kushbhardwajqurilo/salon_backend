@@ -66,3 +66,4 @@ serverStart();
 
 // "seed": "node src/seed/seed.js",
 // "permissions:sync": "node src/scripts/syncPermissions.js"
+

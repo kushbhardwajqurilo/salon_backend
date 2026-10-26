@@ -59,6 +59,7 @@ export class ServiceService {
         serviceCode: data.serviceCode.toUpperCase(),
         description: data.description || "",
         categoryId: data.categoryId,
+        gender: data.gender || "unisex",
         duration: data.duration,
         pricing: { basePrice: data.basePrice },
         displayOrder: data.displayOrder || 0,

@@ -16,6 +16,7 @@ import { logger } from "../../utils/logger.js";
 import mongoose from "mongoose";
 import crypto from "crypto";
 import { runInTransaction } from "../../utils/transaction.js";
+import { env } from "../../config/env.js";
 
 const appointmentRepo = new AppointmentRepository();
 
@@ -520,9 +521,10 @@ export class AppointmentService {
       throw new AppError("Applied subscription does not belong to this customer", 400);
     }
 
-    if (subscription.status !== "active") {
+    const redeemableStatuses = ["active", "pending_payment"];
+    if (!redeemableStatuses.includes(subscription.status)) {
       throw new AppError(
-        `Applied subscription is not active (current status: '${subscription.status}')`,
+        `Applied subscription is not eligible for redemption (current status: '${subscription.status}')`,
         400
       );
     }
@@ -589,7 +591,7 @@ export class AppointmentService {
     const candidateQuery = {
       organizationId,
       customerId,
-      status: "active",
+      status: { $in: ["active", "pending_payment"] },
       isDeleted: false,
       endDate: { $gte: now },
       entitlements: {
@@ -692,14 +694,41 @@ export class AppointmentService {
       );
     }
 
-    // Normalize incoming service selections (supporting services array with customPrice/appliedSubscriptionId or serviceIds array)
+    // Normalize incoming service selections (supporting registered lines and custom lines)
     let normalizedServiceInputs = [];
     if (Array.isArray(services) && services.length > 0) {
       normalizedServiceInputs = services.map((item) => {
         if (typeof item === "string") {
-          return { serviceId: item, customPrice: undefined, appliedSubscriptionId: null };
+          return {
+            serviceType: "registered",
+            serviceId: item,
+            customPrice: undefined,
+            appliedSubscriptionId: null,
+          };
         }
+        const isCustom =
+          item.serviceType === "custom" ||
+          item.type === "custom" ||
+          (!item.serviceId && item.name && item.duration !== undefined);
+
+        if (isCustom) {
+          if (item.appliedSubscriptionId) {
+            throw new AppError(
+              "Custom services cannot be assigned to or redeemed via subscriptions",
+              400,
+            );
+          }
+          return {
+            serviceType: "custom",
+            name: item.name ? String(item.name).trim() : "",
+            duration: Number(item.duration),
+            price: Number(item.price ?? item.customPrice ?? 0),
+            appliedSubscriptionId: null,
+          };
+        }
+
         return {
+          serviceType: "registered",
           serviceId: item.serviceId
             ? item.serviceId.toString()
             : item.toString(),
@@ -707,28 +736,41 @@ export class AppointmentService {
             item.customPrice !== undefined && item.customPrice !== null
               ? Number(item.customPrice)
               : undefined,
-          appliedSubscriptionId: item.appliedSubscriptionId
-            ? item.appliedSubscriptionId.toString()
-            : null,
+          appliedSubscriptionId:
+            item.appliedSubscriptionId === undefined
+              ? undefined
+              : item.appliedSubscriptionId === null
+                ? null
+                : item.appliedSubscriptionId.toString(),
         };
       });
     } else if (Array.isArray(serviceIds) && serviceIds.length > 0) {
       normalizedServiceInputs = serviceIds.map((id) => ({
+        serviceType: "registered",
         serviceId: id.toString(),
         customPrice: undefined,
-        appliedSubscriptionId: null,
+        appliedSubscriptionId: undefined, // omitted -> auto-apply eligible
       }));
     }
 
-    const extractedIds = normalizedServiceInputs.map((item) => item.serviceId);
+    if (!normalizedServiceInputs || normalizedServiceInputs.length === 0) {
+      throw new AppError("At least one service must be selected", 400);
+    }
 
-    // 3. Validate & Snapshot Services
-    const dbServices = await Service.find({
-      _id: { $in: extractedIds },
-      organizationId,
-      isDeleted: false,
-      status: "active",
-    });
+    // 3. Validate & Snapshot Registered Services
+    const registeredInputs = normalizedServiceInputs.filter(
+      (item) => item.serviceType === "registered",
+    );
+    const extractedIds = registeredInputs.map((item) => item.serviceId);
+
+    const dbServices = extractedIds.length > 0
+      ? await Service.find({
+          _id: { $in: extractedIds },
+          organizationId,
+          isDeleted: false,
+          status: "active",
+        })
+      : [];
 
     if (dbServices.length !== extractedIds.length) {
       throw new AppError(
@@ -737,28 +779,32 @@ export class AppointmentService {
       );
     }
 
-    // Validate or auto-resolve appliedSubscriptionId deterministically
-    for (const item of normalizedServiceInputs) {
+    // Validate or auto-resolve appliedSubscriptionId deterministically for registered lines
+    for (const item of registeredInputs) {
       if (item.appliedSubscriptionId && item.appliedSubscriptionId !== "auto") {
         await this.validateSubscriptionEntitlement(
           item.appliedSubscriptionId,
           item.serviceId,
           customerId,
           branchId,
-          organizationId
+          organizationId,
         );
-      } else if (item.appliedSubscriptionId === "auto") {
+      } else if (item.appliedSubscriptionId === "auto" || item.appliedSubscriptionId === undefined) {
+        // Automatically check if customer has an eligible active subscription for this service
         const eligibleSub = await this.findEligibleSubscriptionForService(
           customerId,
           item.serviceId,
           branchId,
-          organizationId
+          organizationId,
         );
         if (eligibleSub) {
           item.appliedSubscriptionId = eligibleSub._id.toString();
         } else {
           item.appliedSubscriptionId = null;
         }
+      } else {
+        // Explicit opt-out (item.appliedSubscriptionId === null): do not auto-resolve
+        item.appliedSubscriptionId = null;
       }
     }
 
@@ -766,6 +812,21 @@ export class AppointmentService {
     let subtotal = 0;
 
     const serviceSnapshots = normalizedServiceInputs.map((item) => {
+      if (item.serviceType === "custom") {
+        totalDuration += item.duration;
+        subtotal += item.price;
+        return {
+          serviceType: "custom",
+          serviceId: null,
+          name: item.name,
+          duration: item.duration,
+          price: item.price,
+          appliedSubscriptionId: null,
+          isRedeemedViaSubscription: false,
+          subscriptionUsageId: null,
+        };
+      }
+
       const s = dbServices.find(
         (serv) => serv._id.toString() === item.serviceId.toString(),
       );
@@ -778,6 +839,7 @@ export class AppointmentService {
       subtotal += resolvedPrice;
 
       return {
+        serviceType: "registered",
         serviceId: s._id,
         name: s.name,
         duration: s.duration,
@@ -980,9 +1042,44 @@ export class AppointmentService {
     if (Array.isArray(services) && services.length > 0) {
       normalizedServiceInputs = services.map((item) => {
         if (typeof item === "string") {
-          return { serviceId: item, customPrice: undefined, appliedSubscriptionId: null };
+          return {
+            serviceType: "registered",
+            serviceId: item,
+            customPrice: undefined,
+            appliedSubscriptionId: null,
+            _id: undefined,
+          };
         }
+        const isCustom =
+          item.serviceType === "custom" ||
+          item.type === "custom" ||
+          (!item.serviceId && item.name && item.duration !== undefined);
+
+        if (isCustom) {
+          if (item.appliedSubscriptionId) {
+            throw new AppError(
+              "Custom services cannot be assigned to or redeemed via subscriptions",
+              400,
+            );
+          }
+          return {
+            serviceType: "custom",
+            _id: item._id || item.id || item.appointmentServiceId,
+            name: item.name ? String(item.name).trim() : "",
+            duration: item.duration !== undefined ? Number(item.duration) : undefined,
+            price:
+              item.price !== undefined
+                ? Number(item.price)
+                : item.customPrice !== undefined
+                  ? Number(item.customPrice)
+                  : undefined,
+            appliedSubscriptionId: null,
+          };
+        }
+
         return {
+          serviceType: "registered",
+          _id: item._id || item.id || item.appointmentServiceId,
           serviceId: item.serviceId
             ? item.serviceId.toString()
             : item.toString(),
@@ -990,30 +1087,38 @@ export class AppointmentService {
             item.customPrice !== undefined && item.customPrice !== null
               ? Number(item.customPrice)
               : undefined,
-          appliedSubscriptionId: item.appliedSubscriptionId
-            ? item.appliedSubscriptionId.toString()
-            : null,
+          appliedSubscriptionId:
+            item.appliedSubscriptionId === undefined
+              ? undefined
+              : item.appliedSubscriptionId === null
+                ? null
+                : item.appliedSubscriptionId.toString(),
         };
       });
     } else if (Array.isArray(serviceIds) && serviceIds.length > 0) {
       normalizedServiceInputs = serviceIds.map((id) => ({
+        serviceType: "registered",
         serviceId: id.toString(),
         customPrice: undefined,
-        appliedSubscriptionId: null,
+        appliedSubscriptionId: undefined, // omitted -> auto-apply eligible
       }));
     }
 
     // If services changed, recalculate snapshot, duration, endAt, and pricing
     if (normalizedServiceInputs && normalizedServiceInputs.length > 0) {
-      const extractedIds = normalizedServiceInputs.map(
-        (item) => item.serviceId,
+      const registeredInputs = normalizedServiceInputs.filter(
+        (item) => item.serviceType === "registered",
       );
-      const dbServices = await Service.find({
-        _id: { $in: extractedIds },
-        organizationId,
-        isDeleted: false,
-        status: "active",
-      });
+      const extractedIds = registeredInputs.map((item) => item.serviceId);
+
+      const dbServices = extractedIds.length > 0
+        ? await Service.find({
+            _id: { $in: extractedIds },
+            organizationId,
+            isDeleted: false,
+            status: "active",
+          })
+        : [];
 
       if (dbServices.length !== extractedIds.length) {
         throw new AppError(
@@ -1025,29 +1130,33 @@ export class AppointmentService {
       // Map existing services to preserve historical agreed price, isRedeemedViaSubscription, subscriptionUsageId
       const existingServices = appointment.services || [];
 
-      // Validate or auto-resolve appliedSubscriptionId deterministically
+      // Validate or auto-resolve appliedSubscriptionId deterministically for registered lines
       const customerId = appointment.customerId?._id || appointment.customerId;
-      for (const item of normalizedServiceInputs) {
+      for (const item of registeredInputs) {
         if (item.appliedSubscriptionId && item.appliedSubscriptionId !== "auto") {
           await this.validateSubscriptionEntitlement(
             item.appliedSubscriptionId,
             item.serviceId,
             customerId,
             branchId,
-            organizationId
+            organizationId,
           );
-        } else if (item.appliedSubscriptionId === "auto") {
+        } else if (item.appliedSubscriptionId === "auto" || item.appliedSubscriptionId === undefined) {
+          // Automatically check if customer has an eligible active subscription for this service
           const eligibleSub = await this.findEligibleSubscriptionForService(
             customerId,
             item.serviceId,
             branchId,
-            organizationId
+            organizationId,
           );
           if (eligibleSub) {
             item.appliedSubscriptionId = eligibleSub._id.toString();
           } else {
             item.appliedSubscriptionId = null;
           }
+        } else {
+          // Explicit opt-out (item.appliedSubscriptionId === null): do not auto-resolve
+          item.appliedSubscriptionId = null;
         }
       }
 
@@ -1055,14 +1164,53 @@ export class AppointmentService {
       let subtotal = 0;
 
       const serviceSnapshots = normalizedServiceInputs.map((item) => {
+        if (item.serviceType === "custom") {
+          // If existing custom line matched by _id, preserve its agreed price if item.price not specified
+          const existingLine = item._id
+            ? existingServices.find(
+                (es) => es._id && es._id.toString() === item._id.toString(),
+              )
+            : null;
+
+          const resolvedPrice =
+            item.price !== undefined && !isNaN(item.price)
+              ? item.price
+              : (existingLine?.price ?? 0);
+
+          const resolvedDuration =
+            item.duration !== undefined && !isNaN(item.duration) && item.duration > 0
+              ? item.duration
+              : (existingLine?.duration ?? 1);
+
+          const resolvedName = item.name || existingLine?.name || "Custom Service";
+
+          totalDuration += resolvedDuration;
+          subtotal += resolvedPrice;
+
+          return {
+            _id: existingLine?._id || undefined,
+            serviceType: "custom",
+            serviceId: null,
+            name: resolvedName,
+            duration: resolvedDuration,
+            price: resolvedPrice,
+            appliedSubscriptionId: null,
+            isRedeemedViaSubscription: false,
+            subscriptionUsageId: null,
+          };
+        }
+
         const s = dbServices.find(
           (serv) => serv._id.toString() === item.serviceId.toString(),
         );
 
         // Find existing matching service line to preserve agreed price and subscription redemption history
-        const existingLine = existingServices.find(
-          (es) => es.serviceId.toString() === item.serviceId.toString()
-        );
+        const existingLine = existingServices.find((es) => {
+          if (item._id && es._id && es._id.toString() === item._id.toString()) {
+            return true;
+          }
+          return es.serviceId && es.serviceId.toString() === item.serviceId.toString();
+        });
 
         let resolvedPrice;
         if (item.customPrice !== undefined && item.customPrice !== null) {
@@ -1077,6 +1225,8 @@ export class AppointmentService {
         subtotal += resolvedPrice;
 
         return {
+          _id: existingLine?._id || undefined,
+          serviceType: "registered",
           serviceId: s._id,
           name: s.name,
           duration: s.duration,
@@ -1087,17 +1237,9 @@ export class AppointmentService {
         };
       });
 
-      // Calculate start and end times
+      // Calculate start and end times deterministically from scheduled startAt and totalDuration
       const startAt = appointment.startAt;
-      let endAt;
-      if (appointment.status === "in_progress") {
-        const startedAt = appointment.startedAt ? new Date(appointment.startedAt) : startAt;
-        const elapsedMinutes = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 60000));
-        const remainingMinutes = Math.max(0, totalDuration - elapsedMinutes);
-        endAt = new Date(Date.now() + remainingMinutes * 60000);
-      } else {
-        endAt = new Date(startAt.getTime() + totalDuration * 60000);
-      }
+      const endAt = new Date(startAt.getTime() + totalDuration * 60000);
       const formattedEnd = formatUTCToLocal(endAt);
 
       const effectiveDiscount =
@@ -1450,6 +1592,39 @@ export class AppointmentService {
           400,
         );
       }
+
+      // Overdue assigned staff detection:
+      // Check if the assigned staff member has another unfinished in_progress appointment on the same calendar operating day whose scheduled endAt has passed
+      const overdueAppointment = await appointmentRepo.findOne(
+        {
+          _id: { $ne: appointment._id },
+          branchId: appointment.branchId?._id || appointment.branchId,
+          staffId: appointment.staffId?._id || appointment.staffId,
+          status: "in_progress",
+          appointmentDate: appointment.appointmentDate,
+          endAt: { $lt: new Date(nowMs) },
+        },
+        organizationId,
+      );
+
+      if (overdueAppointment && !data.allowOverdueStaffOverride) {
+        const overdueMinutes = Math.max(
+          1,
+          Math.round((nowMs - new Date(overdueAppointment.endAt).getTime()) / 60000),
+        );
+        throw new AppError(
+          `Assigned staff member is currently working on an overdue appointment (${overdueAppointment.appointmentCode}) that was scheduled to end at ${overdueAppointment.endTime} (${overdueMinutes}m overdue). An explicit manager override is required to start this appointment.`,
+          409,
+          {
+            conflictType: "STAFF_OVERDUE_APPOINTMENT",
+            overdueAppointmentId: overdueAppointment._id.toString(),
+            overdueAppointmentCode: overdueAppointment.appointmentCode,
+            overdueScheduledEndTime: overdueAppointment.endTime,
+            overdueMinutes,
+            requiresOverride: true,
+          },
+        );
+      }
     } else if (status === "completed") {
       if (currentStatus !== "in_progress") {
         throw new AppError(
@@ -1510,6 +1685,7 @@ export class AppointmentService {
             reason,
             startedAt: updates.startedAt || null,
             completedAt: updates.completedAt || null,
+            allowOverdueStaffOverride: data.allowOverdueStaffOverride || false,
           },
         });
       } catch (auditErr) {
@@ -1802,7 +1978,7 @@ export class AppointmentService {
         let query = {
           _id: subId,
           organizationId,
-          status: "active",
+          status: { $in: ["active", "pending_payment"] },
           isDeleted: false,
           entitlements: {
             $elemMatch: {
@@ -1849,7 +2025,7 @@ export class AppointmentService {
         // Mark corresponding service line as redeemed
         const targetLine = updatedServiceLines.find(
           (sl) => sl._id?.toString() === line._id?.toString() ||
-            (sl.serviceId.toString() === sId.toString() && sl.appliedSubscriptionId?.toString() === subId.toString())
+            (sl.serviceId && sl.serviceId.toString() === sId.toString() && sl.appliedSubscriptionId?.toString() === subId.toString())
         );
         if (targetLine) {
           targetLine.isRedeemedViaSubscription = true;
@@ -2009,41 +2185,85 @@ export class AppointmentService {
     if (Array.isArray(services) && services.length > 0) {
       normalizedServiceInputs = services.map((item) => {
         if (typeof item === "string") {
-          return { serviceId: item, customPrice: undefined, appliedSubscriptionId: null };
+          return {
+            serviceType: "registered",
+            serviceId: item,
+            customPrice: undefined,
+            appliedSubscriptionId: null,
+            _id: undefined,
+          };
         }
+        const isCustom =
+          item.serviceType === "custom" ||
+          item.type === "custom" ||
+          (!item.serviceId && item.name && item.duration !== undefined);
+
+        if (isCustom) {
+          if (item.appliedSubscriptionId) {
+            throw new AppError(
+              "Custom services cannot be assigned to or redeemed via subscriptions",
+              400,
+            );
+          }
+          return {
+            serviceType: "custom",
+            _id: item._id || item.id || item.appointmentServiceId,
+            name: item.name ? String(item.name).trim() : "",
+            duration: item.duration !== undefined ? Number(item.duration) : undefined,
+            price:
+              item.price !== undefined
+                ? Number(item.price)
+                : item.customPrice !== undefined
+                  ? Number(item.customPrice)
+                  : undefined,
+            appliedSubscriptionId: null,
+          };
+        }
+
         return {
+          serviceType: "registered",
+          _id: item._id || item.id || item.appointmentServiceId,
           serviceId: item.serviceId ? item.serviceId.toString() : item.toString(),
           customPrice:
             item.customPrice !== undefined && item.customPrice !== null
               ? Number(item.customPrice)
               : undefined,
-          appliedSubscriptionId: item.appliedSubscriptionId
-            ? item.appliedSubscriptionId.toString()
-            : null,
+          appliedSubscriptionId:
+            item.appliedSubscriptionId === undefined
+              ? undefined
+              : item.appliedSubscriptionId === null
+                ? null
+                : item.appliedSubscriptionId.toString(),
         };
       });
     } else if (Array.isArray(serviceIds) && serviceIds.length > 0) {
       normalizedServiceInputs = serviceIds.map((sid) => ({
+        serviceType: "registered",
         serviceId: sid.toString(),
         customPrice: undefined,
-        appliedSubscriptionId: null,
+        appliedSubscriptionId: undefined, // omitted -> auto-apply eligible
       }));
     } else {
       throw new AppError("At least one service must be selected", 400);
     }
 
-    const uniqueIds = [...new Set(normalizedServiceInputs.map((item) => item.serviceId))];
-    const dbServices = await Service.find({
-      _id: { $in: uniqueIds },
-      organizationId,
-      isDeleted: false,
-      status: "active",
-    });
+    const registeredInputs = normalizedServiceInputs.filter(
+      (item) => item.serviceType === "registered",
+    );
+    const uniqueIds = [...new Set(registeredInputs.map((item) => item.serviceId))];
+    const dbServices = uniqueIds.length > 0
+      ? await Service.find({
+          _id: { $in: uniqueIds },
+          organizationId,
+          isDeleted: false,
+          status: "active",
+        })
+      : [];
 
     if (dbServices.length !== uniqueIds.length) {
       throw new AppError(
         "One or more selected services are invalid or inactive for this organization",
-        400
+        400,
       );
     }
 
@@ -2052,10 +2272,48 @@ export class AppointmentService {
     let subtotal = 0;
 
     const proposedServiceSnapshots = normalizedServiceInputs.map((item) => {
+      if (item.serviceType === "custom") {
+        const existingLine = item._id
+          ? existingServices.find(
+              (es) => es._id && es._id.toString() === item._id.toString(),
+            )
+          : null;
+
+        const resolvedPrice =
+          item.price !== undefined && !isNaN(item.price)
+            ? item.price
+            : (existingLine?.price ?? 0);
+
+        const resolvedDuration =
+          item.duration !== undefined && !isNaN(item.duration) && item.duration > 0
+            ? item.duration
+            : (existingLine?.duration ?? 1);
+
+        const resolvedName = item.name || existingLine?.name || "Custom Service";
+
+        totalDuration += resolvedDuration;
+        subtotal += resolvedPrice;
+
+        return {
+          _id: existingLine?._id || undefined,
+          serviceType: "custom",
+          serviceId: null,
+          name: resolvedName,
+          duration: resolvedDuration,
+          price: resolvedPrice,
+          appliedSubscriptionId: null,
+          isRedeemedViaSubscription: false,
+          subscriptionUsageId: null,
+        };
+      }
+
       const s = dbServices.find((serv) => serv._id.toString() === item.serviceId.toString());
-      const existingLine = existingServices.find(
-        (es) => es.serviceId.toString() === item.serviceId.toString()
-      );
+      const existingLine = existingServices.find((es) => {
+        if (item._id && es._id && es._id.toString() === item._id.toString()) {
+          return true;
+        }
+        return es.serviceId && es.serviceId.toString() === item.serviceId.toString();
+      });
 
       let resolvedPrice;
       if (item.customPrice !== undefined && item.customPrice !== null) {
@@ -2069,12 +2327,28 @@ export class AppointmentService {
       totalDuration += s.duration;
       subtotal += resolvedPrice;
 
+      let resolvedAppliedSubscriptionId;
+      if (item.appliedSubscriptionId && item.appliedSubscriptionId !== "auto") {
+        resolvedAppliedSubscriptionId = item.appliedSubscriptionId;
+      } else if (item.appliedSubscriptionId === null) {
+        // Explicit opt-out
+        resolvedAppliedSubscriptionId = null;
+      } else {
+        // item.appliedSubscriptionId === undefined || item.appliedSubscriptionId === "auto"
+        // Retain existing line's applied subscription if present and valid, or leave as null for preview
+        resolvedAppliedSubscriptionId = existingLine?.appliedSubscriptionId
+          ? existingLine.appliedSubscriptionId.toString()
+          : null;
+      }
+
       return {
+        _id: existingLine?._id || undefined,
+        serviceType: "registered",
         serviceId: s._id.toString(),
         name: s.name,
         duration: s.duration,
         price: resolvedPrice,
-        appliedSubscriptionId: item.appliedSubscriptionId || (existingLine?.appliedSubscriptionId ? existingLine.appliedSubscriptionId.toString() : null),
+        appliedSubscriptionId: resolvedAppliedSubscriptionId,
         isRedeemedViaSubscription: existingLine ? existingLine.isRedeemedViaSubscription : false,
         subscriptionUsageId: existingLine ? existingLine.subscriptionUsageId : null,
       };
@@ -2220,9 +2494,11 @@ export class AppointmentService {
             : proposedServiceSnapshots;
           if (prevServices) {
             for (const ps of prevServices) {
-              const matchedSvc = dbServices.find((s) => s._id.toString() === ps.serviceId);
-              if (matchedSvc?.bufferMinutes && matchedSvc.bufferMinutes > serviceBuffer) {
-                serviceBuffer = matchedSvc.bufferMinutes;
+              if (ps.serviceId) {
+                const matchedSvc = dbServices.find((s) => s._id.toString() === ps.serviceId.toString());
+                if (matchedSvc?.bufferMinutes && matchedSvc.bufferMinutes > serviceBuffer) {
+                  serviceBuffer = matchedSvc.bufferMinutes;
+                }
               }
             }
           }
@@ -2322,11 +2598,20 @@ export class AppointmentService {
 
     // Generate cryptographic preview token bound to the entire canonical proposal state:
     // initiatingId, initiatingVersion, branchId, organizationId, proposedEndAt,
-    // canonical services snapshot (sorted serviceId + customPrice), effectiveDiscount, and affectedIdsAndVersions
+    // Canonical services snapshot: sort deterministically by composite key to ensure canonical ordering
     const canonicalServices = proposedServiceSnapshots
-      .map((s) => `${s.serviceId}:${s.price}`)
-      .sort()
-      .join("|");
+      .map((s) => ({
+        type: s.serviceType || "registered",
+        idOrName: String(s.serviceId || s.name || ""),
+        price: Number(s.price),
+        duration: Number(s.duration),
+        subId: s.appliedSubscriptionId ? String(s.appliedSubscriptionId) : "",
+      }))
+      .sort((a, b) =>
+        `${a.type}:${a.idOrName}`.localeCompare(`${b.type}:${b.idOrName}`) ||
+        a.price - b.price ||
+        a.duration - b.duration
+      );
 
     const tokenPayload = JSON.stringify({
       organizationId: organizationId.toString(),
@@ -2338,7 +2623,16 @@ export class AppointmentService {
       effectiveDiscount,
       affectedIdsAndVersions: affectedAppointments.map((a) => `${a.id}:${a.version}`),
     });
-    const previewToken = crypto.createHash("sha256").update(tokenPayload).digest("hex");
+
+    const previewSecret = env.JWT_SECRET;
+    if (!previewSecret || typeof previewSecret !== "string" || previewSecret.length < 8) {
+      throw new AppError("Server cryptographic secret is misconfigured", 500);
+    }
+
+    const previewToken = crypto
+      .createHmac("sha256", previewSecret)
+      .update(tokenPayload)
+      .digest("hex");
 
     return {
       canCommit: conflicts.length === 0,
@@ -2396,7 +2690,13 @@ export class AppointmentService {
       organizationId
     );
 
-    if (freshPreview.previewToken !== previewToken) {
+    const freshTokenBuf = Buffer.from(freshPreview.previewToken, "utf8");
+    const providedTokenBuf = Buffer.from(String(previewToken), "utf8");
+    const isTokenMatch =
+      freshTokenBuf.length === providedTokenBuf.length &&
+      crypto.timingSafeEqual(freshTokenBuf, providedTokenBuf);
+
+    if (!isTokenMatch) {
       throw new AppError(
         "The schedule proposal is stale due to a concurrent update. Please preview again before committing.",
         409
@@ -2584,6 +2884,245 @@ export class AppointmentService {
       initiatingAppointment: commitResult.initiatingAppointment,
       shiftedAppointments: commitResult.shiftedAppointments,
     };
+  }
+
+  /**
+   * Phase 3: Upsell Subscription during an Ongoing or Scheduled Appointment
+   * Atomically sells a subscription, creates its sale billing record, and
+   * reassesses/attaches eligible benefits to the appointment's registered service lines.
+   */
+  async upsellSubscription(appointmentId, upsellData, organizationId, branchId, userId) {
+    const {
+      price,
+      entitlements,
+      planId = null,
+      permittedBranchIds = [],
+      startDate,
+      endDate,
+      notes = "",
+      billImmediately = true,
+    } = upsellData;
+
+    return await runInTransaction(async (session) => {
+      // 1. Fetch and validate appointment
+      const appointment = await Appointment.findOne({
+        _id: appointmentId,
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (!appointment) {
+        throw new AppError("Appointment not found", 404);
+      }
+
+      if (branchId && appointment.branchId.toString() !== branchId.toString()) {
+        throw new AppError("Target branchId does not match appointment branch", 400);
+      }
+
+      if (!["scheduled", "in_progress"].includes(appointment.status)) {
+        throw new AppError(
+          `Cannot upsell subscription to an appointment with status '${appointment.status}'. Must be 'scheduled' or 'in_progress'.`,
+          400
+        );
+      }
+
+      const customerId = appointment.customerId;
+      const customer = await Customer.findOne({
+        _id: customerId,
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (!customer || customer.status !== "active") {
+        throw new AppError("Customer is inactive or not found", 400);
+      }
+
+      // 2. Validate dates
+      const start = new Date(startDate || new Date().toISOString());
+      const end = new Date(endDate);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        throw new AppError("Invalid start or end date", 400);
+      }
+      if (end <= start) {
+        throw new AppError("End date must be strictly after start date", 400);
+      }
+
+      // 3. Validate entitlements
+      if (!Array.isArray(entitlements) || entitlements.length === 0) {
+        throw new AppError("At least one entitlement is required", 400);
+      }
+
+      const seenServiceIds = new Set();
+      const resolvedEntitlements = [];
+      for (const ent of entitlements) {
+        const sIdStr = ent.serviceId.toString();
+        if (seenServiceIds.has(sIdStr)) {
+          throw new AppError(
+            "Duplicate serviceId in entitlements. Consolidate into a single entitlement with total quantity.",
+            400
+          );
+        }
+        seenServiceIds.add(sIdStr);
+
+        const service = await Service.findOne({
+          _id: ent.serviceId,
+          organizationId,
+          isDeleted: false,
+        }).session(session);
+
+        if (!service) {
+          throw new AppError(`Service ${ent.serviceId} not found in this organization`, 404);
+        }
+        if (service.status !== "active") {
+          throw new AppError(`Service '${service.name}' is inactive and cannot be added to a subscription`, 400);
+        }
+
+        const totalQuantity = parseInt(ent.quantity, 10);
+        if (isNaN(totalQuantity) || totalQuantity < 1) {
+          throw new AppError(`Invalid quantity for service '${service.name}'. Must be at least 1.`, 400);
+        }
+
+        resolvedEntitlements.push({
+          serviceId: service._id,
+          serviceName: service.name,
+          totalQuantity,
+          usedQuantity: 0,
+          remainingQuantity: totalQuantity,
+        });
+      }
+
+      // 4. Validate permittedBranchIds
+      const validPermittedBranchIds = [];
+      if (Array.isArray(permittedBranchIds) && permittedBranchIds.length > 0) {
+        for (const bId of permittedBranchIds) {
+          const branch = await Branch.findOne({
+            _id: bId,
+            organizationId,
+            isActive: true,
+          }).session(session);
+          if (!branch) {
+            throw new AppError(`Permitted branch ${bId} is invalid or inactive`, 400);
+          }
+          validPermittedBranchIds.push(branch._id);
+        }
+      }
+
+      // 5. Generate subscription code
+      const sequenceKey = `SUB_${organizationId.toString()}`;
+      const seq = await Sequence.findOneAndUpdate(
+        { key: sequenceKey },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true, session }
+      );
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
+      const num = String(seq.seq).padStart(4, "0");
+      const subscriptionCode = `SUB-${yyyy}${mm}${dd}-${num}`;
+
+      // 6. Create subscription doc
+      // Status policy:
+      // If billImmediately is true and price > 0, invoice is generated and subscription starts as "pending_payment"
+      // until the invoice is paid via POS payment recording.
+      // If price is 0 (complimentary/deferred), status is "active".
+      const initialStatus = billImmediately && Number(price) > 0 ? "pending_payment" : "active";
+      const newSubscription = new Subscription({
+        organizationId,
+        customerId: customer._id,
+        subscriptionCode,
+        planId: planId || null,
+        price: Number(price),
+        entitlements: resolvedEntitlements,
+        permittedBranchIds: validPermittedBranchIds,
+        startDate: start,
+        endDate: end,
+        status: initialStatus,
+        notes: notes || `Upsold during appointment ${appointment.appointmentCode}`,
+      });
+      await newSubscription.save({ session });
+
+      // 7. Create standalone subscription invoice if billImmediately is true
+      let invoice = null;
+      if (billImmediately) {
+        const { billingService } = await import("../billing/billing.service.js");
+        invoice = await billingService.createInvoiceForSubscriptionSale(
+          {
+            subscriptionId: newSubscription._id,
+            branchId: appointment.branchId,
+            notes: `Upsold during appointment ${appointment.appointmentCode}`,
+          },
+          organizationId,
+          userId,
+          session
+        );
+        newSubscription.invoiceId = invoice._id;
+      }
+
+      // 8. Reassess this appointment's registered service lines and attach the new subscription
+      // Subscriptions are redeemable even when payment is pending or partial
+      let newlyCoveredCount = 0;
+      if (["active", "pending_payment"].includes(newSubscription.status)) {
+        for (const line of appointment.services || []) {
+          if (
+            line.serviceType !== "custom" &&
+            !line.isRedeemedViaSubscription &&
+            !line.appliedSubscriptionId
+          ) {
+            const matchingEntitlement = newSubscription.entitlements.find(
+              (e) =>
+                e.serviceId.toString() === line.serviceId.toString() &&
+                e.remainingQuantity >= 1
+            );
+
+            if (matchingEntitlement) {
+              // Check permitted branches
+              const isPermitted =
+                validPermittedBranchIds.length === 0 ||
+                validPermittedBranchIds.some(
+                  (b) => b.toString() === appointment.branchId.toString()
+                );
+              if (isPermitted) {
+                line.appliedSubscriptionId = newSubscription._id;
+                newlyCoveredCount++;
+              }
+            }
+          }
+        }
+      }
+
+      await appointment.save({ session });
+
+      // 9. Audit log
+      const auditLog = new AuditLog({
+        organizationId,
+        branchId: appointment.branchId,
+        actorId: userId,
+        action: AUDIT_ACTIONS.SUBSCRIPTION_CREATED,
+        entityType: "Subscription",
+        entityId: newSubscription._id,
+        description: `Subscription ${subscriptionCode} upsold during appointment ${appointment.appointmentCode} for customer ${customer.name}`,
+        metadata: {
+          appointmentId: appointment._id,
+          appointmentCode: appointment.appointmentCode,
+          subscriptionCode,
+          price,
+          newlyCoveredCount,
+          invoiceId: invoice?._id || null,
+        },
+      });
+      await auditLog.save({ session });
+
+      return {
+        subscription: newSubscription,
+        invoice,
+        appointment,
+        summary: {
+          newlyCoveredServicesCount: newlyCoveredCount,
+          appliedSubscriptionCode: subscriptionCode,
+        },
+      };
+    }, { requireTransaction: true });
   }
 }
 

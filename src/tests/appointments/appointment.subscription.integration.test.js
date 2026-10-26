@@ -26,6 +26,13 @@ import { redis } from "../../../src/utils/redis.js";
 jest.spyOn(redis, "get").mockResolvedValue(null);
 jest.spyOn(redis, "setex").mockResolvedValue("OK");
 
+
+// Relative future date helper to prevent fixture staleness
+const getFutureDateStr = (daysAhead = 30) => {
+  const d = new Date(Date.now() + daysAhead * 86400000);
+  return d.toISOString().split("T")[0];
+};
+
 describe("Appointment ↔ Subscription Integration Flow Tests", () => {
   jest.setTimeout(35000);
 
@@ -168,6 +175,8 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
       "subscriptions.view",
       "subscriptions.sell",
       "subscriptions.redeem",
+      "billing.checkout",
+      "billing.view",
     ];
 
     const permDocs = await Promise.all(
@@ -252,7 +261,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
               appliedSubscriptionId: sub._id.toString(),
             },
           ],
-          appointmentDate: "2026-11-15",
+          appointmentDate: getFutureDateStr(25),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -515,7 +524,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
               appliedSubscriptionId: sub._id.toString(),
             },
           ],
-          appointmentDate: "2026-11-15",
+          appointmentDate: getFutureDateStr(25),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -575,7 +584,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
               appliedSubscriptionId: activeSub._id.toString(),
             },
           ],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -593,7 +602,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
               appliedSubscriptionId: activeSub._id.toString(),
             },
           ],
-          appointmentDate: "2026-10-21",
+          appointmentDate: getFutureDateStr(31),
           startTime: "14:00",
           bookingType: "advance",
         });
@@ -1136,7 +1145,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
           branchId: branchA1._id.toString(),
           customerId: customerA._id.toString(),
           services: [{ serviceId: serviceA1._id.toString() }],
-          appointmentDate: "2026-11-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -1167,7 +1176,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
           branchId: branchA1._id.toString(),
           customerId: customerA._id.toString(),
           services: [{ serviceId: serviceA1._id.toString(), customPrice: -50 }],
-          appointmentDate: "2026-11-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "11:00",
           bookingType: "advance",
         });
@@ -1181,7 +1190,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
           branchId: branchA1._id.toString(),
           customerId: customerA._id.toString(),
           services: [{ serviceId: serviceA1._id.toString(), customPrice: 175 }],
-          appointmentDate: "2026-11-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "11:00",
           bookingType: "advance",
         });
@@ -1237,7 +1246,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
           branchId: branchA1._id.toString(),
           customerId: customerA._id.toString(),
           services: [{ serviceId: serviceA1._id.toString(), appliedSubscriptionId: "auto" }],
-          appointmentDate: "2026-11-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "14:00",
           bookingType: "advance",
         });
@@ -1261,7 +1270,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
               appliedSubscriptionId: activeSub._id.toString(),
             },
           ],
-          appointmentDate: "2026-11-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "16:00",
           bookingType: "advance",
         });
@@ -1289,7 +1298,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
               appliedSubscriptionId: activeSub._id.toString(),
             },
           ],
-          appointmentDate: "2026-11-21",
+          appointmentDate: getFutureDateStr(31),
           startTime: "11:00",
           bookingType: "advance",
         });
@@ -1339,6 +1348,331 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
       // Verify exactly 1 usage record exists for this appointment
       const usages = await SubscriptionUsage.find({ appointmentId: concurrentApt.id });
       expect(usages).toHaveLength(1);
+    });
+  });
+
+  describe("4. Regression Suite: Subscription Selection vs. Actual Redemption Semantics", () => {
+    it("proves selection of subscription during booking & editing assigns coverage without decrementing entitlements or falsely marking redemption", async () => {
+      // 1. Create active subscription with 2 entitlements
+      const sub = await Subscription.create({
+        organizationId: orgA._id,
+        customerId: customerA._id,
+        subscriptionCode: `SUB-SEM-${Date.now()}`,
+        price: 1500,
+        entitlements: [
+          {
+            serviceId: serviceA1._id,
+            serviceName: "Classic Haircut",
+            totalQuantity: 2,
+            usedQuantity: 0,
+            remainingQuantity: 2,
+          },
+        ],
+        permittedBranchIds: [branchA1._id],
+        startDate: new Date("2026-01-01"),
+        endDate: new Date("2026-12-31"),
+        status: "active",
+      });
+
+      // 2. Create appointment selecting the subscription
+      const createRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchA1._id.toString(),
+          customerId: customerA._id.toString(),
+          staffId: staffMember._id.toString(),
+          services: [
+            {
+              serviceId: serviceA1._id.toString(),
+              appliedSubscriptionId: sub._id.toString(),
+            },
+          ],
+          appointmentDate: getFutureDateStr(35),
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+
+      expect(createRes.status).toBe(201);
+      const bookedService = createRes.body.data.services[0];
+      expect(bookedService.appliedSubscriptionId).toBe(sub._id.toString());
+      expect(bookedService.isRedeemedViaSubscription).toBe(false);
+      expect(bookedService.subscriptionUsageId).toBeNull();
+
+      // Entitlements intact
+      let subDoc = await Subscription.findById(sub._id);
+      expect(subDoc.entitlements[0].remainingQuantity).toBe(2);
+      expect(subDoc.entitlements[0].usedQuantity).toBe(0);
+
+      // 3. Edit appointment services (update / preview & commit lifecycle)
+      const editRes = await request(app)
+        .put(`/api/v1/appointments/${createRes.body.data._id}`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchA1._id.toString(),
+          services: [
+            {
+              serviceId: serviceA1._id.toString(),
+              appliedSubscriptionId: sub._id.toString(),
+            },
+          ],
+        });
+
+      expect(editRes.status).toBe(200);
+      const editedService = editRes.body.data.services[0];
+      expect(editedService.appliedSubscriptionId).toBe(sub._id.toString());
+      expect(editedService.isRedeemedViaSubscription).toBe(false);
+      expect(editedService.subscriptionUsageId).toBeNull();
+
+      // Entitlements still intact and no usage records
+      subDoc = await Subscription.findById(sub._id);
+      expect(subDoc.entitlements[0].remainingQuantity).toBe(2);
+      const usageCount = await SubscriptionUsage.countDocuments({ subscriptionId: sub._id });
+      expect(usageCount).toBe(0);
+    });
+
+    it("proves createInvoiceFromAppointment applies eligible coverage without consuming entitlements or creating usage", async () => {
+      const sub = await Subscription.create({
+        organizationId: orgA._id,
+        customerId: customerA._id,
+        subscriptionCode: `SUB-INV-${Date.now()}`,
+        price: 1500,
+        entitlements: [
+          {
+            serviceId: serviceA1._id,
+            serviceName: "Classic Haircut",
+            totalQuantity: 2,
+            usedQuantity: 0,
+            remainingQuantity: 2,
+          },
+        ],
+        permittedBranchIds: [branchA1._id],
+        startDate: new Date("2026-01-01"),
+        endDate: new Date("2026-12-31"),
+        status: "active",
+      });
+
+      const appointment = await Appointment.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentCode: `APT-INV-${Date.now()}`,
+        customerId: customerA._id,
+        staffId: staffMember._id,
+        appointmentDate: getFutureDateStr(36),
+        startTime: "11:00",
+        endTime: "11:30",
+        startAt: new Date(),
+        endAt: new Date(Date.now() + 1800000),
+        bookingType: "advance",
+        status: "scheduled",
+        totalDuration: 30,
+        services: [
+          {
+            serviceType: "registered",
+            serviceId: serviceA1._id,
+            name: "Classic Haircut",
+            duration: 30,
+            price: 500,
+            appliedSubscriptionId: sub._id,
+            isRedeemedViaSubscription: false,
+            subscriptionUsageId: null,
+          },
+        ],
+        pricing: { subtotal: 500, discount: 0, total: 500 },
+      });
+
+      // Create draft invoice from appointment
+      const invoiceRes = await request(app)
+        .post("/api/v1/billing/invoices")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchA1._id.toString(),
+          appointmentId: appointment._id.toString(),
+        });
+
+      expect(invoiceRes.status).toBe(201);
+      const invoice = invoiceRes.body.data;
+      expect(invoice.lines[0].isCoveredBySubscription).toBe(true);
+      expect(invoice.lines[0].subscriptionCoveredAmount).toBe(500);
+      expect(invoice.lines[0].customerPayable).toBe(0);
+      expect(invoice.payableAmount).toBe(0);
+
+      // Verify that invoice creation did NOT consume subscription balance
+      const subDoc = await Subscription.findById(sub._id);
+      expect(subDoc.entitlements[0].remainingQuantity).toBe(2);
+      expect(subDoc.entitlements[0].usedQuantity).toBe(0);
+
+      const usageCount = await SubscriptionUsage.countDocuments({ subscriptionId: sub._id });
+      expect(usageCount).toBe(0);
+
+      // Appointment service record remains unconsumed
+      const aptDoc = await Appointment.findById(appointment._id);
+      expect(aptDoc.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptDoc.services[0].subscriptionUsageId).toBeNull();
+    });
+
+    it("proves OTP-verified completion records actual consumption exactly once and repeated completion cannot double-consume", async () => {
+      const sub = await Subscription.create({
+        organizationId: orgA._id,
+        customerId: customerA._id,
+        subscriptionCode: `SUB-EXEC-${Date.now()}`,
+        price: 1500,
+        entitlements: [
+          {
+            serviceId: serviceA1._id,
+            serviceName: "Classic Haircut",
+            totalQuantity: 3,
+            usedQuantity: 0,
+            remainingQuantity: 3,
+          },
+        ],
+        permittedBranchIds: [branchA1._id],
+        startDate: new Date("2026-01-01"),
+        endDate: new Date("2026-12-31"),
+        status: "active",
+      });
+
+      const appointment = await Appointment.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentCode: `APT-EXEC-${Date.now()}`,
+        customerId: customerA._id,
+        staffId: staffMember._id,
+        appointmentDate: getFutureDateStr(37),
+        startTime: "12:00",
+        endTime: "12:30",
+        startAt: new Date(),
+        endAt: new Date(Date.now() + 1800000),
+        bookingType: "advance",
+        status: "in_progress",
+        totalDuration: 30,
+        services: [
+          {
+            serviceType: "registered",
+            serviceId: serviceA1._id,
+            name: "Classic Haircut",
+            duration: 30,
+            price: 500,
+            appliedSubscriptionId: sub._id,
+            isRedeemedViaSubscription: false,
+            subscriptionUsageId: null,
+          },
+        ],
+        pricing: { subtotal: 500, discount: 0, total: 500 },
+      });
+
+      const testOtp = "778899";
+      await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: appointment._id,
+        subscriptionIds: [sub._id],
+        customerId: customerA._id,
+        serviceIds: [serviceA1._id],
+        otpHash: crypto.createHash("sha256").update(testOtp).digest("hex"),
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+        status: "pending",
+      });
+
+      // 1st completion attempt: should succeed and consume entitlement exactly once
+      const compRes1 = await request(app)
+        .post(`/api/v1/appointments/${appointment._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(compRes1.status).toBe(200);
+      expect(compRes1.body.data.status).toBe("completed");
+      expect(compRes1.body.data.services[0].isRedeemedViaSubscription).toBe(true);
+      expect(compRes1.body.data.services[0].subscriptionUsageId).toBeDefined();
+
+      const subAfter1 = await Subscription.findById(sub._id);
+      expect(subAfter1.entitlements[0].remainingQuantity).toBe(2);
+      expect(subAfter1.entitlements[0].usedQuantity).toBe(1);
+
+      const usagesAfter1 = await SubscriptionUsage.find({ appointmentId: appointment._id });
+      expect(usagesAfter1).toHaveLength(1);
+      expect(usagesAfter1[0].serviceId.toString()).toBe(serviceA1._id.toString());
+
+      // 2nd completion attempt: must be strictly rejected and CANNOT consume twice
+      const compRes2 = await request(app)
+        .post(`/api/v1/appointments/${appointment._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(compRes2.status).toBe(400);
+
+      // Verify entitlement balance remained untouched (still remaining: 2, used: 1)
+      const subAfter2 = await Subscription.findById(sub._id);
+      expect(subAfter2.entitlements[0].remainingQuantity).toBe(2);
+      expect(subAfter2.entitlements[0].usedQuantity).toBe(1);
+
+      // Verify no duplicate usage record created
+      const usagesAfter2 = await SubscriptionUsage.find({ appointmentId: appointment._id });
+      expect(usagesAfter2).toHaveLength(1);
+    });
+
+    it("proves existing completed appointments retain correct historical billing and redemption data", async () => {
+      const historicalSubId = new mongoose.Types.ObjectId();
+      const historicalUsageId = new mongoose.Types.ObjectId();
+
+      const completedApt = await Appointment.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentCode: `APT-HIST-${Date.now()}`,
+        customerId: customerA._id,
+        staffId: staffMember._id,
+        appointmentDate: "2026-01-15",
+        startTime: "14:00",
+        endTime: "14:30",
+        startAt: new Date("2026-01-15T14:00:00Z"),
+        endAt: new Date("2026-01-15T14:30:00Z"),
+        bookingType: "advance",
+        status: "completed",
+        totalDuration: 30,
+        services: [
+          {
+            serviceType: "registered",
+            serviceId: serviceA1._id,
+            name: "Classic Haircut",
+            duration: 30,
+            price: 500,
+            appliedSubscriptionId: historicalSubId,
+            isRedeemedViaSubscription: true,
+            subscriptionUsageId: historicalUsageId,
+          },
+        ],
+        pricing: { subtotal: 500, discount: 0, total: 500 },
+      });
+
+      // Fetch via GET /appointments/:id
+      const getRes = await request(app)
+        .get(`/api/v1/appointments/${completedApt._id}?branchId=${branchA1._id.toString()}`)
+        .set("Authorization", `Bearer ${ownerToken}`);
+
+      expect(getRes.status).toBe(200);
+      const svc = getRes.body.data.services[0];
+      expect(svc.isRedeemedViaSubscription).toBe(true);
+      expect(svc.appliedSubscriptionId.toString()).toBe(historicalSubId.toString());
+      expect(svc.subscriptionUsageId.toString()).toBe(historicalUsageId.toString());
+
+      // Create invoice from already completed appointment with historical redemption
+      const invRes = await request(app)
+        .post("/api/v1/billing/invoices")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchA1._id.toString(),
+          appointmentId: completedApt._id.toString(),
+        });
+
+      expect(invRes.status).toBe(201);
+      const invLine = invRes.body.data.lines[0];
+      expect(invLine.isCoveredBySubscription).toBe(true);
+      expect(invLine.appliedSubscriptionId.toString()).toBe(historicalSubId.toString());
+      expect(invLine.subscriptionUsageId.toString()).toBe(historicalUsageId.toString());
+      expect(invLine.subscriptionCoveredAmount).toBe(500);
+      expect(invLine.customerPayable).toBe(0);
     });
   });
 });

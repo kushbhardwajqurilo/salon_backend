@@ -250,3 +250,15 @@ export const commitServiceModification = asyncHandler(async (req, res) => {
   );
 });
 
+export const upsellSubscription = asyncHandler(async (req, res) => {
+  const branchId = req.body?.branchId || req.branchId || req.headers["x-branch-id"];
+  const result = await appointmentService.upsellSubscription(
+    req.params.id,
+    req.body,
+    req.organizationId,
+    branchId,
+    req.user?.id || req.user?._id
+  );
+  return sendResponse(res, 201, "Subscription upsold successfully during appointment", result);
+});
+

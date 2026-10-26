@@ -3,6 +3,7 @@ import { AppError } from "../../utils/errors.js";
 import { Invoice } from "../../models/billing/invoice.model.js";
 import { Payment } from "../../models/billing/payment.model.js";
 import { Appointment } from "../../models/appointments/appointment.model.js";
+import { Subscription } from "../../models/subscriptions/subscription.model.js";
 import { Customer } from "../../models/customers/customer.model.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
@@ -52,7 +53,9 @@ export class BillingService {
       } else {
         const isLastUncovered =
           uncoveredLines.length > 0 &&
-          line.appointmentServiceId.toString() === uncoveredLines[uncoveredLines.length - 1].appointmentServiceId.toString();
+          ((line.appointmentServiceId && uncoveredLines[uncoveredLines.length - 1].appointmentServiceId &&
+            line.appointmentServiceId.toString() === uncoveredLines[uncoveredLines.length - 1].appointmentServiceId.toString()) ||
+           i === lines.length - 1);
 
         if (uncoveredTotal === 0 || effectiveDiscount === 0) {
           line.discountAmount = 0;
@@ -144,15 +147,17 @@ export class BillingService {
   /**
    * 1. CREATE DRAFT INVOICE FROM APPOINTMENT
    */
-  async createInvoiceFromAppointment(data, organizationId, userId) {
+  async createInvoiceFromAppointment(data, organizationId, userId, session = null) {
     const { appointmentId, branchId, discount, redeemLoyaltyPoints, notes = "" } = data;
 
     // Load target appointment strictly scoped to organization
-    const appointment = await Appointment.findOne({
+    let aptQuery = Appointment.findOne({
       _id: appointmentId,
       organizationId,
       isDeleted: false,
     });
+    if (session) aptQuery = aptQuery.session(session);
+    const appointment = await aptQuery;
 
     if (!appointment) {
       throw new AppError("Appointment not found", 404);
@@ -212,19 +217,83 @@ export class BillingService {
     };
 
     // Map service snapshots to invoice lines
+    // Inspect linked subscriptions and ensure coverage is only granted if the subscription is:
+    // 1. Found in the same organization
+    // 2. Belongs to the same customer
+    // 3. Status is "active" or "pending_payment" (or line was already redeemed via subscription)
+    // 4. Within validity dates (startDate <= now <= endDate)
+    // 5. Permitted at the appointment's branch
+    // 6. Contains an entitlement matching the serviceId with remaining quantity
+    // 7. Prevent duplicate coverage/over-consumption across multiple lines sharing the same subscription entitlement
+    const appliedSubIds = (appointment.services || [])
+      .map((s) => s.appliedSubscriptionId)
+      .filter(Boolean);
+
+    const subscriptionMap = new Map();
+    if (appliedSubIds.length > 0) {
+      const subs = await Subscription.find({
+        _id: { $in: appliedSubIds },
+        organizationId,
+        isDeleted: false,
+      });
+      for (const sub of subs) {
+        subscriptionMap.set(sub._id.toString(), sub);
+      }
+    }
+
+    const aptBranchIdStr = aptBranchId;
+    const now = new Date();
+    // Track simulated consumption per subscription & service during invoice line generation to prevent duplicate coverage
+    const allocatedEntitlementCounts = new Map(); // key: `${subId}_${serviceId}` -> number of lines covered
+
     const invoiceLines = (appointment.services || []).map((s) => {
       const unitPrice = Number(s.price); // Authoritative snapshot price from appointment
       const quantity = 1;
       const lineTotal = Number((unitPrice * quantity).toFixed(2));
-      const isCovered = Boolean(
-        s.appliedSubscriptionId ||
-        s.isRedeemedViaSubscription ||
-        s.subscriptionUsageId
-      );
+
+      let isCovered = false;
+      if (s.isRedeemedViaSubscription || s.subscriptionUsageId) {
+        // Line was already redeemed and verified at appointment completion
+        isCovered = true;
+      } else if (s.appliedSubscriptionId) {
+        const sub = subscriptionMap.get(s.appliedSubscriptionId.toString());
+        if (sub) {
+          const isCorrectOrg = sub.organizationId.toString() === organizationId.toString();
+          const isCorrectCustomer = sub.customerId.toString() === appointment.customerId.toString();
+          const isAllowedStatus = ["active", "pending_payment"].includes(sub.status);
+          const isWithinDates =
+            (!sub.startDate || new Date(sub.startDate) <= now) &&
+            (!sub.endDate || new Date(sub.endDate) >= now);
+
+          let isPermittedBranch = true;
+          if (Array.isArray(sub.permittedBranchIds) && sub.permittedBranchIds.length > 0) {
+            isPermittedBranch = sub.permittedBranchIds.some(
+              (b) => b.toString() === aptBranchIdStr
+            );
+          }
+
+          if (isCorrectOrg && isCorrectCustomer && isAllowedStatus && isWithinDates && isPermittedBranch) {
+            const sIdStr = s.serviceId ? s.serviceId.toString() : null;
+            const entitlement = (sub.entitlements || []).find(
+              (e) => e.serviceId && e.serviceId.toString() === sIdStr
+            );
+            if (entitlement && (entitlement.remainingQuantity || 0) > 0) {
+              const allocKey = `${sub._id.toString()}_${sIdStr}`;
+              const currentlyAllocated = allocatedEntitlementCounts.get(allocKey) || 0;
+              if (currentlyAllocated < entitlement.remainingQuantity) {
+                isCovered = true;
+                allocatedEntitlementCounts.set(allocKey, currentlyAllocated + 1);
+              }
+            }
+          }
+        }
+      }
+
       const subscriptionCoveredAmount = isCovered ? lineTotal : 0;
 
       return {
-        serviceId: s.serviceId,
+        serviceType: s.serviceType || "registered",
+        serviceId: s.serviceId || null,
         appointmentServiceId: s._id,
         name: s.name,
         duration: s.duration,
@@ -241,9 +310,10 @@ export class BillingService {
     });
 
     // Discount resolution: use override if explicitly provided, else seed from appointment
+    const effectiveDiscountInput = discount !== undefined && discount !== null ? discount : data.discountTotal;
     let standardDiscount =
-      discount !== undefined && discount !== null
-        ? Number(Number(discount).toFixed(2))
+      effectiveDiscountInput !== undefined && effectiveDiscountInput !== null
+        ? Number(Number(effectiveDiscountInput).toFixed(2))
         : Number((appointmentPricingSnapshot.discount || 0).toFixed(2));
 
     if (standardDiscount < 0) {
@@ -307,7 +377,11 @@ export class BillingService {
     });
 
     try {
-      await invoiceDoc.save();
+      if (session) {
+        await invoiceDoc.save({ session });
+      } else {
+        await invoiceDoc.save();
+      }
     } catch (err) {
       if (err.code === 11000) {
         throw new AppError("An active invoice already exists for this appointment", 409);
@@ -316,7 +390,7 @@ export class BillingService {
     }
 
     // Audit log
-    await AuditLog.create({
+    const auditData = {
       organizationId,
       branchId,
       actorId: userId,
@@ -330,7 +404,213 @@ export class BillingService {
         payableAmount: totals.payableAmount,
         discountTotal: totals.discountTotal,
       },
+    };
+    if (session) {
+      const auditDoc = new AuditLog(auditData);
+      await auditDoc.save({ session });
+    } else {
+      await AuditLog.create(auditData);
+    }
+
+    return invoiceDoc;
+  }
+
+  /**
+   * 1b. CREATE DRAFT OR FINALIZED INVOICE FOR SUBSCRIPTION SALE
+   */
+  async createInvoiceForSubscriptionSale(data, organizationId, userId, session = null) {
+    const { subscriptionId, branchId, discount = 0, redeemLoyaltyPoints = 0, notes = "" } = data;
+
+    let subQuery = Subscription.findOne({
+      _id: subscriptionId,
+      organizationId,
+      isDeleted: false,
     });
+    if (session) subQuery = subQuery.session(session);
+    const subscription = await subQuery;
+
+    if (!subscription) {
+      throw new AppError("Subscription not found", 404);
+    }
+
+    // Validate branchId if permittedBranchIds is specified
+    if (
+      Array.isArray(subscription.permittedBranchIds) &&
+      subscription.permittedBranchIds.length > 0
+    ) {
+      const isPermitted = subscription.permittedBranchIds.some(
+        (b) => b.toString() === branchId.toString()
+      );
+      if (!isPermitted) {
+        throw new AppError("Target branch is not permitted for this subscription", 400);
+      }
+    }
+
+    // Check for existing active invoice for this subscription
+    let existingInvQuery = Invoice.findOne({
+      subscriptionId: subscription._id,
+      organizationId,
+      status: { $ne: "cancelled" },
+      isDeleted: false,
+    });
+    if (session) existingInvQuery = existingInvQuery.session(session);
+    const existingActiveInvoice = await existingInvQuery;
+
+    if (existingActiveInvoice) {
+      throw new AppError(
+        `An active invoice (${existingActiveInvoice.invoiceNumber}) already exists for this subscription sale`,
+        400
+      );
+    }
+
+    // Load customer profile snapshot
+    let custQuery = Customer.findOne({
+      _id: subscription.customerId,
+      organizationId,
+      isDeleted: false,
+    });
+    if (session) custQuery = custQuery.session(session);
+    const customer = await custQuery;
+
+    if (!customer) {
+      throw new AppError("Customer record not found for this subscription", 404);
+    }
+
+    const customerSnapshot = {
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email || null,
+    };
+
+    const salePrice = Number(subscription.price);
+    const unitPrice = salePrice;
+    const quantity = 1;
+    const lineTotal = Number((unitPrice * quantity).toFixed(2));
+
+    const invoiceLines = [
+      {
+        lineType: "subscription",
+        serviceType: undefined,
+        serviceId: null,
+        subscriptionId: subscription._id,
+        appointmentServiceId: null,
+        name: `Subscription: ${subscription.subscriptionCode}`,
+        duration: 0,
+        quantity,
+        unitPrice,
+        lineTotal,
+        isCoveredBySubscription: false,
+        appliedSubscriptionId: null,
+        subscriptionUsageId: null,
+        subscriptionCoveredAmount: 0,
+        discountAmount: 0,
+        customerPayable: lineTotal,
+      },
+    ];
+
+    let standardDiscount = Number(Number(discount || 0).toFixed(2));
+    if (standardDiscount < 0) {
+      throw new AppError("Discount cannot be negative", 400);
+    }
+
+    let loyaltyRedeemedPoints = 0;
+    let loyaltyDiscountAmount = 0;
+
+    if (redeemLoyaltyPoints && Number(redeemLoyaltyPoints) > 0) {
+      const preTotals = this.calculateInvoiceTotals(invoiceLines, standardDiscount);
+      const eligibleAmount = preTotals.payableAmount;
+
+      const preview = await loyaltyService.previewRedemption(
+        customer._id,
+        eligibleAmount,
+        redeemLoyaltyPoints,
+        organizationId
+      );
+
+      loyaltyRedeemedPoints = preview.appliedPoints;
+      loyaltyDiscountAmount = preview.appliedDiscount;
+    }
+
+    const totalDiscountToAllocate = Number((standardDiscount + loyaltyDiscountAmount).toFixed(2));
+    const totals = this.calculateInvoiceTotals(invoiceLines, totalDiscountToAllocate);
+
+    const amountPaid = 0;
+    const amountDue = totals.payableAmount;
+    const paymentStatus = this.derivePaymentStatus(amountPaid, amountDue);
+
+    const invoiceNumber = await this.generateInvoiceNumber(organizationId);
+
+    const invoiceDoc = new Invoice({
+      organizationId,
+      branchId,
+      invoiceNumber,
+      invoiceType: "subscription",
+      appointmentId: null,
+      appointmentCode: null,
+      appointmentPricingSnapshot: null,
+      subscriptionId: subscription._id,
+      subscriptionCode: subscription.subscriptionCode,
+      customerId: customer._id,
+      customerSnapshot,
+      lines: invoiceLines,
+      subtotal: totals.subtotal,
+      discountTotal: totals.discountTotal,
+      loyaltyRedeemedPoints,
+      loyaltyDiscountAmount,
+      grossPayable: totals.grossPayable,
+      subscriptionCoveredAmount: totals.subscriptionCoveredAmount,
+      payableAmount: totals.payableAmount,
+      amountPaid,
+      amountDue,
+      status: "draft",
+      paymentStatus,
+      notes,
+      createdBy: userId,
+    });
+
+    try {
+      if (session) {
+        await invoiceDoc.save({ session });
+      } else {
+        await invoiceDoc.save();
+      }
+    } catch (err) {
+      if (err.code === 11000) {
+        throw new AppError("An active invoice already exists for this subscription", 409);
+      }
+      throw err;
+    }
+
+    // Link invoiceId to subscription document
+    subscription.invoiceId = invoiceDoc._id;
+    if (session) {
+      await subscription.save({ session });
+    } else {
+      await subscription.save();
+    }
+
+    // Audit log
+    const auditData = {
+      organizationId,
+      branchId,
+      actorId: userId,
+      action: AUDIT_ACTIONS.INVOICE_CREATED,
+      entityType: "Invoice",
+      entityId: invoiceDoc._id,
+      description: `Draft subscription sale invoice ${invoiceNumber} created for subscription ${subscription.subscriptionCode}`,
+      metadata: {
+        invoiceNumber,
+        subscriptionCode: subscription.subscriptionCode,
+        payableAmount: totals.payableAmount,
+        discountTotal: totals.discountTotal,
+      },
+    };
+    if (session) {
+      const aLog = new AuditLog(auditData);
+      await aLog.save({ session });
+    } else {
+      await AuditLog.create(auditData);
+    }
 
     return invoiceDoc;
   }
@@ -734,6 +1014,51 @@ export class BillingService {
           actorId: userId,
           session,
         });
+
+        // If this invoice represents a subscription sale, activate the subscription atomically
+        if (updatedInvoice.invoiceType === "subscription" && updatedInvoice.subscriptionId) {
+          const targetSub = await Subscription.findOne({
+            _id: updatedInvoice.subscriptionId,
+            organizationId,
+            isDeleted: false,
+          }).session(session);
+
+          if (targetSub && targetSub.status === "pending_payment") {
+            targetSub.status = "active";
+            await targetSub.save({ session });
+
+            const subActAudit = new AuditLog({
+              organizationId,
+              branchId,
+              actorId: userId,
+              action: AUDIT_ACTIONS.SUBSCRIPTION_UPDATED,
+              entityType: "Subscription",
+              entityId: targetSub._id,
+              description: `Subscription ${targetSub.subscriptionCode} activated upon full invoice payment settlement`,
+              metadata: {
+                subscriptionCode: targetSub.subscriptionCode,
+                invoiceNumber: updatedInvoice.invoiceNumber,
+                paymentNumber: paymentDoc.paymentNumber,
+              },
+            });
+            await subActAudit.save({ session });
+
+            // Automatically reassess upcoming scheduled/in_progress appointments for this customer
+            try {
+              const { subscriptionService } = await import("../subscriptions/subscription.service.js");
+              if (subscriptionService && typeof subscriptionService.reassessCustomerUpcomingAppointments === "function") {
+                await subscriptionService.reassessCustomerUpcomingAppointments(
+                  targetSub.customerId,
+                  organizationId,
+                  targetSub,
+                  session
+                );
+              }
+            } catch (reassessErr) {
+              // Non-blocking logger if circular or already reassessed
+            }
+          }
+        }
       }
 
       return {
@@ -830,6 +1155,18 @@ export class BillingService {
           actorId: userId,
           session,
         });
+
+        // If this is a subscription invoice, revert subscription status back to pending_payment
+        if (updatedInvoice.invoiceType === "subscription" || updatedInvoice.subscriptionId) {
+          const subId = updatedInvoice.subscriptionId;
+          if (subId) {
+            await Subscription.findOneAndUpdate(
+              { _id: subId, organizationId },
+              { $set: { status: "pending_payment" } },
+              { session }
+            );
+          }
+        }
       }
 
       return {
@@ -964,11 +1301,14 @@ export class BillingService {
     // Organization document
     const organization = await Organization.findById(organizationId);
 
-    // Fetch appointment with populated staff
-    const appointment = await Appointment.findOne({
-      _id: invoice.appointmentId,
-      organizationId,
-    }).populate("staffId", "name phone");
+    // Fetch appointment with populated staff if invoice has appointmentId
+    let appointment = null;
+    if (invoice.appointmentId) {
+      appointment = await Appointment.findOne({
+        _id: invoice.appointmentId,
+        organizationId,
+      }).populate("staffId", "name phone");
+    }
 
     // Fetch payments associated with this invoice
     const payments = await Payment.find({

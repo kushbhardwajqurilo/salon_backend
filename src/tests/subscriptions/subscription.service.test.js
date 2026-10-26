@@ -4,6 +4,8 @@ import { SubscriptionService } from "../../services/subscriptions/subscription.s
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { AppError } from "../../utils/errors.js";
 
+import { billingService } from "../../services/billing/billing.service.js";
+
 describe("SubscriptionService Unit Tests - Core Operations", () => {
   let subscriptionService;
   let mockSubscriptionRepo;
@@ -67,6 +69,21 @@ describe("SubscriptionService Unit Tests - Core Operations", () => {
 
     // Mock Sequence counter
     Sequence.findOneAndUpdate = jest.fn().mockResolvedValue({ seq: 1 });
+
+    // In unit tests with mocked repositories, mock transaction wrapper to invoke callback
+    jest.spyOn(subscriptionService, "executeTransaction").mockImplementation(async (cb) => cb(null));
+
+    // Mock billingService for unit tests to prevent hitting real DB
+    if (billingService) {
+      jest.spyOn(billingService, "createInvoiceForSubscriptionSale").mockImplementation(async () => ({
+        _id: new mongoose.Types.ObjectId(),
+        invoiceNumber: "INV-20261024-0001",
+        invoiceType: "subscription",
+        subtotal: 4999,
+        payableAmount: 4999,
+        status: "draft",
+      }));
+    }
   });
 
   describe("createSubscription", () => {

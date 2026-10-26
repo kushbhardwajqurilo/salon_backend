@@ -63,6 +63,9 @@ describe("SubscriptionService Unit Tests - Redemption & Concurrency", () => {
       mockBranchRepo,
       mockAuditRepo
     );
+
+    // In unit tests with mocked repositories, mock transaction wrapper to invoke callback
+    jest.spyOn(subscriptionService, "executeTransaction").mockImplementation(async (cb) => cb(null));
   });
 
   describe("sendRedemptionOTP", () => {

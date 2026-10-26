@@ -95,11 +95,14 @@ export function generateInvoiceHtml({ invoice, payments = [], branch = {}, appoi
     (appointment?.staffId && typeof appointment.staffId === "object" ? appointment.staffId.name : null) ||
     "Unassigned";
 
-  // Services rows
+  // Services / Items rows
   const serviceRows = (invoice.lines || [])
     .map((line, index) => {
+      const isSubscriptionItem = line.lineType === "subscription";
       const isCovered = line.isCoveredBySubscription;
-      const subInfo = isCovered
+      const subInfo = isSubscriptionItem
+        ? `<div class="sub-benefit">Membership / Subscription Package</div>`
+        : isCovered
         ? `<div class="sub-benefit">100% Covered via Plan${
             line.appliedSubscriptionId?.subscriptionCode
               ? `: ${escapeHtml(line.appliedSubscriptionId.subscriptionCode)}`
@@ -109,12 +112,16 @@ export function generateInvoiceHtml({ invoice, payments = [], branch = {}, appoi
           }</div>`
         : `<span class="text-muted">—</span>`;
 
+      const detailText = isSubscriptionItem
+        ? `<div class="text-sm text-muted">Qty: ${line.quantity}</div>`
+        : `<div class="text-sm text-muted">${line.duration || 0} mins</div>`;
+
       return `
         <tr>
           <td class="text-center font-mono">${index + 1}</td>
           <td>
             <div class="font-bold text-dark">${escapeHtml(line.name)}</div>
-            <div class="text-sm text-muted">${line.duration} mins</div>
+            ${detailText}
           </td>
           <td class="text-right font-mono">${formatCurrency(line.unitPrice)}</td>
           <td>${subInfo}</td>
@@ -464,10 +471,19 @@ export function generateInvoiceHtml({ invoice, payments = [], branch = {}, appoi
             <span class="meta-key">Invoice Date:</span>
             <span class="meta-val font-mono">${formatDateTime(invoice.createdAt, timezone)}</span>
           </div>
-          <div class="meta-row">
-            <span class="meta-key">Appointment Code:</span>
-            <span class="meta-val font-mono">${escapeHtml(invoice.appointmentCode || "—")}</span>
-          </div>
+          ${
+            invoice.appointmentCode
+              ? `<div class="meta-row">
+                  <span class="meta-key">Appointment Code:</span>
+                  <span class="meta-val font-mono">${escapeHtml(invoice.appointmentCode)}</span>
+                </div>`
+              : invoice.subscriptionCode
+              ? `<div class="meta-row">
+                  <span class="meta-key">Subscription Code:</span>
+                  <span class="meta-val font-mono">${escapeHtml(invoice.subscriptionCode)}</span>
+                </div>`
+              : ""
+          }
           ${
             invoice.finalizedAt
               ? `<div class="meta-row">

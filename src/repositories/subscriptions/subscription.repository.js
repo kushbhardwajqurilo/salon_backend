@@ -7,13 +7,13 @@ export class SubscriptionRepository extends BaseRepository {
   }
 
   /**
-   * Find active subscription by ID and organization
+   * Find active or pending_payment (redeemable) subscription by ID and organization
    */
   async findActiveById(id, organizationId, session = null) {
     let query = this.model.findOne({
       _id: id,
       organizationId,
-      status: "active",
+      status: { $in: ["active", "pending_payment"] },
       isDeleted: false,
     });
     if (session) {
@@ -49,7 +49,7 @@ export class SubscriptionRepository extends BaseRepository {
     const query = {
       _id: subscriptionId,
       organizationId,
-      status: "active",
+      status: { $in: ["active", "pending_payment"] },
       isDeleted: false,
       entitlements: {
         $elemMatch: {

@@ -6,9 +6,26 @@ const objectIdSchema = z.string().refine((val) => objectIdRegex.test(val), {
 });
 
 export const createInvoiceSchema = z.object({
+  body: z
+    .object({
+      branchId: objectIdSchema,
+      appointmentId: objectIdSchema.optional(),
+      subscriptionId: objectIdSchema.optional(),
+      discount: z.coerce.number().min(0, "Discount must be non-negative").optional(),
+      discountTotal: z.coerce.number().min(0, "Discount must be non-negative").optional(),
+      redeemLoyaltyPoints: z.coerce.number().int().min(0, "redeemLoyaltyPoints must be non-negative").optional(),
+      notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional().default(""),
+    })
+    .refine((data) => data.appointmentId || data.subscriptionId, {
+      message: "Either appointmentId or subscriptionId must be provided to create an invoice",
+      path: ["appointmentId"],
+    }),
+});
+
+export const createSubscriptionInvoiceSchema = z.object({
   body: z.object({
     branchId: objectIdSchema,
-    appointmentId: objectIdSchema,
+    subscriptionId: objectIdSchema,
     discount: z.coerce.number().min(0, "Discount must be non-negative").optional(),
     redeemLoyaltyPoints: z.coerce.number().int().min(0, "redeemLoyaltyPoints must be non-negative").optional(),
     notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional().default(""),

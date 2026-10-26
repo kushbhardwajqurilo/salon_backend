@@ -64,6 +64,7 @@ export const createServiceSchema = z.object({
     serviceCode: z.string().regex(serviceCodeRegex, "Service code must be 3-20 characters long and contain only uppercase letters, numbers, hyphens or underscores").trim().toUpperCase().optional(),
     description: z.string().trim().optional().default(""),
     categoryId: objectIdSchema,
+    gender: z.enum(["male", "female", "unisex"]).optional().default("unisex"),
     duration: z.coerce.number().int().positive("Duration must be a positive integer"),
     basePrice: z.coerce.number().nonnegative("Base price must be a non-negative number"),
     displayOrder: z.coerce.number().int().optional().default(0),
@@ -76,6 +77,7 @@ export const updateServiceSchema = z.object({
     serviceCode: z.string().regex(serviceCodeRegex, "Service code format is invalid").trim().toUpperCase().optional(),
     description: z.string().trim().optional(),
     categoryId: objectIdSchema.optional(),
+    gender: z.enum(["male", "female", "unisex"]).optional(),
     duration: z.coerce.number().int().positive("Duration must be a positive integer").optional(),
     pricing: z.object({
       basePrice: z.coerce.number().nonnegative("Base price must be a non-negative number"),
@@ -85,7 +87,7 @@ export const updateServiceSchema = z.object({
   }).strict(),
 });
 
-const allowedServiceSortFields = ["name", "createdAt", "updatedAt", "displayOrder", "basePrice"];
+const allowedServiceSortFields = ["name", "createdAt", "updatedAt", "displayOrder", "basePrice", "gender"];
 
 export const queryServiceSchema = z.object({
   query: z.object({
@@ -117,6 +119,7 @@ export const queryServiceSchema = z.object({
       .default("displayOrder"),
     search: z.string().optional(),
     query: z.string().optional(),
+    gender: z.enum(["male", "female", "unisex"]).optional(),
     status: z.enum(["active", "inactive"]).optional(),
     categoryId: objectIdSchema.optional(),
   }),

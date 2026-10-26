@@ -2,10 +2,19 @@ import mongoose from "mongoose";
 
 const appointmentServiceSnapshotSchema = new mongoose.Schema(
   {
+    serviceType: {
+      type: String,
+      enum: ["registered", "custom"],
+      default: "registered",
+      required: true,
+    },
     serviceId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Service",
-      required: true,
+      required: function () {
+        return this.serviceType === "registered";
+      },
+      default: null,
     },
     name: { type: String, required: true, trim: true },
     duration: { type: Number, required: true, min: 1 }, // positive integer in minutes
@@ -163,6 +172,12 @@ appointmentSchema.index({
   branchId: 1,
   status: 1,
   appointmentDate: 1,
+});
+appointmentSchema.index({
+  organizationId: 1,
+  branchId: 1,
+  staffId: 1,
+  status: 1,
 });
 appointmentSchema.index({ organizationId: 1, status: 1, appointmentDate: 1 });
 appointmentSchema.index(

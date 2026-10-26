@@ -49,6 +49,10 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
       testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_billing_test");
     }
     await mongoose.connect(testUri);
+    await User.deleteMany({});
+    await Role.deleteMany({});
+    await Organization.deleteMany({});
+    await Branch.deleteMany({});
   });
 
   afterAll(async () => {
@@ -70,6 +74,20 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
   });
 
   beforeEach(async () => {
+    await User.deleteMany({});
+    await Role.deleteMany({});
+    await Organization.deleteMany({});
+    await Branch.deleteMany({});
+    await Customer.deleteMany({});
+    await Service.deleteMany({});
+    await ServiceCategory.deleteMany({});
+    await Invoice.deleteMany({});
+    await Payment.deleteMany({});
+    await Appointment.deleteMany({});
+    await Subscription.deleteMany({});
+    await SubscriptionUsage.deleteMany({});
+    await AuditLog.deleteMany({});
+
     // 1. Setup Organization A & Branches
     const orgA = await Organization.create({ name: "Glamour Salon A" });
     orgAId = orgA._id;
@@ -111,16 +129,19 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
     );
 
     const ownerRoleA = await Role.create({
-      name: `owner_a_${Date.now()}`,
+      name: `owner_a_${Date.now()}_${Math.random()}`,
       description: "Owner Role",
       permissions: permsDocs.map((p) => p._id),
     });
 
+    const uniqueSuffix = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+
     // 4. Users
     ownerUserA = await User.create({
-      name: "Owner A",
-      email: `owner_a_${Date.now()}@test.com`,
-      phone: "+919999990001",
+      name: `Owner A ${uniqueSuffix}`,
+      username: `owner_a_${uniqueSuffix}`,
+      email: `owner_a_${uniqueSuffix}@test.com`,
+      phone: `+9199999${uniqueSuffix.slice(-5)}`,
       password: "Password@123",
       role: ownerRoleA._id,
       organizationId: orgAId,
@@ -135,9 +156,10 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
 
     // Branch-limited User in Org A (access ONLY to branchA1)
     branchUserA = await User.create({
-      name: "Staff Branch A1",
-      email: `staff_a1_${Date.now()}@test.com`,
-      phone: "+919999990002",
+      name: `Staff Branch A1 ${uniqueSuffix}`,
+      username: `staff_a1_${uniqueSuffix}`,
+      email: `staff_a1_${uniqueSuffix}@test.com`,
+      phone: `+9199988${uniqueSuffix.slice(-5)}`,
       password: "Password@123",
       role: ownerRoleA._id,
       organizationId: orgAId,
@@ -149,9 +171,10 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
 
     // Owner in Org B
     ownerUserB = await User.create({
-      name: "Owner B",
-      email: `owner_b_${Date.now()}@test.com`,
-      phone: "+919999990003",
+      name: `Owner B ${uniqueSuffix}`,
+      username: `owner_b_${uniqueSuffix}`,
+      email: `owner_b_${uniqueSuffix}@test.com`,
+      phone: `+9199977${uniqueSuffix.slice(-5)}`,
       password: "Password@123",
       role: ownerRoleA._id,
       organizationId: orgBId,
@@ -401,7 +424,25 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
   });
 
   it("4b. subscription coverage & pricing deduction when service has appliedSubscriptionId without isRedeemedViaSubscription", async () => {
-    const dummySubId = new mongoose.Types.ObjectId();
+    const validSub = await Subscription.create({
+      organizationId: orgAId,
+      customerId: customerA._id,
+      subscriptionCode: `SUB-TEST-${Date.now()}`,
+      price: 1000,
+      status: "pending_payment",
+      startDate: new Date(Date.now() - 86400000),
+      endDate: new Date(Date.now() + 30 * 86400000),
+      permittedBranchIds: [branchA1Id],
+      entitlements: [
+        {
+          serviceId: serviceHaircut._id,
+          serviceName: serviceHaircut.name,
+          totalQuantity: 2,
+          usedQuantity: 0,
+          remainingQuantity: 2,
+        },
+      ],
+    });
 
     // Haircut has appliedSubscriptionId but isRedeemedViaSubscription is false/unset
     const apt = await createTestAppointment({
@@ -411,7 +452,7 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
           name: serviceHaircut.name,
           duration: 30,
           price: 500,
-          appliedSubscriptionId: dummySubId,
+          appliedSubscriptionId: validSub._id,
           isRedeemedViaSubscription: false,
         },
         {
@@ -437,7 +478,7 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
     // Line 0 (Haircut): covered via appliedSubscriptionId
     expect(invoice.lines[0].unitPrice).toBe(500);
     expect(invoice.lines[0].isCoveredBySubscription).toBe(true);
-    expect(invoice.lines[0].appliedSubscriptionId).toBe(dummySubId.toString());
+    expect(invoice.lines[0].appliedSubscriptionId).toBe(validSub._id.toString());
     expect(invoice.lines[0].subscriptionCoveredAmount).toBe(500);
     expect(invoice.lines[0].customerPayable).toBe(0);
 
@@ -1643,7 +1684,7 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
         method: "cash",
       });
 
-    expect(pay2.status).toBe(201);
+    expect(pay2.status).toBe(200);
     expect(pay2.body.data.payment._id).toBe(originalPaymentId);
     expect(pay2.body.data.isIdempotentReplay).toBe(true);
 
@@ -1744,9 +1785,9 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
         .send({ amount: 500, method: "upi" }),
     ]);
 
-    // Either both succeed (one created, one replayed) or one throws race 409
+    // Either both succeed (one created 201, one replayed 200/201) or one throws race 409
     const statuses = [res1.status, res2.status].sort();
-    expect([[201, 201], [201, 409]]).toContainEqual(statuses);
+    expect([[200, 201], [201, 201], [201, 409]]).toContainEqual(statuses);
 
     const invoice = await Invoice.findById(invoiceId);
     expect(invoice.amountPaid).toBe(500);

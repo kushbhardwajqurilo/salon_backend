@@ -39,6 +39,12 @@ const serviceSchema = new mongoose.Schema(
         min: 0,
       },
     },
+    gender: {
+      type: String,
+      enum: ["male", "female", "unisex"],
+      default: "unisex",
+      index: true,
+    },
     status: {
       type: String,
       enum: ["active", "inactive"],

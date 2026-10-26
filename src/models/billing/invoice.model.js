@@ -20,15 +20,54 @@ const appointmentPricingSnapshotSchema = new mongoose.Schema(
 
 const invoiceLineSchema = new mongoose.Schema(
   {
-    serviceId: { type: mongoose.Schema.Types.ObjectId, ref: "Service", required: true },
-    appointmentServiceId: { type: mongoose.Schema.Types.ObjectId, required: true },
+    lineType: {
+      type: String,
+      enum: ["service", "subscription"],
+      default: "service",
+      required: true,
+    },
+    serviceType: {
+      type: String,
+      enum: ["registered", "custom"],
+      default: "registered",
+      required: function () {
+        return this.lineType === "service";
+      },
+    },
+    serviceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Service",
+      required: function () {
+        return this.lineType === "service" && this.serviceType === "registered";
+      },
+      default: null,
+    },
+    subscriptionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Subscription",
+      default: null,
+    },
+    appointmentServiceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: function () {
+        return this.lineType === "service";
+      },
+      default: null,
+    },
     name: { type: String, required: true, trim: true },
-    duration: { type: Number, required: true, min: 1 },
+    duration: {
+      type: Number,
+      required: function () {
+        return this.lineType === "service";
+      },
+      default: 0,
+      min: 0,
+    },
     quantity: { type: Number, required: true, default: 1, min: 1 },
     unitPrice: { type: Number, required: true, min: 0 },
     lineTotal: { type: Number, required: true, min: 0 },
 
-    // Subscription coverage representation
+    // Subscription coverage representation (for service lines)
     isCoveredBySubscription: { type: Boolean, default: false, required: true },
     appliedSubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
     subscriptionUsageId: { type: mongoose.Schema.Types.ObjectId, ref: "SubscriptionUsage", default: null },
@@ -46,10 +85,35 @@ const invoiceSchema = new mongoose.Schema(
     branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", required: true, index: true },
     invoiceNumber: { type: String, required: true, trim: true },
 
-    // Phase 1: appointmentId is strictly required
-    appointmentId: { type: mongoose.Schema.Types.ObjectId, ref: "Appointment", required: true, index: true },
-    appointmentCode: { type: String, required: true, trim: true },
-    appointmentPricingSnapshot: { type: appointmentPricingSnapshotSchema, required: true },
+    invoiceType: {
+      type: String,
+      enum: ["appointment", "subscription", "combined"],
+      default: "appointment",
+      required: true,
+      index: true,
+    },
+
+    // Appointment reference (required only for appointment-related invoices)
+    appointmentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Appointment",
+      default: null,
+      index: true,
+    },
+    appointmentCode: { type: String, default: null, trim: true },
+    appointmentPricingSnapshot: {
+      type: appointmentPricingSnapshotSchema,
+      default: null,
+    },
+
+    // Subscription reference (populated for subscription sales)
+    subscriptionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Subscription",
+      default: null,
+      index: true,
+    },
+    subscriptionCode: { type: String, default: null, trim: true },
 
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer", required: true, index: true },
     customerSnapshot: { type: invoiceCustomerSnapshotSchema, required: true },
@@ -106,6 +170,19 @@ invoiceSchema.index(
     unique: true,
     partialFilterExpression: {
       isDeleted: false,
+      appointmentId: { $type: "objectId" },
+      status: { $in: ["draft", "finalized"] },
+    },
+  }
+);
+invoiceSchema.index(
+  { organizationId: 1, subscriptionId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      isDeleted: false,
+      subscriptionId: { $type: "objectId" },
+      invoiceType: "subscription",
       status: { $in: ["draft", "finalized"] },
     },
   }
@@ -113,6 +190,7 @@ invoiceSchema.index(
 invoiceSchema.index({ organizationId: 1, branchId: 1, createdAt: -1 });
 invoiceSchema.index({ organizationId: 1, customerId: 1, createdAt: -1 });
 invoiceSchema.index({ appointmentId: 1, status: 1 });
+invoiceSchema.index({ subscriptionId: 1, status: 1 });
 
 invoiceSchema.set("toJSON", {
   transform: (doc, ret) => {

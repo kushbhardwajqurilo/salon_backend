@@ -17,8 +17,21 @@ import jwt from "jsonwebtoken";
 import { env } from "../../../src/config/env.js";
 import { redis } from "../../../src/utils/redis.js";
 
-jest.spyOn(redis, "get").mockResolvedValue(null);
-jest.spyOn(redis, "setex").mockResolvedValue("OK");
+// Deterministic relative future date fixtures to prevent test staleness
+const getFutureDateStr = (daysAhead = 30) => {
+  const d = new Date(Date.now() + daysAhead * 86400000);
+  return d.toISOString().split("T")[0];
+};
+
+const getFutureDayOfWeekStr = (targetDayName, weeksAhead = 4) => {
+  const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const targetIdx = days.indexOf(targetDayName.toLowerCase());
+  const now = new Date();
+  const d = new Date(now.getTime() + weeksAhead * 7 * 86400000);
+  const diff = (targetIdx - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().split("T")[0];
+};
 
 describe("Appointment Module Comprehensive Test Suite", () => {
   jest.setTimeout(30000);
@@ -195,7 +208,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString(), serviceColor._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
           discount: 100,
@@ -231,7 +244,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
             { serviceId: serviceHaircut._id.toString(), customPrice: 400 },
             { serviceId: serviceColor._id.toString(), customPrice: 1200 },
           ],
-          appointmentDate: "2026-10-21",
+          appointmentDate: getFutureDateStr(31),
           startTime: "10:00",
           bookingType: "advance",
           discount: 50,
@@ -257,7 +270,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
             { serviceId: serviceHaircut._id.toString(), customPrice: 350 },
             { serviceId: serviceColor._id.toString() }, // omitted -> defaults to 1500
           ],
-          appointmentDate: "2026-10-22",
+          appointmentDate: getFutureDateStr(32),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -278,7 +291,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-23",
+          appointmentDate: getFutureDateStr(33),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -309,7 +322,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         .send({
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -335,16 +348,16 @@ describe("Appointment Module Comprehensive Test Suite", () => {
     });
 
     it("rejects creation if assigned staff is on leave (Leave Integration)", async () => {
-      // Create approved leave for staffA on 2026-10-20
+      // Create approved leave for staffA on 2026-11-20
       await Leave.create({
         organizationId: orgId,
         branchId: branchAId,
         staffId: staffA._id,
         leaveCode: "LV-TEST-01",
         leaveType: "Casual",
-        startDate: new Date("2026-10-20T00:00:00.000Z"),
-        endDate: new Date("2026-10-20T00:00:00.000Z"),
-        dates: ["2026-10-20"],
+        startDate: new Date(getFutureDateStr(30) + "T00:00:00.000Z"),
+        endDate: new Date(getFutureDateStr(30) + "T00:00:00.000Z"),
+        dates: [getFutureDateStr(30)],
         reason: "Vacation",
         status: "approved",
         submittedBy: ownerUser._id,
@@ -359,7 +372,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -405,7 +418,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -426,7 +439,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -528,7 +541,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -540,13 +553,13 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         .set("Authorization", `Bearer ${ownerToken}`)
         .send({
           branchId: branchAId.toString(),
-          appointmentDate: "2026-10-21",
+          appointmentDate: getFutureDateStr(31),
           startTime: "11:00",
         });
 
       if (res.status !== 200) console.error("RESCHEDULE ERROR:", res.body);
       expect(res.status).toBe(200);
-      expect(res.body.data.appointmentDate).toBe("2026-10-21");
+      expect(res.body.data.appointmentDate).toBe(getFutureDateStr(31));
       expect(res.body.data.startTime).toBe("11:00");
       expect(res.body.data.status).toBe("scheduled");
     });
@@ -559,7 +572,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -587,7 +600,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -599,7 +612,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         .set("Authorization", `Bearer ${ownerToken}`)
         .send({
           branchId: branchBId.toString(), // Target branch mismatch
-          appointmentDate: "2026-10-21",
+          appointmentDate: getFutureDateStr(31),
           startTime: "11:00",
         });
 
@@ -618,7 +631,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -674,7 +687,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -702,6 +715,257 @@ describe("Appointment Module Comprehensive Test Suite", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toContain("terminal status");
+    });
+
+    it("late completion preserves scheduled startAt, endAt, startTime, and endTime while recording completedAt", async () => {
+      const createRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          serviceIds: [serviceHaircut._id.toString()], // 30 min duration
+          appointmentDate: getFutureDateStr(30),
+          startTime: "12:45",
+          bookingType: "advance",
+        });
+
+      const aptId = createRes.body.data.id;
+      expect(createRes.body.data.startTime).toBe("12:45");
+      expect(createRes.body.data.endTime).toBe("13:15");
+      const scheduledEndAt = createRes.body.data.endAt;
+
+      // Start appointment
+      await request(app)
+        .patch(`/api/v1/appointments/${aptId}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
+
+      // Complete appointment much later (simulated runtime completion)
+      const completeRes = await request(app)
+        .patch(`/api/v1/appointments/${aptId}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString(), status: "completed" });
+
+      expect(completeRes.status).toBe(200);
+      expect(completeRes.body.data.status).toBe("completed");
+      expect(completeRes.body.data.startTime).toBe("12:45");
+      expect(completeRes.body.data.endTime).toBe("13:15");
+      expect(completeRes.body.data.endAt).toBe(scheduledEndAt);
+      expect(completeRes.body.data.completedAt).toBeDefined();
+
+      // Ensure updating services while in_progress also preserves scheduled startAt + totalDuration
+      const inProgApt = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          serviceIds: [serviceHaircut._id.toString()],
+          appointmentDate: getFutureDateStr(31),
+          startTime: "10:00",
+          bookingType: "advance",
+        });
+      const inProgId = inProgApt.body.data.id;
+      await request(app)
+        .patch(`/api/v1/appointments/${inProgId}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString(), status: "in_progress", forceEarlyStart: true });
+
+      const updateInProgRes = await request(app)
+        .put(`/api/v1/appointments/${inProgId}`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          serviceIds: [serviceHaircut._id.toString(), serviceColor._id.toString()], // 30 + 60 = 90 min
+        });
+      expect(updateInProgRes.status).toBe(200);
+      expect(updateInProgRes.body.data.startTime).toBe("10:00");
+      expect(updateInProgRes.body.data.endTime).toBe("11:30");
+      expect(updateInProgRes.body.data.totalDuration).toBe(90);
+    });
+
+    it("detects overdue in_progress appointment for assigned staff, requiring allowOverdueStaffOverride", async () => {
+      // 1. Create Appointment 1 whose endAt is in the past, on the same appointmentDate
+      const targetDateStr = getFutureDateStr(30);
+      const pastStart = new Date(Date.now() - 90 * 60000);
+      const pastEnd = new Date(Date.now() - 30 * 60000); // Ended 30 minutes ago
+      const apt1 = await Appointment.create({
+        organizationId: orgId,
+        branchId: branchAId,
+        customerId: customer._id,
+        staffId: staffA._id,
+        appointmentCode: `OVERDUE-${Date.now()}`,
+        appointmentDate: targetDateStr,
+        startTime: "09:00",
+        endTime: "10:00",
+        startAt: pastStart,
+        endAt: pastEnd,
+        totalDuration: 60,
+        bookingType: "advance",
+        status: "in_progress",
+        startedAt: pastStart,
+        services: [
+          {
+            serviceType: "registered",
+            serviceId: serviceHaircut._id,
+            name: "Haircut",
+            duration: 60,
+            price: 500,
+          },
+        ],
+        pricing: { subtotal: 500, discount: 0, total: 500 },
+        slotMinutes: [],
+      });
+
+      // 2. Create Appointment 2 scheduled for targetDateStr with staffA
+      const createRes2 = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          serviceIds: [serviceHaircut._id.toString()],
+          appointmentDate: targetDateStr,
+          startTime: "11:00",
+          bookingType: "advance",
+        });
+
+      const apt2Id = createRes2.body.data.id;
+
+      // 3. Attempt to transition Appointment 2 to in_progress without override
+      const conflictRes = await request(app)
+        .patch(`/api/v1/appointments/${apt2Id}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          status: "in_progress",
+          forceEarlyStart: true,
+        });
+
+      expect(conflictRes.status).toBe(409);
+      expect(conflictRes.body.message).toMatch(/overdue appointment/i);
+      expect(conflictRes.body.errors).toMatchObject({
+        conflictType: "STAFF_OVERDUE_APPOINTMENT",
+        overdueAppointmentId: apt1._id.toString(),
+        requiresOverride: true,
+      });
+
+      // 4. Staff member lacking appointments.reschedule cannot provide allowOverdueStaffOverride
+      const staffPerms = await Permission.find({
+        name: { $in: ["appointments.view", "appointments.update_status", "appointments.force_early_start"] },
+      });
+      const staffRole = await Role.create({
+        name: `staff_no_reschedule_${Date.now()}`,
+        permissions: staffPerms.map((p) => p._id),
+      });
+      const staffUser = await User.create({
+        name: "Staff No Reschedule",
+        email: `staff_no_reschedule_${Date.now()}@salon.com`,
+        phone: "+919876540000",
+        password: "Password@123",
+        role: staffRole._id,
+        organizationId: orgId,
+        status: "active",
+        hasOrgWideAccess: false,
+        branchAccess: [{ branchId: branchAId, branchName: "Branch Downtown", isActive: true }],
+      });
+      const staffToken = jwt.sign({ id: staffUser._id, role: staffRole.name }, env.JWT_SECRET, { expiresIn: "1h" });
+
+      const unauthorizedOverrideRes = await request(app)
+        .patch(`/api/v1/appointments/${apt2Id}/status`)
+        .set("Authorization", `Bearer ${staffToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          status: "in_progress",
+          forceEarlyStart: true,
+          allowOverdueStaffOverride: true,
+        });
+      expect(unauthorizedOverrideRes.status).toBe(403);
+
+      // 5. Authorized manager / owner provides allowOverdueStaffOverride -> succeeds
+      const authorizedOverrideRes = await request(app)
+        .patch(`/api/v1/appointments/${apt2Id}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          status: "in_progress",
+          forceEarlyStart: true,
+          allowOverdueStaffOverride: true,
+        });
+
+      // Clean up apt1 and apt2
+      await Appointment.deleteMany({ _id: { $in: [apt1._id, apt2Id] } });
+    });
+
+    it("does NOT block starting today's appointment when staff has an unfinished historical in_progress appointment from a previous calendar day", async () => {
+      // 1. Create historical in_progress appointment from a previous day (e.g. August 13, 2026)
+      const historicalStart = new Date("2026-08-13T10:00:00.000Z");
+      const historicalEnd = new Date("2026-08-13T10:42:00.000Z");
+      const historicalApt = await Appointment.create({
+        organizationId: orgId,
+        branchId: branchAId,
+        customerId: customer._id,
+        staffId: staffA._id,
+        appointmentCode: "APT-20260813-0004",
+        appointmentDate: "2026-08-13",
+        startTime: "15:30",
+        endTime: "16:12",
+        startAt: historicalStart,
+        endAt: historicalEnd,
+        totalDuration: 42,
+        bookingType: "advance",
+        status: "in_progress",
+        startedAt: historicalStart,
+        services: [
+          {
+            serviceType: "registered",
+            serviceId: serviceHaircut._id,
+            name: "Haircut",
+            duration: 42,
+            price: 500,
+          },
+        ],
+        pricing: { subtotal: 500, discount: 0, total: 500 },
+        slotMinutes: [],
+      });
+
+      // 2. Create today's appointment for the same staff member
+      const todayDateStr = getFutureDateStr(30);
+      const createResToday = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          staffId: staffA._id.toString(),
+          serviceIds: [serviceHaircut._id.toString()],
+          appointmentDate: todayDateStr,
+          startTime: "14:00",
+          bookingType: "advance",
+        });
+
+      expect(createResToday.status).toBe(201);
+      const todayAptId = createResToday.body.data.id;
+
+      // 3. Start today's appointment without allowOverdueStaffOverride -> MUST succeed (no 409)
+      const startRes = await request(app)
+        .patch(`/api/v1/appointments/${todayAptId}/status`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          status: "in_progress",
+          forceEarlyStart: true,
+        });
+
+      expect(startRes.status).toBe(200);
+      expect(startRes.body.data.status).toBe("in_progress");
+
+      // Clean up
+      await Appointment.deleteMany({ _id: { $in: [historicalApt._id, todayAptId] } });
     });
   });
 
@@ -745,7 +1009,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         customerId: customer._id.toString(),
         staffId: staffA._id.toString(),
         serviceIds: [serviceHaircut._id.toString()],
-        appointmentDate: "2026-11-28",
+        appointmentDate: getFutureDateStr(38),
         startTime: "11:00",
         bookingType: "advance",
       };
@@ -755,7 +1019,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         customerId: customer._id.toString(),
         staffId: staffA._id.toString(),
         serviceIds: [serviceHaircut._id.toString()],
-        appointmentDate: "2026-11-28",
+        appointmentDate: getFutureDateStr(38),
         startTime: "11:15", // Overlaps 11:00-11:30
         bookingType: "advance",
       };
@@ -771,7 +1035,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       const aptCount = await Appointment.countDocuments({
         organizationId: orgId,
         staffId: staffA._id,
-        appointmentDate: "2026-11-28",
+        appointmentDate: getFutureDateStr(38),
         isDeleted: false,
       });
       expect(aptCount).toBe(1);
@@ -783,7 +1047,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         customerId: customer._id.toString(),
         staffId: null,
         serviceIds: [serviceHaircut._id.toString()],
-        appointmentDate: "2026-11-29",
+        appointmentDate: getFutureDateStr(39),
         startTime: "10:00",
         bookingType: "advance",
       };
@@ -793,7 +1057,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         customerId: customer._id.toString(),
         staffId: null,
         serviceIds: [serviceHaircut._id.toString()],
-        appointmentDate: "2026-11-29",
+        appointmentDate: getFutureDateStr(39),
         startTime: "10:15",
         bookingType: "advance",
       };
@@ -807,7 +1071,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       const count = await Appointment.countDocuments({
         organizationId: orgId,
         staffId: null,
-        appointmentDate: "2026-11-29",
+        appointmentDate: getFutureDateStr(39),
         isDeleted: false,
       });
       expect(count).toBe(2);
@@ -823,7 +1087,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -852,7 +1116,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
           reminder: { enabled: true, channel: "sms", offsetMinutes: 60 },
@@ -878,7 +1142,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -905,7 +1169,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
           reminder: { enabled: true, channel: "both", offsetMinutes: 60 },
@@ -934,7 +1198,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-20",
+          appointmentDate: getFutureDateStr(30),
           startTime: "10:00",
           bookingType: "advance",
           reminder: { enabled: true, channel: "both", offsetMinutes: 60 },
@@ -964,7 +1228,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           services: [{ serviceId: serviceHaircut._id.toString() }],
-          appointmentDate: "2026-10-22",
+          appointmentDate: getFutureDateStr(34),
           startTime: "11:00",
           bookingType: "advance",
         });
@@ -982,7 +1246,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchBId.toString(),
           customerId: customer._id.toString(),
           services: [{ serviceId: serviceHaircut._id.toString(), customPrice: 600 }],
-          appointmentDate: "2026-10-22",
+          appointmentDate: getFutureDateStr(34),
           startTime: "14:00",
           bookingType: "advance",
         });
@@ -1026,7 +1290,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           branchId: branchAId.toString(),
           customerId: customer._id.toString(),
           services: [{ serviceId: otherService._id.toString() }],
-          appointmentDate: "2026-10-22",
+          appointmentDate: getFutureDateStr(34),
           startTime: "16:00",
           bookingType: "advance",
         });
@@ -1038,7 +1302,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
 
   describe("Cascading Rescheduling Engine & Service Modifications", () => {
     it("previews service modification extending in-progress appointment and detects affected subsequent bookings", async () => {
-      const targetDate = "2026-11-20";
+      const targetDate = getFutureDateStr(30);
 
       // 1. Create first appointment (10:00 - 10:45)
       const apt1Res = await request(app)
@@ -1172,7 +1436,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           services: [{ serviceId: serviceHaircut._id.toString() }],
-          appointmentDate: "2026-11-25",
+          appointmentDate: getFutureDateStr(35),
           startTime: "14:00",
           bookingType: "advance",
         });
@@ -1206,7 +1470,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         },
       });
 
-      const targetDate = "2026-11-20"; // Friday
+      const targetDate = getFutureDayOfWeekStr("friday", 4);
 
       const apt1Res = await request(app)
         .post("/api/v1/appointments")
@@ -1268,7 +1532,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         operatingHours: null,
       });
 
-      const targetDate = "2026-11-20";
+      const targetDate = getFutureDateStr(30);
 
       const apt1Res = await request(app)
         .post("/api/v1/appointments")
@@ -1325,7 +1589,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
     });
 
     it("rejects commit when modified payload does not match preview token", async () => {
-      const targetDate = "2026-11-20";
+      const targetDate = getFutureDateStr(30);
       const aptRes = await request(app)
         .post("/api/v1/appointments")
         .set("Authorization", `Bearer ${ownerToken}`)
@@ -1370,7 +1634,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
     });
 
     it("rejects commit when discount is altered after preview", async () => {
-      const targetDate = "2026-11-21";
+      const targetDate = getFutureDateStr(31);
       const aptRes = await request(app)
         .post("/api/v1/appointments")
         .set("Authorization", `Bearer ${ownerToken}`)
@@ -1426,7 +1690,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         },
       });
 
-      const targetDate = "2026-11-22"; // Sunday (close 19:00)
+      const targetDate = getFutureDayOfWeekStr("sunday", 4);
       const aptRes = await request(app)
         .post("/api/v1/appointments")
         .set("Authorization", `Bearer ${ownerToken}`)
@@ -1469,7 +1733,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         },
       });
 
-      const targetDate = "2026-11-22"; // Sunday
+      const targetDate = getFutureDayOfWeekStr("sunday", 4);
       const aptRes = await request(app)
         .post("/api/v1/appointments")
         .set("Authorization", `Bearer ${ownerToken}`)
@@ -1503,7 +1767,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
     });
 
     it("rejects commit when branch scope is tampered / mismatched", async () => {
-      const targetDate = "2026-11-23";
+      const targetDate = getFutureDateStr(33);
       const aptRes = await request(app)
         .post("/api/v1/appointments")
         .set("Authorization", `Bearer ${ownerToken}`)
@@ -1547,7 +1811,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
     });
 
     it("rejects commit when initiating appointment version changes concurrently after preview", async () => {
-      const targetDate = "2026-11-24";
+      const targetDate = getFutureDateStr(34);
       const aptRes = await request(app)
         .post("/api/v1/appointments")
         .set("Authorization", `Bearer ${ownerToken}`)
@@ -1600,7 +1864,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
     });
 
     it("rejects commit when an affected appointment version changes concurrently after preview", async () => {
-      const targetDate = "2026-11-25";
+      const targetDate = getFutureDateStr(35);
       const apt1Res = await request(app)
         .post("/api/v1/appointments")
         .set("Authorization", `Bearer ${ownerToken}`)
@@ -1667,7 +1931,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
 
       expect(commitRes.status).toBe(409);
       expect(commitRes.body.message).toContain("stale");
-    });
+    }, 60000);
   });
 });
 

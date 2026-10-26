@@ -6,6 +6,7 @@ import { Sequence } from "../../models/sequence/sequence.model.js";
 import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 import { smsQueue } from "../../queues/client.js";
 import { runInTransaction } from "../../utils/transaction.js";
+import "../../models/billing/invoice.model.js";
 
 export class SubscriptionService {
   constructor(
@@ -219,7 +220,13 @@ export class SubscriptionService {
       await this.generateSubscriptionCode(organizationId);
 
     // 6. Create subscription and audit log in transaction
-    const subscription = await this.executeTransaction(async (session) => {
+    // If price > 0, invoice generation is mandatory and initial status is "pending_payment"
+    // until the invoice is paid. If complimentary (price == 0), initial status is "active".
+    const { billImmediately, branchId: invoiceBranchId = null } = data;
+    const shouldBill = Number(price) > 0 ? true : Boolean(billImmediately);
+    const initialStatus = shouldBill && Number(price) > 0 ? "pending_payment" : "active";
+
+    const result = await this.executeTransaction(async (session) => {
       const newSub = await this.subscriptionRepo.create(
         {
           organizationId,
@@ -231,27 +238,71 @@ export class SubscriptionService {
           permittedBranchIds: validPermittedBranchIds,
           startDate: start,
           endDate: end,
-          status: "active",
+          status: initialStatus,
           notes,
         },
         userId,
         session,
       );
 
+      let invoice = null;
+      if (shouldBill) {
+        const { billingService } = await import("../billing/billing.service.js");
+        let effectiveBranchId =
+          invoiceBranchId ||
+          (validPermittedBranchIds.length === 1 ? validPermittedBranchIds[0] : null) ||
+          customer.homeBranchId ||
+          null;
+
+        if (!effectiveBranchId) {
+          const BranchModel = mongoose.model("Branch");
+          const anyBranch = await BranchModel.findOne({
+            organizationId,
+            isActive: true,
+            isDeleted: false,
+          }).session(session);
+          if (anyBranch) {
+            effectiveBranchId = anyBranch._id;
+          }
+        }
+
+        if (!effectiveBranchId) {
+          throw new AppError(
+            "branchId is required to generate an invoice for standalone subscription sale",
+            400,
+          );
+        }
+
+        invoice = await billingService.createInvoiceForSubscriptionSale(
+          {
+            subscriptionId: newSub._id,
+            branchId: effectiveBranchId,
+            notes: notes || `Subscription sale for ${subscriptionCode}`,
+          },
+          organizationId,
+          userId,
+          session,
+        );
+
+        newSub.invoiceId = invoice._id;
+      }
+
       if (this.auditRepo && typeof this.auditRepo.create === "function") {
         await this.auditRepo.create(
           {
-            branchId: null,
+            branchId: invoiceBranchId || null,
             action: AUDIT_ACTIONS.SUBSCRIPTION_CREATED,
             entityType: "Subscription",
             entityId: newSub._id,
-            description: `Subscription ${subscriptionCode} created for customer ${customer.name} with price ${price}`,
+            description: `Subscription ${subscriptionCode} created for customer ${customer.name} with price ${price} (status: ${initialStatus})`,
             metadata: {
               subscriptionCode,
               customerId: customer._id,
               planId: resolvedPlanId,
               price,
               entitlementsCount: resolvedEntitlements.length,
+              status: initialStatus,
+              invoiceId: invoice?._id || null,
             },
           },
           organizationId,
@@ -260,17 +311,34 @@ export class SubscriptionService {
         );
       }
 
-      return newSub;
+      return { subscription: newSub, invoice };
     });
 
-    // 7. Dispatch notification (best-effort async)
+    const createdSubscription = result.subscription;
+
+    // 7. If subscription is active, reassess eligible upcoming appointments for this customer
+    if (createdSubscription.status === "active") {
+      try {
+        await this.reassessCustomerUpcomingAppointments(
+          customer._id,
+          organizationId,
+          createdSubscription,
+        );
+      } catch (reassessErr) {
+        logger.warn(
+          `Failed to reassess upcoming appointments for subscription ${createdSubscription.subscriptionCode}: ${reassessErr.message}`,
+        );
+      }
+    }
+
+    // 8. Dispatch notification (best-effort async)
     try {
       if (customer.phone) {
         await smsQueue.add("sendSubscriptionCreatedSMS", {
           phone: customer.phone,
           customerName: customer.name,
-          subscriptionCode: subscription.subscriptionCode,
-          price: subscription.price,
+          subscriptionCode: createdSubscription.subscriptionCode,
+          price: createdSubscription.price,
           organizationId: organizationId.toString(),
         });
       }
@@ -280,7 +348,57 @@ export class SubscriptionService {
       );
     }
 
-    return subscription;
+    return result.invoice
+      ? { ...createdSubscription.toObject ? createdSubscription.toObject() : createdSubscription, invoice: result.invoice }
+      : createdSubscription;
+  }
+
+  /**
+   * Reassess upcoming appointments for a customer and attach active subscription benefits
+   * to eligible registered services without overwriting agreed prices or consuming entitlements.
+   */
+  async reassessCustomerUpcomingAppointments(
+    customerId,
+    organizationId,
+    newSubscription = null,
+    session = null
+  ) {
+    const AppointmentModel = mongoose.model("Appointment");
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    const upcomingAppointments = await AppointmentModel.find({
+      organizationId,
+      customerId,
+      appointmentDate: { $gte: todayStr },
+      status: { $in: ["scheduled", "in_progress"] },
+      isDeleted: false,
+    }).session(session);
+
+    for (const appt of upcomingAppointments) {
+      let modified = false;
+      for (const line of appt.services || []) {
+        if (
+          line.serviceType !== "custom" &&
+          !line.isRedeemedViaSubscription &&
+          !line.appliedSubscriptionId
+        ) {
+          const eligibleSub = await this.findEligibleSubscriptionForService(
+            customerId,
+            line.serviceId,
+            appt.branchId,
+            organizationId,
+            session
+          );
+          if (eligibleSub) {
+            line.appliedSubscriptionId = eligibleSub._id;
+            modified = true;
+          }
+        }
+      }
+      if (modified) {
+        await appt.save({ session });
+      }
+    }
   }
 
   /**
@@ -327,15 +445,38 @@ export class SubscriptionService {
       populate: [
         { path: "customerId", select: "name phone email" },
         { path: "permittedBranchIds", select: "name" },
+        { path: "invoiceId", select: "invoiceNumber paymentStatus amountPaid amountDue status" },
       ],
       sort: { createdAt: -1 },
     };
 
-    return this.subscriptionRepo.find(filter, options);
+    const result = await this.subscriptionRepo.find(filter, options);
+    const now = new Date();
+    const enrichedData = (result.data || []).map((sub) => {
+      const doc = sub.toObject ? sub.toObject() : { ...sub };
+      const isDateValid = (!doc.endDate || new Date(doc.endDate) >= now) && (!doc.startDate || new Date(doc.startDate) <= now);
+      const isStatusValid = ["active", "pending_payment"].includes(doc.status);
+      const baseRedeemable = isStatusValid && isDateValid;
+
+      doc.entitlements = (doc.entitlements || []).map((e) => ({
+        ...e,
+        isRedeemable: baseRedeemable && (e.remainingQuantity || 0) > 0,
+      }));
+
+      const hasBalance = doc.entitlements.some((e) => e.isRedeemable);
+      doc.paymentStatus = doc.invoiceId?.paymentStatus || (doc.status === "active" && doc.price === 0 ? "paid" : "unpaid");
+      doc.isRedeemable = hasBalance;
+      return doc;
+    });
+
+    return {
+      ...result,
+      data: enrichedData,
+    };
   }
 
   /**
-   * Get subscription by ID with lazy expiration check
+   * Get subscription by ID with lazy expiration check and payment status
    */
   async getSubscriptionById(id, organizationId) {
     const subscription = await this.subscriptionRepo.findOne(
@@ -345,6 +486,7 @@ export class SubscriptionService {
         { path: "permittedBranchIds", select: "name isActive" },
         { path: "entitlements.serviceId", select: "name duration price" },
         { path: "planId", select: "_id name" },
+        { path: "invoiceId", select: "invoiceNumber paymentStatus amountPaid amountDue status" },
       ],
     );
 
@@ -355,7 +497,22 @@ export class SubscriptionService {
     // Lazy expiration check
     await this.checkAndUpdateExpiry(subscription);
 
-    return subscription;
+    const doc = subscription.toObject ? subscription.toObject() : { ...subscription };
+    const now = new Date();
+    const isDateValid = (!doc.endDate || new Date(doc.endDate) >= now) && (!doc.startDate || new Date(doc.startDate) <= now);
+    const isStatusValid = ["active", "pending_payment"].includes(doc.status);
+    const baseRedeemable = isStatusValid && isDateValid;
+
+    doc.entitlements = (doc.entitlements || []).map((e) => ({
+      ...e,
+      isRedeemable: baseRedeemable && (e.remainingQuantity || 0) > 0,
+    }));
+
+    const hasBalance = doc.entitlements.some((e) => e.isRedeemable);
+    doc.paymentStatus = doc.invoiceId?.paymentStatus || (doc.status === "active" && doc.price === 0 ? "paid" : "unpaid");
+    doc.isRedeemable = hasBalance;
+
+    return doc;
   }
 
   /**
@@ -451,9 +608,9 @@ export class SubscriptionService {
   }
 
   /**
-   * Cancel subscription
+   * Cancel subscription (with consumed-entitlement check and optional invoice/refund handling)
    */
-  async cancelSubscription(id, organizationId, userId, reason = "") {
+  async cancelSubscription(id, organizationId, userId, reason = "", options = {}) {
     const subscription = await this.subscriptionRepo.findOne({
       _id: id,
       organizationId,
@@ -466,6 +623,18 @@ export class SubscriptionService {
 
     if (subscription.status === "cancelled") {
       throw new AppError("Subscription is already cancelled", 400);
+    }
+
+    // Safeguard: Check if any entitlements have already been consumed
+    const hasConsumedEntitlements = (subscription.entitlements || []).some(
+      (e) => (e.usedQuantity || 0) > 0
+    );
+
+    if (hasConsumedEntitlements && !options.allowConsumedCancellation) {
+      throw new AppError(
+        "Cannot cancel or refund subscription because one or more entitlements have already been consumed. A managerial override or custom policy is required.",
+        400
+      );
     }
 
     const cancelled = await this.executeTransaction(async (session) => {
@@ -481,6 +650,30 @@ export class SubscriptionService {
         session,
       );
 
+      // If there's an associated unpaid draft invoice, cancel it
+      let cancelledInvoiceId = null;
+      if (mongoose.connection?.readyState === 1) {
+        const InvoiceModel = mongoose.model("Invoice");
+        let query = InvoiceModel.findOne({
+          subscriptionId: subscription._id,
+          organizationId,
+          isDeleted: false,
+        });
+        if (session) {
+          query = query.session(session);
+        }
+        const invoice = await query;
+
+        if (invoice && (invoice.status === "draft" || invoice.paymentStatus === "unpaid")) {
+          invoice.status = "cancelled";
+          invoice.cancelledAt = new Date();
+          invoice.cancelledBy = userId;
+          invoice.cancellationReason = `Subscription ${subscription.subscriptionCode} cancelled`;
+          await invoice.save(session ? { session } : undefined);
+          cancelledInvoiceId = invoice._id;
+        }
+      }
+
       if (this.auditRepo && typeof this.auditRepo.create === "function") {
         await this.auditRepo.create(
           {
@@ -489,7 +682,11 @@ export class SubscriptionService {
             entityType: "Subscription",
             entityId: id,
             description: `Subscription ${subscription.subscriptionCode} cancelled: ${reason}`,
-            metadata: { reason },
+            metadata: {
+              reason,
+              hasConsumedEntitlements,
+              invoiceId: cancelledInvoiceId,
+            },
           },
           organizationId,
           userId,
@@ -501,6 +698,59 @@ export class SubscriptionService {
     });
 
     return cancelled;
+  }
+
+  /**
+   * Renew subscription
+   * Creates a renewed subscription (or renewal cycle) with refreshed entitlements.
+   */
+  async renewSubscription(id, renewalData, organizationId, userId) {
+    const existingSub = await this.subscriptionRepo.findOne({
+      _id: id,
+      organizationId,
+      isDeleted: false,
+    });
+
+    if (!existingSub) {
+      throw new AppError("Original subscription not found", 404);
+    }
+
+    const {
+      price = existingSub.price,
+      startDate = new Date().toISOString(),
+      endDate,
+      permittedBranchIds = existingSub.permittedBranchIds,
+      notes = `Renewal of ${existingSub.subscriptionCode}`,
+      billImmediately = false,
+      branchId = null,
+    } = renewalData;
+
+    if (!endDate) {
+      throw new AppError("endDate is required for subscription renewal", 400);
+    }
+
+    // Construct fresh entitlements resetting usedQuantity to 0 and totalQuantity to original
+    const freshEntitlements = (existingSub.entitlements || []).map((e) => ({
+      serviceId: e.serviceId,
+      quantity: e.totalQuantity,
+    }));
+
+    return await this.createSubscription(
+      {
+        customerId: existingSub.customerId,
+        planId: existingSub.planId,
+        price,
+        entitlements: freshEntitlements,
+        permittedBranchIds,
+        startDate,
+        endDate,
+        notes,
+        billImmediately,
+        branchId,
+      },
+      organizationId,
+      userId,
+    );
   }
 
   /**
@@ -520,9 +770,10 @@ export class SubscriptionService {
     // Expiry check
     await this.checkAndUpdateExpiry(subscription);
 
-    if (subscription.status !== "active") {
+    const redeemableStatuses = ["active", "pending_payment"];
+    if (!redeemableStatuses.includes(subscription.status)) {
       throw new AppError(
-        `Subscription is not active (current status: '${subscription.status}')`,
+        `Subscription is not active or eligible for redemption (current status: '${subscription.status}')`,
         400,
       );
     }
@@ -639,7 +890,7 @@ export class SubscriptionService {
     const candidateQuery = {
       organizationId,
       customerId,
-      status: "active",
+      status: { $in: ["active", "pending_payment"] },
       isDeleted: false,
       endDate: { $gte: now },
       entitlements: {
@@ -751,7 +1002,8 @@ export class SubscriptionService {
 
     await this.checkAndUpdateExpiry(subscription);
 
-    if (subscription.status !== "active") {
+    const redeemableStatuses = ["active", "pending_payment"];
+    if (!redeemableStatuses.includes(subscription.status)) {
       if (this.auditRepo && typeof this.auditRepo.create === "function") {
         await this.auditRepo.create(
           {
@@ -879,7 +1131,7 @@ export class SubscriptionService {
       // Check each requested service is present on the appointment
       for (const reqService of services) {
         const hasService = appointment.services.some(
-          (s) => s.serviceId.toString() === reqService.serviceId.toString()
+          (s) => s.serviceId && s.serviceId.toString() === reqService.serviceId.toString()
         );
         if (!hasService) {
           throw new AppError(
@@ -1138,7 +1390,7 @@ export class SubscriptionService {
    */
   async checkAndUpdateExpiry(subscription) {
     if (
-      subscription.status === "active" &&
+      ["active", "pending_payment"].includes(subscription.status) &&
       subscription.endDate &&
       new Date(subscription.endDate) < new Date()
     ) {
@@ -1147,3 +1399,19 @@ export class SubscriptionService {
     }
   }
 }
+
+import { SubscriptionRepository } from "../../repositories/subscriptions/subscription.repository.js";
+import { SubscriptionUsageRepository } from "../../repositories/subscriptions/subscriptionUsage.repository.js";
+import { CustomerRepository } from "../../repositories/customers/customer.repository.js";
+import { ServiceRepository } from "../../repositories/services/service.repository.js";
+import { Branch } from "../../models/branches/branch.model.js";
+import { AuditLogRepository } from "../../repositories/audit/auditLog.repository.js";
+
+export const subscriptionService = new SubscriptionService(
+  new SubscriptionRepository(),
+  new SubscriptionUsageRepository(),
+  new CustomerRepository(),
+  new ServiceRepository(),
+  Branch,
+  new AuditLogRepository()
+);

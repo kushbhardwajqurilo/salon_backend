@@ -87,8 +87,14 @@ const subscriptionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["active", "expired", "exhausted", "cancelled"],
+      enum: ["pending_payment", "active", "expired", "exhausted", "cancelled"],
       default: "active",
+      index: true,
+    },
+    invoiceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Invoice",
+      default: null,
       index: true,
     },
     notes: {

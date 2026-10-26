@@ -15,6 +15,7 @@ import {
   completeAppointmentWithSubscriptionSchema,
   previewServiceModificationSchema,
   commitServiceModificationSchema,
+  upsellSubscriptionSchema,
 } from "../../validation/appointments/appointment.validation.js";
 import {
   createAppointment,
@@ -30,6 +31,7 @@ import {
   completeWithSubscription,
   previewServiceModification,
   commitServiceModification,
+  upsellSubscription,
 } from "../../controllers/appointments/appointment.controller.js";
 import { asyncHandler } from "../../utils/errors.js";
 import { AppError } from "../../utils/errors.js";
@@ -132,16 +134,20 @@ router.patch(
     const basePermission = req.body.status === "cancelled" ? "appointments.cancel" : "appointments.update_status";
     
     // 2. forceEarlyStart requires dedicated appointments.force_early_start permission
-    const requiredPermissions = [basePermission];
-    if (req.body.forceEarlyStart) {
-      requiredPermissions.push("appointments.force_early_start");
-    }
-
-    // Check base permission first
+    // 3. allowOverdueStaffOverride requires appointments.reschedule (or manager authorization)
     return requirePermission(basePermission)(req, res, async (err) => {
       if (err) return next(err);
       if (req.body.forceEarlyStart) {
-        return requirePermission("appointments.force_early_start")(req, res, next);
+        return requirePermission("appointments.force_early_start")(req, res, (forceErr) => {
+          if (forceErr) return next(forceErr);
+          if (req.body.allowOverdueStaffOverride) {
+            return requirePermission("appointments.reschedule")(req, res, next);
+          }
+          next();
+        });
+      }
+      if (req.body.allowOverdueStaffOverride) {
+        return requirePermission("appointments.reschedule")(req, res, next);
       }
       next();
     });
@@ -198,6 +204,15 @@ router.post(
   validate(commitServiceModificationSchema),
   requirePermission("appointments.edit"),
   commitServiceModification
+);
+
+// Mid-Appointment Subscription Upsell Flow
+router.post(
+  "/:id/upsell-subscription",
+  validateMutationBranch,
+  validate(upsellSubscriptionSchema),
+  requirePermission("subscriptions.sell"),
+  upsellSubscription
 );
 
 export default router;
