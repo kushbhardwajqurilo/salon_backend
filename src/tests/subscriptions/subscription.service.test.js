@@ -136,6 +136,7 @@ describe("SubscriptionService Unit Tests - Core Operations", () => {
           { serviceId: serviceId2, quantity: 2 },
         ],
         notes: "VIP Subscription package",
+        branchId,
       };
 
       const result = await subscriptionService.createSubscription(
@@ -269,6 +270,20 @@ describe("SubscriptionService Unit Tests - Core Operations", () => {
       await expect(
         subscriptionService.createSubscription(payload, orgId, userId)
       ).rejects.toThrow("Service 'Delisted Facial' is inactive and cannot be added to a subscription");
+    });
+
+    it("should throw error if price is 0 or negative", async () => {
+      const payload = {
+        customerId,
+        price: 0,
+        startDate: "2026-10-01",
+        endDate: "2026-12-31",
+        entitlements: [{ serviceId: serviceId1, quantity: 1 }],
+      };
+
+      await expect(
+        subscriptionService.createSubscription(payload, orgId, userId)
+      ).rejects.toThrow("Price must be greater than 0");
     });
   });
 

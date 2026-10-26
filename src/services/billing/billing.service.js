@@ -433,18 +433,8 @@ export class BillingService {
       throw new AppError("Subscription not found", 404);
     }
 
-    // Validate branchId if permittedBranchIds is specified
-    if (
-      Array.isArray(subscription.permittedBranchIds) &&
-      subscription.permittedBranchIds.length > 0
-    ) {
-      const isPermitted = subscription.permittedBranchIds.some(
-        (b) => b.toString() === branchId.toString()
-      );
-      if (!isPermitted) {
-        throw new AppError("Target branch is not permitted for this subscription", 400);
-      }
-    }
+    // Subscription sale invoice belongs to the validated selling branch (branchId).
+    // Redemption eligibility across branches is governed independently by subscription.permittedBranchIds.
 
     // Check for existing active invoice for this subscription
     let existingInvQuery = Invoice.findOne({

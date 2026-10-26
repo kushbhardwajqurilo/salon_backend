@@ -13,7 +13,7 @@ export const createSubscriptionPlanSchema = z.object({
     name: z.string().trim().min(2, "Plan name must be at least 2 characters").max(100),
     code: z.string().trim().max(50).optional().nullable(),
     description: z.string().trim().max(1000).optional().default(""),
-    suggestedPrice: z.number().min(0, "Suggested price must be non-negative"),
+    suggestedPrice: z.number().positive("Suggested price must be greater than 0"),
     validityMonths: z
       .number()
       .int("validityMonths must be an integer")
@@ -30,7 +30,7 @@ export const updateSubscriptionPlanSchema = z.object({
     name: z.string().trim().min(2).max(100).optional(),
     code: z.string().trim().max(50).optional().nullable(),
     description: z.string().trim().max(1000).optional(),
-    suggestedPrice: z.number().min(0).optional(),
+    suggestedPrice: z.number().positive("Suggested price must be greater than 0").optional(),
     validityMonths: z.number().int().min(1).optional(),
     entitlements: z.array(planEntitlementInputSchema).min(1).optional(),
     permittedBranchIds: z.array(objectIdSchema).optional(),

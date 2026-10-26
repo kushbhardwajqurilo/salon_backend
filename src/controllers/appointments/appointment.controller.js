@@ -239,26 +239,26 @@ export const commitServiceModification = asyncHandler(async (req, res) => {
     req.organizationId,
     req.user?.id || req.user?._id,
   );
-  return sendResponse(
-    res,
-    200,
-    result.message,
-    {
-      initiatingAppointment: result.initiatingAppointment,
-      shiftedAppointments: result.shiftedAppointments,
-    },
-  );
+  return sendResponse(res, 200, result.message, {
+    initiatingAppointment: result.initiatingAppointment,
+    shiftedAppointments: result.shiftedAppointments,
+  });
 });
 
 export const upsellSubscription = asyncHandler(async (req, res) => {
-  const branchId = req.body?.branchId || req.branchId || req.headers["x-branch-id"];
+  const branchId =
+    req.body?.branchId || req.branchId || req.headers["x-branch-id"];
   const result = await appointmentService.upsellSubscription(
     req.params.id,
     req.body,
     req.organizationId,
     branchId,
-    req.user?.id || req.user?._id
+    req.user?.id || req.user?._id,
   );
-  return sendResponse(res, 201, "Subscription upsold successfully during appointment", result);
+  return sendResponse(
+    res,
+    201,
+    "Subscription upsold successfully during appointment",
+    result,
+  );
 });
-

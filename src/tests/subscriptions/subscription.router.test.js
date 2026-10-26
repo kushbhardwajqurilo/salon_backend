@@ -218,6 +218,7 @@ describe("Subscription Module Integration Tests", () => {
       const res = await request(app)
         .post("/api/v1/subscriptions")
         .set("Authorization", `Bearer ${ownerToken}`)
+        .set("X-Branch-Id", branchA1._id.toString())
         .send({
           customerId: customerA._id.toString(),
           price: 3500, // Custom negotiated package price
@@ -263,6 +264,7 @@ describe("Subscription Module Integration Tests", () => {
       const res = await request(app)
         .post("/api/v1/subscriptions")
         .set("Authorization", `Bearer ${ownerToken}`)
+        .set("X-Branch-Id", branchA1._id.toString())
         .send({
           customerId: customerA._id.toString(),
           price: 1000,
@@ -282,6 +284,7 @@ describe("Subscription Module Integration Tests", () => {
       const createRes = await request(app)
         .post("/api/v1/subscriptions")
         .set("Authorization", `Bearer ${ownerToken}`)
+        .set("X-Branch-Id", branchA1._id.toString())
         .send({
           customerId: customerA._id.toString(),
           price: 2400,
@@ -366,6 +369,7 @@ describe("Subscription Module Integration Tests", () => {
       const createRes = await request(app)
         .post("/api/v1/subscriptions")
         .set("Authorization", `Bearer ${ownerToken}`)
+        .set("X-Branch-Id", branchA1._id.toString())
         .send({
           customerId: customerA._id.toString(),
           planId: plan._id.toString(),

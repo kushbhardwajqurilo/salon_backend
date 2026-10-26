@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.js";
 import {
+  requireActiveBranch,
   requireBranchScope,
   requireOrganizationScope,
 } from "../../middleware/branchScope.js";
@@ -18,6 +19,7 @@ router.use(authenticate);
 router.post(
   "/",
   requireOrganizationScope,
+  requireActiveBranch,
   authorize("subscriptions.sell"),
   validate(subscriptionValidation.createSubscriptionSchema),
   subscriptionController.createSubscription
@@ -62,6 +64,7 @@ router.patch(
 router.post(
   "/:id/renew",
   requireOrganizationScope,
+  requireActiveBranch,
   authorize("subscriptions.sell"),
   validate(subscriptionValidation.renewSubscriptionSchema),
   subscriptionController.renewSubscription

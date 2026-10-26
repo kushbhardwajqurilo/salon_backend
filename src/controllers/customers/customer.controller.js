@@ -157,7 +157,6 @@ export const deleteCustomer = asyncHandler(async (req, res) => {
 export const listCustomers = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
   const activeBranchId = await getActiveBranchContext(req);
-
   const { page, limit, sort, search, isActive, status } = req.query;
 
   const filter = {};

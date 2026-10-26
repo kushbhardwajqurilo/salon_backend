@@ -294,7 +294,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
       expect(persistedSub.status).toBe("pending_payment");
     });
 
-    it("creates a zero-price complimentary subscription with status active and without mandatory invoice", async () => {
+    it("rejects creating a subscription with price 0", async () => {
       const res = await request(app)
         .post("/api/v1/subscriptions")
         .set("Authorization", `Bearer ${ownerToken}`)
@@ -308,20 +308,12 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
           permittedBranchIds: [branchA1._id.toString()],
           startDate: "2026-01-01",
           endDate: "2026-12-31",
-          notes: "Complimentary Promotion",
+          notes: "Zero price attempt",
           billImmediately: false,
         });
 
-      expect(res.status).toBe(201);
-      expect(res.body.success).toBe(true);
-      const subData = res.body.data;
-      expect(subData.price).toBe(0);
-      expect(subData.status).toBe("active"); // Complimentary zero-price starts active
-      expect(subData.invoiceId).toBeNull();
-
-      const persistedSub = await Subscription.findById(subData._id);
-      expect(persistedSub.status).toBe("active");
-      expect(persistedSub.invoiceId).toBeNull();
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
     });
   });
 

@@ -43,7 +43,7 @@ const subscriptionPlanSchema = new mongoose.Schema(
     suggestedPrice: {
       type: Number,
       required: true,
-      min: 0,
+      min: [0.01, "Suggested price must be greater than 0"],
     },
     validityMonths: {
       type: Number,

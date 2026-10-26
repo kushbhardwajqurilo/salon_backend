@@ -55,7 +55,6 @@ export class SubscriptionService {
    * Create a customer-specific subscription
    */
   async createSubscription(data, organizationId, userId) {
-    console.log("subscription data", data);
     const {
       customerId,
       planId,
@@ -67,7 +66,12 @@ export class SubscriptionService {
       notes = "",
     } = data;
 
-    // 0. If planId provided, validate it belongs to organization and is active
+    // 0. Validate price
+    if (price === undefined || price === null || isNaN(Number(price)) || Number(price) <= 0) {
+      throw new AppError("Price must be greater than 0", 400);
+    }
+
+    // 0.1 If planId provided, validate it belongs to organization and is active
     let resolvedPlanId = null;
     if (planId) {
       const PlanModel = mongoose.model("SubscriptionPlan");
@@ -248,23 +252,7 @@ export class SubscriptionService {
       let invoice = null;
       if (shouldBill) {
         const { billingService } = await import("../billing/billing.service.js");
-        let effectiveBranchId =
-          invoiceBranchId ||
-          (validPermittedBranchIds.length === 1 ? validPermittedBranchIds[0] : null) ||
-          customer.homeBranchId ||
-          null;
-
-        if (!effectiveBranchId) {
-          const BranchModel = mongoose.model("Branch");
-          const anyBranch = await BranchModel.findOne({
-            organizationId,
-            isActive: true,
-            isDeleted: false,
-          }).session(session);
-          if (anyBranch) {
-            effectiveBranchId = anyBranch._id;
-          }
-        }
+        const effectiveBranchId = invoiceBranchId;
 
         if (!effectiveBranchId) {
           throw new AppError(
@@ -713,6 +701,12 @@ export class SubscriptionService {
 
     if (!existingSub) {
       throw new AppError("Original subscription not found", 404);
+    }
+
+    await this.checkAndUpdateExpiry(existingSub);
+
+    if (existingSub.status === "cancelled") {
+      throw new AppError("Cancelled subscriptions cannot be renewed", 400);
     }
 
     const {

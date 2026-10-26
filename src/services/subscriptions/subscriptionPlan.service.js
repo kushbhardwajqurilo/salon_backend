@@ -24,6 +24,11 @@ export class SubscriptionPlanService {
       permittedBranchIds = [],
     } = data;
 
+    // 0. Validate suggestedPrice
+    if (suggestedPrice === undefined || suggestedPrice === null || isNaN(Number(suggestedPrice)) || Number(suggestedPrice) <= 0) {
+      throw new AppError("Suggested price must be greater than 0", 400);
+    }
+
     // 1. Check code uniqueness if provided
     if (code) {
       const existing = await this.subscriptionPlanRepo.findByCode(
@@ -240,7 +245,11 @@ export class SubscriptionPlanService {
     }
 
     if (updateData.suggestedPrice !== undefined) {
-      allowedUpdates.suggestedPrice = Number(updateData.suggestedPrice);
+      const sp = Number(updateData.suggestedPrice);
+      if (isNaN(sp) || sp <= 0) {
+        throw new AppError("Suggested price must be greater than 0", 400);
+      }
+      allowedUpdates.suggestedPrice = sp;
     }
 
     if (updateData.validityMonths !== undefined) {

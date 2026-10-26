@@ -16,7 +16,7 @@ const redeemServiceInputSchema = z.object({
 export const createSubscriptionSchema = z.object({
   body: z.object({
     customerId: objectIdSchema,
-    price: z.number().min(0, "Price must be non-negative"),
+    price: z.number().positive("Price must be greater than 0"),
     entitlements: z
       .array(entitlementInputSchema)
       .min(1, "At least one service entitlement is required"),
@@ -55,7 +55,7 @@ export const cancelSubscriptionSchema = z.object({
 
 export const renewSubscriptionSchema = z.object({
   body: z.object({
-    price: z.number().min(0, "Price must be non-negative").optional(),
+    price: z.number().positive("Price must be greater than 0").optional(),
     startDate: z
       .string()
       .datetime("Invalid ISO date for startDate")

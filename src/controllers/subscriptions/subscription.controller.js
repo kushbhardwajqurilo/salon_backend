@@ -24,8 +24,12 @@ const subscriptionService = new SubscriptionService(
 );
 
 export const createSubscription = asyncHandler(async (req, res) => {
+  const payload = {
+    ...req.body,
+    branchId: req.branchId || req.body?.branchId,
+  };
   const result = await subscriptionService.createSubscription(
-    req.body,
+    payload,
     req.organizationId,
     req.user?.id || req.user?._id
   );
@@ -77,9 +81,13 @@ export const cancelSubscription = asyncHandler(async (req, res) => {
 });
 
 export const renewSubscription = asyncHandler(async (req, res) => {
+  const payload = {
+    ...req.body,
+    branchId: req.branchId || req.body?.branchId,
+  };
   const result = await subscriptionService.renewSubscription(
     req.params.id,
-    req.body,
+    payload,
     req.organizationId,
     req.user?.id || req.user?._id
   );
