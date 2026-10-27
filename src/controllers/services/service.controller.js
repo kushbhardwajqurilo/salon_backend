@@ -11,7 +11,7 @@ export const createService = asyncHandler(async (req, res) => {
   const service = await serviceService.createService(
     req.body,
     organizationId,
-    req.user.id
+    req.user.id,
   );
   return sendResponse(res, 201, "Service created successfully", service);
 });
@@ -22,7 +22,7 @@ export const getServiceById = asyncHandler(async (req, res) => {
   const service = await serviceService.getServiceById(
     req.params.id,
     organizationId,
-    req.user
+    req.user,
   );
   return sendResponse(res, 200, "Service retrieved successfully", service);
 });
@@ -35,7 +35,7 @@ export const updateService = asyncHandler(async (req, res) => {
     req.body,
     organizationId,
     req.user.id,
-    req.user
+    req.user,
   );
   return sendResponse(res, 200, "Service updated successfully", service);
 });
@@ -43,7 +43,11 @@ export const updateService = asyncHandler(async (req, res) => {
 export const deleteService = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
 
-  await serviceService.deleteService(req.params.id, organizationId, req.user.id);
+  await serviceService.deleteService(
+    req.params.id,
+    organizationId,
+    req.user.id,
+  );
   return sendResponse(res, 200, "Service soft deleted successfully");
 });
 
@@ -55,15 +59,31 @@ export const toggleServiceStatus = asyncHandler(async (req, res) => {
     { status: req.body.status },
     organizationId,
     req.user.id,
-    req.user
+    req.user,
   );
-  return sendResponse(res, 200, `Service status updated successfully to ${service.status}`, service);
+  return sendResponse(
+    res,
+    200,
+    `Service status updated successfully to ${service.status}`,
+    service,
+  );
 });
 
 export const listServices = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
 
-  const { page, limit, sort, search, status, categoryId, gender, all, query } = req.query;
+  const {
+    page,
+    limit,
+    sort,
+    search,
+    status,
+    categoryId,
+    gender,
+    customerGender,
+    all,
+    query,
+  } = req.query;
 
   const isFetchAll =
     limit === "all" ||
@@ -85,6 +105,13 @@ export const listServices = asyncHandler(async (req, res) => {
 
   if (gender) {
     andConditions.push({ gender });
+  } else if (customerGender) {
+    if (customerGender === "male") {
+      andConditions.push({ gender: { $in: ["male", "unisex"] } });
+    } else if (customerGender === "female") {
+      andConditions.push({ gender: { $in: ["female", "unisex"] } });
+    }
+    // "other" and "prefer_not_to_say" apply no gender restriction
   }
 
   if (andConditions.length > 0) {
@@ -124,10 +151,16 @@ export const listServices = asyncHandler(async (req, res) => {
       searchFields: ["name", "description", "serviceCode"],
       populate: ["categoryId"],
     },
-    organizationId
+    organizationId,
   );
 
-  return sendResponse(res, 200, "Services listed successfully", result.data, result.meta);
+  return sendResponse(
+    res,
+    200,
+    "Services listed successfully",
+    result.data,
+    result.meta,
+  );
 });
 
 export const reactivateService = asyncHandler(async (req, res) => {
@@ -136,7 +169,7 @@ export const reactivateService = asyncHandler(async (req, res) => {
   const service = await serviceService.reactivateService(
     req.params.id,
     organizationId,
-    req.user.id
+    req.user.id,
   );
   return sendResponse(res, 200, "Service reactivated successfully", service);
 });

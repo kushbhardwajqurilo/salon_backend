@@ -120,9 +120,16 @@ export const queryServiceSchema = z.object({
     search: z.string().optional(),
     query: z.string().optional(),
     gender: z.enum(["male", "female", "unisex"]).optional(),
+    customerGender: z.enum(["male", "female", "other", "prefer_not_to_say"]).optional(),
     status: z.enum(["active", "inactive"]).optional(),
     categoryId: objectIdSchema.optional(),
-  }),
+  }).refine(
+    (data) => !(data.gender && data.customerGender),
+    {
+      message: "Cannot specify both 'gender' and 'customerGender' query parameters",
+      path: ["customerGender"],
+    }
+  ),
 });
 
 export const serviceStatusUpdateSchema = z.object({
