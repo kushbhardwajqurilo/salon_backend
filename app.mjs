@@ -99,7 +99,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Speed limiter & API rate limiter for standard routes
-app.use(speedLimiter);
+// app.use(speedLimiter); 
 app.use("/api", apiLimiter);
 
 // DEBUG Logger for non-production

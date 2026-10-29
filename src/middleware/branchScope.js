@@ -72,8 +72,15 @@ export const requireBranchScope = asyncHandler(async (req, res, next) => {
     );
   }
 
+  // OLD CODE:
+  // req.organizationId = organizationId;
+  // req.branchId = branchId;
+  // next();
+
+  // UPDATED CODE: Attach cached/validated branch context to request to eliminate downstream duplicate DB queries
   req.organizationId = organizationId;
   req.branchId = branchId;
+  req.currentBranch = branch;
   next();
 });
 
@@ -130,8 +137,18 @@ export const requireActiveBranch = asyncHandler(async (req, res, next) => {
     );
   }
 
+  // OLD CODE:
+  // req.organizationId = organizationId;
+  // req.branchId = branch._id.toString();
+  // if (req.body && typeof req.body === "object") {
+  //   req.body.branchId = branch._id.toString();
+  // }
+  // next();
+
+  // UPDATED CODE: Attach current branch to avoid downstream DB re-queries
   req.organizationId = organizationId;
   req.branchId = branch._id.toString();
+  req.currentBranch = branch;
   if (req.body && typeof req.body === "object") {
     req.body.branchId = branch._id.toString();
   }

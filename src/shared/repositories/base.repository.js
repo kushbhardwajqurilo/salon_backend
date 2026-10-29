@@ -12,15 +12,23 @@ export class BaseRepository {
     return doc.save({ session });
   }
 
-  async findById(id, populate = [], select = null) {
+  // async findById(id, populate = [], select = null) {
+  //   let query = this.model.findById(id);
+  //   if (populate.length > 0) {
+  //     query = query.populate(populate);
+  //   }
+  //   if (select) {
+  //     query = query.select(select);
+  //   }
+  //   return query.exec();
+  // }
+
+  async findById(id, populate = [], select = null, lean = true) {
     let query = this.model.findById(id);
-    if (populate.length > 0) {
-      query = query.populate(populate);
-    }
-    if (select) {
-      query = query.select(select);
-    }
-    return query.exec();
+    if (populate.length > 0) query = query.populate(populate);
+    if (select) query = query.select(select);
+    return lean ? query.lean().exec() : query.exec();
+
   }
 
   async findOne(filter, populate = [], select = null) {
@@ -106,8 +114,13 @@ export class BaseRepository {
       query = query.skip(skip).limit(parsedLimit);
     }
 
-    const data = await query.exec();
-    const total = await this.count(queryFilter);
+    // const data = await query.exec();
+    // const total = await this.count(queryFilter);
+
+    const [data, total] = await Promise.all([
+      query.lean().exec(),
+      this.count(queryFilter)
+    ])
 
     const parsedLimit = isFetchAll ? total : (Number(limit) || 10);
     const parsedPage = isFetchAll ? 1 : (Number(page) || 1);
