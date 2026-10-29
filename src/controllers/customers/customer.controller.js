@@ -195,12 +195,14 @@ export const listCustomers = asyncHandler(async (req, res) => {
     filter.$and = andConditions;
   }
 
-  // Safe sort parsing with strict deterministic fallback ordering
+  // Safe sort parsing with newly created customers first by default and strict deterministic fallback ordering
   const sortOption = {};
   if (sort) {
     const isDesc = sort.startsWith("-");
     const field = isDesc ? sort.slice(1) : sort;
     sortOption[field] = isDesc ? -1 : 1;
+  } else {
+    sortOption.createdAt = -1;
   }
   if (!sortOption._id) {
     sortOption._id = 1;

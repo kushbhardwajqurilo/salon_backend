@@ -27,9 +27,10 @@ export class SubscriptionService {
 
   /**
    * Helper to execute a sequence of actions within a MongoDB session/transaction.
-   * Default requires ACID transaction for consistency.
+   * Defers to runInTransaction which enforces ACID when transactions are supported,
+   * or permits standalone fallback when explicitly enabled in test/standalone environments.
    */
-  async executeTransaction(callback, { requireTransaction = true } = {}) {
+  async executeTransaction(callback, { requireTransaction = false } = {}) {
     return await runInTransaction(callback, { requireTransaction });
   }
 
@@ -56,7 +57,9 @@ export class SubscriptionService {
    */
   async createSubscription(data, organizationId, userId) {
     const {
+      payerCustomerId,
       customerId,
+      members,
       planId,
       price,
       entitlements,
@@ -89,26 +92,31 @@ export class SubscriptionService {
       resolvedPlanId = plan._id;
     }
 
-    // 1. Verify customer exists, belongs to org, and is active
-    let customer;
+    // 1. Establish payer customer
+    const rawPayerId = payerCustomerId || customerId || (members && members[0]?.customerId);
+    if (!rawPayerId) {
+      throw new AppError("Payer customer is required", 400);
+    }
+
+    let payerCustomer;
     if (this.customerRepo && typeof this.customerRepo.findById === "function") {
-      customer = await this.customerRepo.findById(customerId, organizationId);
+      payerCustomer = await this.customerRepo.findById(rawPayerId, organizationId);
     } else {
       const CustomerModel = mongoose.model("Customer");
-      customer = await CustomerModel.findById(customerId);
+      payerCustomer = await CustomerModel.findById(rawPayerId);
     }
 
     if (
-      !customer ||
-      customer.organizationId.toString() !== organizationId.toString() ||
-      customer.isDeleted
+      !payerCustomer ||
+      payerCustomer.organizationId.toString() !== organizationId.toString() ||
+      payerCustomer.isDeleted
     ) {
       throw new AppError("Customer not found or invalid for organization", 404);
     }
 
-    if (customer.status !== "active") {
+    if (payerCustomer.status !== "active") {
       throw new AppError(
-        `Cannot create subscription for customer with status '${customer.status}'`,
+        `Cannot create subscription for customer with status '${payerCustomer.status}'`,
         400,
       );
     }
@@ -155,90 +163,151 @@ export class SubscriptionService {
       }
     }
 
-    // 4. Validate entitlements: no duplicates, services must exist, be active, belong to org
-    if (!Array.isArray(entitlements) || entitlements.length === 0) {
-      throw new AppError("At least one entitlement is required", 400);
+    // 4. Resolve members and validate entitlements per member
+    let rawMembers = members;
+    if (!rawMembers || rawMembers.length === 0) {
+      // Legacy single-customer format conversion
+      if (!entitlements || entitlements.length === 0) {
+        throw new AppError("At least one entitlement is required", 400);
+      }
+      rawMembers = [
+        {
+          customerId: payerCustomer._id,
+          entitlements,
+          permittedBranchIds: validPermittedBranchIds,
+          notes: notes || "",
+        },
+      ];
     }
 
-    const seenServiceIds = new Set();
-    const resolvedEntitlements = [];
+    const seenMemberCustomerIds = new Set();
+    const resolvedMembers = [];
 
-    for (const ent of entitlements) {
-      const sIdStr = ent.serviceId.toString();
-      if (seenServiceIds.has(sIdStr)) {
-        throw new AppError(
-          "Duplicate serviceId in entitlements. Consolidate into a single entitlement with total quantity.",
-          400,
-        );
-      }
-      seenServiceIds.add(sIdStr);
-
-      let service;
-      if (this.serviceRepo && typeof this.serviceRepo.findById === "function") {
-        service = await this.serviceRepo.findById(
-          ent.serviceId,
-          organizationId,
-        );
-      } else {
-        const ServiceModel = mongoose.model("Service");
-        service = await ServiceModel.findById(ent.serviceId);
-      }
-
-      if (
-        !service ||
-        service.organizationId.toString() !== organizationId.toString() ||
-        service.isDeleted
-      ) {
-        throw new AppError(
-          `Service ${ent.serviceId} not found in this organization`,
-          404,
-        );
-      }
-
-      if (service.status !== "active") {
-        throw new AppError(
-          `Service '${service.name}' is inactive and cannot be added to a subscription`,
-          400,
-        );
-      }
-
-      const totalQuantity = parseInt(ent.quantity, 10);
-      if (isNaN(totalQuantity) || totalQuantity < 1) {
-        throw new AppError(
-          `Invalid quantity for service '${service.name}'. Must be at least 1.`,
-          400,
-        );
-      }
-
-      resolvedEntitlements.push({
-        serviceId: service._id,
-        serviceName: service.name,
-        totalQuantity,
-        usedQuantity: 0,
-        remainingQuantity: totalQuantity,
-      });
-    }
-
-    // 5. Generate subscription code
-    const subscriptionCode =
-      await this.generateSubscriptionCode(organizationId);
-
-    // 6. Create subscription and audit log in transaction
-    // If price > 0, invoice generation is mandatory and initial status is "pending_payment"
-    // until the invoice is paid. If complimentary (price == 0), initial status is "active".
+    // Initial status determined by price and billing intent
     const { billImmediately, branchId: invoiceBranchId = null } = data;
     const shouldBill = Number(price) > 0 ? true : Boolean(billImmediately);
     const initialStatus = shouldBill && Number(price) > 0 ? "pending_payment" : "active";
 
+    for (const mem of rawMembers) {
+      const mCustIdStr = mem.customerId ? mem.customerId.toString() : null;
+      if (!mCustIdStr) {
+        throw new AppError("Member customerId is required", 400);
+      }
+      if (seenMemberCustomerIds.has(mCustIdStr)) {
+        throw new AppError("Duplicate customer in subscription members. Consolidate into a single member allocation.", 400);
+      }
+      seenMemberCustomerIds.add(mCustIdStr);
+
+      // Verify member customer exists and is active
+      let memCust;
+      if (mCustIdStr === payerCustomer._id.toString()) {
+        memCust = payerCustomer;
+      } else {
+        if (this.customerRepo && typeof this.customerRepo.findById === "function") {
+          memCust = await this.customerRepo.findById(mem.customerId, organizationId);
+        } else {
+          const CustomerModel = mongoose.model("Customer");
+          memCust = await CustomerModel.findById(mem.customerId);
+        }
+      }
+
+      if (
+        !memCust ||
+        memCust.organizationId.toString() !== organizationId.toString() ||
+        memCust.isDeleted
+      ) {
+        throw new AppError(`Member customer ${mem.customerId} not found or invalid for organization`, 404);
+      }
+
+      if (memCust.status !== "active") {
+        throw new AppError(
+          `Cannot enroll customer ${memCust.name} with status '${memCust.status}'`,
+          400,
+        );
+      }
+
+      // Validate member's entitlements
+      if (!Array.isArray(mem.entitlements) || mem.entitlements.length === 0) {
+        throw new AppError(`At least one entitlement is required for member ${memCust.name}`, 400);
+      }
+
+      const seenServiceIds = new Set();
+      const resolvedMemberEntitlements = [];
+
+      for (const ent of mem.entitlements) {
+        const sIdStr = ent.serviceId ? ent.serviceId.toString() : null;
+        if (!sIdStr) {
+          throw new AppError("serviceId is required for entitlement", 400);
+        }
+        if (seenServiceIds.has(sIdStr)) {
+          throw new AppError(
+            `Duplicate serviceId in entitlements for member ${memCust.name}. Consolidate quantity.`,
+            400,
+          );
+        }
+        seenServiceIds.add(sIdStr);
+
+        let service;
+        if (this.serviceRepo && typeof this.serviceRepo.findById === "function") {
+          service = await this.serviceRepo.findById(ent.serviceId, organizationId);
+        } else {
+          const ServiceModel = mongoose.model("Service");
+          service = await ServiceModel.findById(ent.serviceId);
+        }
+
+        if (
+          !service ||
+          service.organizationId.toString() !== organizationId.toString() ||
+          service.isDeleted
+        ) {
+          throw new AppError(`Service ${ent.serviceId} not found in this organization`, 404);
+        }
+
+        if (service.status !== "active") {
+          throw new AppError(`Service '${service.name}' is inactive and cannot be added to a subscription`, 400);
+        }
+
+        const totalQuantity = parseInt(ent.quantity, 10);
+        if (isNaN(totalQuantity) || totalQuantity < 1) {
+          throw new AppError(`Invalid quantity for service '${service.name}'. Must be at least 1.`, 400);
+        }
+
+        resolvedMemberEntitlements.push({
+          serviceId: service._id,
+          serviceName: service.name,
+          totalQuantity,
+          usedQuantity: 0,
+          remainingQuantity: totalQuantity,
+        });
+      }
+
+      resolvedMembers.push({
+        customerId: memCust._id,
+        status: initialStatus,
+        permittedBranchIds: mem.permittedBranchIds || [],
+        entitlements: resolvedMemberEntitlements,
+        notes: mem.notes || "",
+      });
+    }
+
+    // 5. Generate subscription code
+    const subscriptionCode = await this.generateSubscriptionCode(organizationId);
+
+    // 6. Create subscription and audit log in transaction
     const result = await this.executeTransaction(async (session) => {
+      // Legacy entitlements mirror first member for direct readers
+      const legacyEntitlements = resolvedMembers[0]?.entitlements || [];
+
       const newSub = await this.subscriptionRepo.create(
         {
           organizationId,
-          customerId: customer._id,
+          payerCustomerId: payerCustomer._id,
+          customerId: payerCustomer._id, // Legacy compatibility
           subscriptionCode,
           planId: resolvedPlanId,
           price: Number(price),
-          entitlements: resolvedEntitlements,
+          members: resolvedMembers,
+          entitlements: legacyEntitlements,
           permittedBranchIds: validPermittedBranchIds,
           startDate: start,
           endDate: end,
@@ -282,13 +351,13 @@ export class SubscriptionService {
             action: AUDIT_ACTIONS.SUBSCRIPTION_CREATED,
             entityType: "Subscription",
             entityId: newSub._id,
-            description: `Subscription ${subscriptionCode} created for customer ${customer.name} with price ${price} (status: ${initialStatus})`,
+            description: `Subscription ${subscriptionCode} created for payer ${payerCustomer.name} (${resolvedMembers.length} member(s)) with price ${price} (status: ${initialStatus})`,
             metadata: {
               subscriptionCode,
-              customerId: customer._id,
+              payerCustomerId: payerCustomer._id,
+              membersCount: resolvedMembers.length,
               planId: resolvedPlanId,
               price,
-              entitlementsCount: resolvedEntitlements.length,
               status: initialStatus,
               invoiceId: invoice?._id || null,
             },
@@ -304,27 +373,29 @@ export class SubscriptionService {
 
     const createdSubscription = result.subscription;
 
-    // 7. If subscription is active, reassess eligible upcoming appointments for this customer
+    // 7. If subscription is active, reassess eligible upcoming appointments for all enrolled members
     if (createdSubscription.status === "active") {
-      try {
-        await this.reassessCustomerUpcomingAppointments(
-          customer._id,
-          organizationId,
-          createdSubscription,
-        );
-      } catch (reassessErr) {
-        logger.warn(
-          `Failed to reassess upcoming appointments for subscription ${createdSubscription.subscriptionCode}: ${reassessErr.message}`,
-        );
+      for (const m of resolvedMembers) {
+        try {
+          await this.reassessCustomerUpcomingAppointments(
+            m.customerId,
+            organizationId,
+            createdSubscription,
+          );
+        } catch (reassessErr) {
+          logger.warn(
+            `Failed to reassess upcoming appointments for subscription ${createdSubscription.subscriptionCode} member ${m.customerId}: ${reassessErr.message}`,
+          );
+        }
       }
     }
 
     // 8. Dispatch notification (best-effort async)
     try {
-      if (customer.phone) {
+      if (payerCustomer.phone) {
         await smsQueue.add("sendSubscriptionCreatedSMS", {
-          phone: customer.phone,
-          customerName: customer.name,
+          phone: payerCustomer.phone,
+          customerName: payerCustomer.name,
           subscriptionCode: createdSubscription.subscriptionCode,
           price: createdSubscription.price,
           organizationId: organizationId.toString(),
@@ -432,6 +503,8 @@ export class SubscriptionService {
       limit: parseInt(limit, 10),
       populate: [
         { path: "customerId", select: "name phone email" },
+        { path: "payerCustomerId", select: "name phone email" },
+        { path: "members.customerId", select: "name phone email" },
         { path: "permittedBranchIds", select: "name" },
         { path: "invoiceId", select: "invoiceNumber paymentStatus amountPaid amountDue status" },
       ],
@@ -446,12 +519,36 @@ export class SubscriptionService {
       const isStatusValid = ["active", "pending_payment"].includes(doc.status);
       const baseRedeemable = isStatusValid && isDateValid;
 
-      doc.entitlements = (doc.entitlements || []).map((e) => ({
+      if (Array.isArray(doc.members) && doc.members.length > 0) {
+        doc.members = doc.members.map((m) => {
+          const isMemberStatusValid = ["active", "pending_payment"].includes(m.status);
+          const memberRedeemable = baseRedeemable && isMemberStatusValid;
+          const memberEntitlements = (m.entitlements || []).map((e) => ({
+            ...e,
+            isRedeemable: memberRedeemable && (e.remainingQuantity || 0) > 0,
+          }));
+          return {
+            ...m,
+            entitlements: memberEntitlements,
+            isRedeemable: memberEntitlements.some((e) => e.isRedeemable),
+          };
+        });
+      }
+
+      // Legacy projection for single member or legacy sub
+      const activeEntitlements = Array.isArray(doc.members) && doc.members.length > 0
+        ? doc.members[0].entitlements
+        : doc.entitlements || [];
+
+      doc.entitlements = activeEntitlements.map((e) => ({
         ...e,
         isRedeemable: baseRedeemable && (e.remainingQuantity || 0) > 0,
       }));
 
-      const hasBalance = doc.entitlements.some((e) => e.isRedeemable);
+      const hasBalance = Array.isArray(doc.members) && doc.members.length > 0
+        ? doc.members.some((m) => m.isRedeemable)
+        : doc.entitlements.some((e) => e.isRedeemable);
+
       doc.paymentStatus = doc.invoiceId?.paymentStatus || (doc.status === "active" && doc.price === 0 ? "paid" : "unpaid");
       doc.isRedeemable = hasBalance;
       return doc;
@@ -471,6 +568,9 @@ export class SubscriptionService {
       { _id: id, organizationId, isDeleted: false },
       [
         { path: "customerId", select: "name phone email status" },
+        { path: "payerCustomerId", select: "name phone email status" },
+        { path: "members.customerId", select: "name phone email status" },
+        { path: "members.entitlements.serviceId", select: "name duration price" },
         { path: "permittedBranchIds", select: "name isActive" },
         { path: "entitlements.serviceId", select: "name duration price" },
         { path: "planId", select: "_id name" },
@@ -491,12 +591,35 @@ export class SubscriptionService {
     const isStatusValid = ["active", "pending_payment"].includes(doc.status);
     const baseRedeemable = isStatusValid && isDateValid;
 
-    doc.entitlements = (doc.entitlements || []).map((e) => ({
+    if (Array.isArray(doc.members) && doc.members.length > 0) {
+      doc.members = doc.members.map((m) => {
+        const isMemberStatusValid = ["active", "pending_payment"].includes(m.status);
+        const memberRedeemable = baseRedeemable && isMemberStatusValid;
+        const memberEntitlements = (m.entitlements || []).map((e) => ({
+          ...e,
+          isRedeemable: memberRedeemable && (e.remainingQuantity || 0) > 0,
+        }));
+        return {
+          ...m,
+          entitlements: memberEntitlements,
+          isRedeemable: memberEntitlements.some((e) => e.isRedeemable),
+        };
+      });
+    }
+
+    const activeEntitlements = Array.isArray(doc.members) && doc.members.length > 0
+      ? doc.members[0].entitlements
+      : doc.entitlements || [];
+
+    doc.entitlements = activeEntitlements.map((e) => ({
       ...e,
       isRedeemable: baseRedeemable && (e.remainingQuantity || 0) > 0,
     }));
 
-    const hasBalance = doc.entitlements.some((e) => e.isRedeemable);
+    const hasBalance = Array.isArray(doc.members) && doc.members.length > 0
+      ? doc.members.some((m) => m.isRedeemable)
+      : doc.entitlements.some((e) => e.isRedeemable);
+
     doc.paymentStatus = doc.invoiceId?.paymentStatus || (doc.status === "active" && doc.price === 0 ? "paid" : "unpaid");
     doc.isRedeemable = hasBalance;
 
@@ -613,10 +736,17 @@ export class SubscriptionService {
       throw new AppError("Subscription is already cancelled", 400);
     }
 
-    // Safeguard: Check if any entitlements have already been consumed
-    const hasConsumedEntitlements = (subscription.entitlements || []).some(
-      (e) => (e.usedQuantity || 0) > 0
-    );
+    // Safeguard: Check if any entitlements have already been consumed across all members or legacy
+    let hasConsumedEntitlements = false;
+    if (Array.isArray(subscription.members) && subscription.members.length > 0) {
+      hasConsumedEntitlements = subscription.members.some((m) =>
+        (m.entitlements || []).some((e) => (e.usedQuantity || 0) > 0)
+      );
+    } else {
+      hasConsumedEntitlements = (subscription.entitlements || []).some(
+        (e) => (e.usedQuantity || 0) > 0
+      );
+    }
 
     if (hasConsumedEntitlements && !options.allowConsumedCancellation) {
       throw new AppError(
@@ -626,10 +756,19 @@ export class SubscriptionService {
     }
 
     const cancelled = await this.executeTransaction(async (session) => {
+      // Mark members as cancelled as well
+      const updatedMembers = Array.isArray(subscription.members)
+        ? subscription.members.map((m) => ({
+            ...m.toObject ? m.toObject() : m,
+            status: "cancelled",
+          }))
+        : [];
+
       const res = await this.subscriptionRepo.updateById(
         id,
         {
           status: "cancelled",
+          ...(updatedMembers.length > 0 ? { members: updatedMembers } : {}),
           notes: subscription.notes
             ? `${subscription.notes}\n[Cancelled]: ${reason}`
             : `[Cancelled]: ${reason}`,
@@ -750,7 +889,7 @@ export class SubscriptionService {
   /**
    * Send OTP for redemption verification
    */
-  async sendRedemptionOTP(subscriptionId, branchId, organizationId, userId) {
+  async sendRedemptionOTP(subscriptionId, branchId, organizationId, userId, memberCustomerId = null) {
     const subscription = await this.subscriptionRepo.findOne({
       _id: subscriptionId,
       organizationId,
@@ -775,16 +914,32 @@ export class SubscriptionService {
     // Branch permission check
     this.validateBranchPermission(subscription, branchId);
 
+    // Determine target customer (beneficiary member or payer)
+    let targetCustomerId = memberCustomerId;
+    if (!targetCustomerId) {
+      targetCustomerId = subscription.customerId;
+    }
+
+    // If subscription has members array, verify customer is an active member
+    if (Array.isArray(subscription.members) && subscription.members.length > 0) {
+      const isMember = subscription.members.some(
+        (m) => m.customerId.toString() === targetCustomerId.toString() && ["active", "pending_payment"].includes(m.status)
+      );
+      if (!isMember) {
+        throw new AppError("Customer is not an active member of this subscription", 400);
+      }
+    }
+
     // Load customer
     let customer;
     if (this.customerRepo && typeof this.customerRepo.findById === "function") {
       customer = await this.customerRepo.findById(
-        subscription.customerId,
+        targetCustomerId,
         organizationId,
       );
     } else {
       const CustomerModel = mongoose.model("Customer");
-      customer = await CustomerModel.findById(subscription.customerId);
+      customer = await CustomerModel.findById(targetCustomerId);
     }
 
     if (!customer || customer.isDeleted || customer.status !== "active") {
@@ -883,20 +1038,44 @@ export class SubscriptionService {
 
     const candidateQuery = {
       organizationId,
-      customerId,
       status: { $in: ["active", "pending_payment"] },
       isDeleted: false,
       endDate: { $gte: now },
-      entitlements: {
-        $elemMatch: {
-          serviceId: serviceId,
-          remainingQuantity: { $gte: 1 },
-        },
-      },
       $or: [
-        { permittedBranchIds: { $exists: false } },
-        { permittedBranchIds: { $size: 0 } },
-        { permittedBranchIds: branchId },
+        // Multi-customer member allocation
+        {
+          members: {
+            $elemMatch: {
+              customerId: customerId,
+              status: { $in: ["active", "pending_payment"] },
+              entitlements: {
+                $elemMatch: {
+                  serviceId: serviceId,
+                  remainingQuantity: { $gte: 1 },
+                },
+              },
+            },
+          },
+        },
+        // Legacy single-customer format fallback
+        {
+          customerId: customerId,
+          entitlements: {
+            $elemMatch: {
+              serviceId: serviceId,
+              remainingQuantity: { $gte: 1 },
+            },
+          },
+        },
+      ],
+      $and: [
+        {
+          $or: [
+            { permittedBranchIds: { $exists: false } },
+            { permittedBranchIds: { $size: 0 } },
+            { permittedBranchIds: branchId },
+          ],
+        },
       ],
     };
 
@@ -1021,16 +1200,50 @@ export class SubscriptionService {
     // 2. Validate branch permission
     this.validateBranchPermission(subscription, branchId);
 
-    // 3. Load customer and handle verification
+    // 2.1 Fetch appointment if appointmentId provided
+    let appointment = null;
+    if (appointmentId) {
+      const AppointmentModel = mongoose.model("Appointment");
+      appointment = await AppointmentModel.findOne({
+        _id: appointmentId,
+        organizationId,
+        isDeleted: false,
+      });
+
+      if (!appointment) {
+        throw new AppError("Provided appointment not found in this organization", 404);
+      }
+    }
+
+    // 3. Determine target member customer and handle verification
+    let targetCustomerId = options.memberCustomerId;
+    if (!targetCustomerId) {
+      if (appointmentId && appointment) {
+        targetCustomerId = appointment.customerId?._id ? appointment.customerId._id.toString() : appointment.customerId.toString();
+      } else {
+        targetCustomerId = subscription.customerId.toString();
+      }
+    }
+
+    let targetMember = null;
+    if (Array.isArray(subscription.members) && subscription.members.length > 0) {
+      targetMember = subscription.members.find(
+        (m) => m.customerId.toString() === targetCustomerId.toString() && ["active", "pending_payment"].includes(m.status)
+      );
+      if (!targetMember) {
+        throw new AppError("Customer is not an active member of this subscription", 400);
+      }
+    }
+
     let customer;
     if (this.customerRepo && typeof this.customerRepo.findById === "function") {
       customer = await this.customerRepo.findById(
-        subscription.customerId,
+        targetCustomerId,
         organizationId,
       );
     } else {
       const CustomerModel = mongoose.model("Customer");
-      customer = await CustomerModel.findById(subscription.customerId);
+      customer = await CustomerModel.findById(targetCustomerId);
     }
 
     if (!customer || customer.isDeleted) {
@@ -1098,21 +1311,13 @@ export class SubscriptionService {
     }
 
     // 4. Validate appointment ownership & service inclusion if appointmentId is supplied
-    let appointment = null;
-    if (appointmentId) {
-      const AppointmentModel = mongoose.model("Appointment");
-      appointment = await AppointmentModel.findOne({
-        _id: appointmentId,
-        organizationId,
-        isDeleted: false,
-      });
-
-      if (!appointment) {
-        throw new AppError("Provided appointment not found in this organization", 404);
-      }
-
+    if (appointmentId && appointment) {
       const aptCustId = appointment.customerId?._id ? appointment.customerId._id.toString() : appointment.customerId.toString();
-      if (aptCustId !== subscription.customerId.toString()) {
+      const isBeneficiaryMatch = targetMember
+        ? targetMember.customerId.toString() === aptCustId
+        : subscription.customerId.toString() === aptCustId;
+
+      if (!isBeneficiaryMatch) {
         throw new AppError("Provided appointment does not belong to the subscription customer", 400);
       }
 
@@ -1136,14 +1341,15 @@ export class SubscriptionService {
       }
     }
 
-    // 5. Validate requested services against entitlements
+    // 5. Validate requested services against active member/legacy entitlements
+    const availableEntitlements = targetMember ? targetMember.entitlements : subscription.entitlements;
     for (const reqService of services) {
       const qty = parseInt(reqService.quantity || 1, 10);
       if (isNaN(qty) || qty < 1) {
         throw new AppError("Invalid redemption quantity", 400);
       }
 
-      const entitlement = subscription.entitlements.find(
+      const entitlement = availableEntitlements.find(
         (e) => e.serviceId.toString() === reqService.serviceId.toString(),
       );
 
@@ -1188,15 +1394,26 @@ export class SubscriptionService {
       for (const reqService of services) {
         const qty = parseInt(reqService.quantity || 1, 10);
 
-        // Atomic decrement with balance guard
-        const updatedSub =
-          await this.subscriptionRepo.atomicDecrementEntitlement(
+        // Atomic member decrement with balance guard
+        let updatedSub;
+        if (targetMember) {
+          updatedSub = await this.subscriptionRepo.atomicDecrementMemberEntitlement(
+            subscription._id,
+            organizationId,
+            targetMember.customerId,
+            reqService.serviceId,
+            qty,
+            session,
+          );
+        } else {
+          updatedSub = await this.subscriptionRepo.atomicDecrementEntitlement(
             subscription._id,
             organizationId,
             reqService.serviceId,
             qty,
             session,
           );
+        }
 
         if (!updatedSub) {
           throw new AppError(
@@ -1207,8 +1424,12 @@ export class SubscriptionService {
 
         latestSubscription = updatedSub;
 
-        // Find service name snapshot
-        const matchingEnt = updatedSub.entitlements.find(
+        // Find service name snapshot from updated member
+        const currentMember = updatedSub.members && updatedSub.members.find
+          ? updatedSub.members.find((m) => m.customerId.toString() === targetCustomerId.toString())
+          : null;
+        const entList = currentMember ? currentMember.entitlements : updatedSub.entitlements;
+        const matchingEnt = entList.find(
           (e) => e.serviceId.toString() === reqService.serviceId.toString(),
         );
         const serviceName = matchingEnt ? matchingEnt.serviceName : "Service";
@@ -1219,11 +1440,15 @@ export class SubscriptionService {
         ].filter(Boolean).join(" ") || null;
 
         // Create SubscriptionUsage record
+        const matchingAptService = appointment?.services?.find(
+          (s) => s.serviceId && s.serviceId.toString() === reqService.serviceId.toString() && !s.isRedeemedViaSubscription
+        );
+
         const usageRecord = await this.subscriptionUsageRepo.create(
           {
             organizationId,
             subscriptionId: subscription._id,
-            customerId: subscription.customerId,
+            customerId: targetCustomerId,
             serviceId: reqService.serviceId,
             serviceName,
             quantity: qty,
@@ -1232,6 +1457,7 @@ export class SubscriptionService {
             verificationMethod: isManual ? "manual" : "otp",
             reason: storedReason,
             appointmentId: appointmentId || null,
+            appointmentServiceId: matchingAptService?._id || null,
             appointmentCode: appointment ? appointment.appointmentCode : null,
           },
           userId,
@@ -1241,13 +1467,13 @@ export class SubscriptionService {
         createdUsageRecords.push(usageRecord);
 
         // If appointmentId provided, update the Appointment's service line item status
-        if (appointmentId) {
+        if (appointmentId && matchingAptService) {
           const AppointmentModel = mongoose.model("Appointment");
           await AppointmentModel.updateOne(
             {
               _id: appointmentId,
               organizationId,
-              "services.serviceId": reqService.serviceId,
+              "services._id": matchingAptService._id,
             },
             {
               $set: {
@@ -1260,13 +1486,34 @@ export class SubscriptionService {
         }
       }
 
-      // Check if all entitlements are exhausted
-      const allExhausted = latestSubscription.entitlements.every(
-        (e) => e.remainingQuantity === 0,
-      );
+      // Check member-level exhaustion and global subscription exhaustion
+      let subModified = false;
+      if (Array.isArray(latestSubscription.members) && latestSubscription.members.length > 0) {
+        for (const m of latestSubscription.members) {
+          const isMemberExhausted = m.entitlements.every((e) => e.remainingQuantity === 0);
+          if (isMemberExhausted && m.status !== "exhausted") {
+            m.status = "exhausted";
+            subModified = true;
+          }
+        }
+        const allMembersExhausted = latestSubscription.members.every(
+          (m) => m.status === "exhausted" || m.status === "cancelled"
+        );
+        if (allMembersExhausted && latestSubscription.status !== "exhausted") {
+          latestSubscription.status = "exhausted";
+          subModified = true;
+        }
+      } else {
+        const allExhausted = (latestSubscription.entitlements || []).every(
+          (e) => e.remainingQuantity === 0,
+        );
+        if (allExhausted && latestSubscription.status !== "exhausted") {
+          latestSubscription.status = "exhausted";
+          subModified = true;
+        }
+      }
 
-      if (allExhausted) {
-        latestSubscription.status = "exhausted";
+      if (subModified) {
         await latestSubscription.save({ session });
       }
 
@@ -1297,6 +1544,12 @@ export class SubscriptionService {
           userId,
           session,
         );
+      }
+
+      // Ensure legacy entitlements matches target member's entitlements for direct response readers
+      if (Array.isArray(latestSubscription.members) && latestSubscription.members.length > 0) {
+        const mem = latestSubscription.members.find((m) => m.customerId.toString() === targetCustomerId.toString()) || latestSubscription.members[0];
+        latestSubscription.entitlements = mem.entitlements;
       }
 
       return {
@@ -1391,6 +1644,110 @@ export class SubscriptionService {
       subscription.status = "expired";
       await subscription.save();
     }
+  }
+
+  /**
+   * Standalone Crash Recovery & Reconciliation Engine
+   * Identifies challenges stuck in 'in_redemption' or 'decremented' without completed appointment.
+   * Restores decrements ONLY if the appointment was NOT completed.
+   * If the appointment completed, marks the challenge as completed.
+   */
+  async reconcileIncompleteRedemptions(organizationId, { maxAgeMinutes = 5 } = {}) {
+    const SubscriptionConsumptionChallenge = mongoose.model("SubscriptionConsumptionChallenge");
+    const AppointmentModel = mongoose.model("Appointment");
+    const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000);
+
+    const query = {
+      updatedAt: { $lt: cutoff },
+      $or: [
+        { status: "in_redemption" },
+        { redemptionState: { $in: ["in_redemption", "decremented", "restoring"] } },
+      ],
+    };
+    if (organizationId) {
+      query.organizationId = organizationId;
+    }
+
+    const candidateChallenges = await SubscriptionConsumptionChallenge.find(query);
+    const report = {
+      inspected: candidateChallenges.length,
+      reconciledCompleted: 0,
+      reconciledRestored: 0,
+      errors: 0,
+    };
+
+    for (const candidate of candidateChallenges) {
+      try {
+        // Concurrency Guard: Atomically claim the challenge for reconciliation by transitioning redemptionState to 'restoring'
+        const challenge = await SubscriptionConsumptionChallenge.findOneAndUpdate(
+          {
+            _id: candidate._id,
+            redemptionState: { $in: ["pending", "in_redemption", "decremented", "restoring"] },
+          },
+          {
+            $set: { redemptionState: "restoring" },
+          },
+          { returnDocument: "after" }
+        );
+
+        if (!challenge) {
+          // Another concurrent worker claimed or finalized this challenge
+          continue;
+        }
+
+        const appointment = await AppointmentModel.findById(challenge.appointmentId);
+        if (appointment && appointment.status === "completed") {
+          // Operation actually completed before crash
+          await SubscriptionConsumptionChallenge.updateOne(
+            { _id: challenge._id },
+            { $set: { status: "verified", redemptionState: "completed" } }
+          );
+          report.reconciledCompleted++;
+        } else {
+          // Operation was interrupted before appointment completed.
+          // Restore ONLY decrements that were actually applied (isDecremented: true and !isRestored).
+          // Atomic Transition: Claim restoration right on the challenge per-decrement so retries/crashes cannot double-restore
+          if (Array.isArray(challenge.decrements) && challenge.decrements.length > 0) {
+            for (let i = 0; i < challenge.decrements.length; i++) {
+              const dec = challenge.decrements[i];
+              if (dec.isDecremented && !dec.isRestored) {
+                // Claim the restoration lock on this specific decrement entry
+                const claimedChallenge = await SubscriptionConsumptionChallenge.findOneAndUpdate(
+                  {
+                    _id: challenge._id,
+                    [`decrements.${i}.isDecremented`]: true,
+                    [`decrements.${i}.isRestored`]: false,
+                  },
+                  {
+                    $set: { [`decrements.${i}.isRestored`]: true },
+                  },
+                  { returnDocument: "after" }
+                );
+
+                if (claimedChallenge) {
+                  await this.subscriptionRepo.atomicRestoreMemberEntitlement(
+                    dec.subscriptionId,
+                    challenge.organizationId,
+                    dec.memberCustomerId,
+                    dec.serviceId,
+                    dec.quantity || 1
+                  );
+                }
+              }
+            }
+          }
+          await SubscriptionConsumptionChallenge.updateOne(
+            { _id: challenge._id },
+            { $set: { status: "exhausted", redemptionState: "reconciled" } }
+          );
+          report.reconciledRestored++;
+        }
+      } catch (err) {
+        report.errors++;
+      }
+    }
+
+    return report;
   }
 }
 

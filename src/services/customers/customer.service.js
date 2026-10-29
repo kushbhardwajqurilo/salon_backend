@@ -271,7 +271,8 @@ export class CustomerService {
           exists = await UserModel.exists({ _id: id, organizationId });
         }
         return !!exists;
-      });
+      }
+      );
 
       const results = await Promise.all(checkPromises);
       if (results.some(found => !found)) {

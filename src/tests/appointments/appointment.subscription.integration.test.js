@@ -46,11 +46,12 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
   let staffMember;
 
   beforeAll(async () => {
-    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
-    if (testUri.includes("?")) {
+    process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK = "true";
+    let testUri = process.env.TEST_MONGO_URI || process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_appt_sub_test";
+    if (!process.env.TEST_MONGO_URI && testUri.includes("?")) {
       const parts = testUri.split("?");
       testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_appt_sub_test") + "?" + parts[1];
-    } else {
+    } else if (!process.env.TEST_MONGO_URI) {
       testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_appt_sub_test");
     }
     await mongoose.connect(testUri);
@@ -723,7 +724,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
               appliedSubscriptionId: activeSub._id.toString(),
             },
           ],
-          appointmentDate: "2026-10-25",
+          appointmentDate: getFutureDateStr(10),
           startTime: "11:00",
           bookingType: "advance",
         });
@@ -880,7 +881,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
               appliedSubscriptionId: secondSub._id.toString(),
             },
           ],
-          appointmentDate: "2026-10-28",
+          appointmentDate: getFutureDateStr(15),
           startTime: "15:00",
           bookingType: "advance",
         });
@@ -1012,7 +1013,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
               // No appliedSubscriptionId -> Regular paid service
             },
           ],
-          appointmentDate: "2026-10-29",
+          appointmentDate: getFutureDateStr(16),
           startTime: "16:00",
           bookingType: "advance",
         });
@@ -1676,3 +1677,4 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
     });
   });
 });
+

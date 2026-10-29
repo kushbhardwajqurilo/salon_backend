@@ -13,25 +13,45 @@ const redeemServiceInputSchema = z.object({
   quantity: z.number().int().min(1, "Quantity must be at least 1").default(1),
 });
 
+const memberInputSchema = z.object({
+  customerId: objectIdSchema,
+  entitlements: z
+    .array(entitlementInputSchema)
+    .min(1, "At least one service entitlement is required for member"),
+  permittedBranchIds: z.array(objectIdSchema).optional().default([]),
+  notes: z.string().trim().max(1000).optional().default(""),
+});
+
 export const createSubscriptionSchema = z.object({
-  body: z.object({
-    customerId: objectIdSchema,
-    price: z.number().positive("Price must be greater than 0"),
-    entitlements: z
-      .array(entitlementInputSchema)
-      .min(1, "At least one service entitlement is required"),
-    permittedBranchIds: z.array(objectIdSchema).optional().default([]),
-    startDate: z.string().datetime("Invalid ISO date for startDate").or(
-      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)")
+  body: z
+    .object({
+      // Payer and Legacy Customer
+      payerCustomerId: objectIdSchema.optional(),
+      customerId: objectIdSchema.optional(),
+      price: z.number().min(0, "Price must be non-negative"),
+      // Multi-customer allocations
+      members: z.array(memberInputSchema).min(1).optional(),
+      // Legacy single-customer entitlements
+      entitlements: z.array(entitlementInputSchema).min(1).optional(),
+      permittedBranchIds: z.array(objectIdSchema).optional().default([]),
+      startDate: z.string().datetime("Invalid ISO date for startDate").or(
+        z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)")
+      ),
+      endDate: z.string().datetime("Invalid ISO date for endDate").or(
+        z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)")
+      ),
+      planId: objectIdSchema.optional().nullable(),
+      notes: z.string().trim().max(1000).optional().default(""),
+      billImmediately: z.boolean().optional().default(false),
+      branchId: objectIdSchema.optional().nullable(),
+    })
+    .refine(
+      (data) => (data.members && data.members.length > 0) || (data.customerId && data.entitlements && data.entitlements.length > 0),
+      {
+        message: "Either 'members' array or ('customerId' with 'entitlements') is required",
+        path: ["members"],
+      }
     ),
-    endDate: z.string().datetime("Invalid ISO date for endDate").or(
-      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)")
-    ),
-    planId: objectIdSchema.optional().nullable(),
-    notes: z.string().trim().max(1000).optional().default(""),
-    billImmediately: z.boolean().optional().default(false),
-    branchId: objectIdSchema.optional().nullable(),
-  }),
 });
 
 export const updateSubscriptionSchema = z.object({
@@ -75,6 +95,7 @@ export const renewSubscriptionSchema = z.object({
 export const sendOtpSchema = z.object({
   body: z.object({
     branchId: objectIdSchema.optional(), // Can also be resolved from req.branchId
+    memberCustomerId: objectIdSchema.optional(),
   }),
 });
 
@@ -85,6 +106,7 @@ export const redeemSubscriptionSchema = z.object({
       services: z
         .array(redeemServiceInputSchema)
         .min(1, "At least one service to redeem must be specified"),
+      memberCustomerId: objectIdSchema.optional(),
       appointmentId: objectIdSchema.optional().nullable(),
       branchId: objectIdSchema.optional(), // Can also be resolved from req.branchId
       isManual: z.boolean().optional().default(false),

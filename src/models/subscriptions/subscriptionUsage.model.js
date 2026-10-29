@@ -64,6 +64,10 @@ const subscriptionUsageSchema = new mongoose.Schema(
       ref: "Appointment",
       default: null,
     },
+    appointmentServiceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
     appointmentCode: {
       type: String,
       trim: true,
@@ -79,6 +83,12 @@ const subscriptionUsageSchema = new mongoose.Schema(
 subscriptionUsageSchema.index({ organizationId: 1, subscriptionId: 1, createdAt: -1 });
 subscriptionUsageSchema.index({ organizationId: 1, customerId: 1, createdAt: -1 });
 subscriptionUsageSchema.index({ organizationId: 1, branchId: 1, createdAt: -1 });
+
+// Unique index enforcing that a specific appointment service line can only be redeemed once
+subscriptionUsageSchema.index(
+  { appointmentId: 1, appointmentServiceId: 1 },
+  { unique: true, partialFilterExpression: { appointmentServiceId: { $type: "objectId" } } }
+);
 
 subscriptionUsageSchema.plugin(auditPlugin);
 

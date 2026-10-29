@@ -10,6 +10,7 @@ import { env } from "./src/config/env.js";
 import { connectRedis, disconnectRedis } from "./src/config/redis.js";
 import { logger } from "./src/utils/logger.js";
 import { startNotificationWorkers, stopNotificationWorkers } from "./src/workers/notification.worker.js";
+import { startSubscriptionReconciliationWorker, stopSubscriptionReconciliationWorker } from "./src/workers/subscriptionReconciliation.worker.js";
 import mongoose from "mongoose";
 
 let server;
@@ -24,6 +25,10 @@ const serverStart = async () => {
 
     // 3. Start BullMQ Background Notification Workers
     startNotificationWorkers();
+
+    // 3b. Start Subscription Redemption Reconciliation Worker
+    startSubscriptionReconciliationWorker();
+
     // 4. Start Express Web Server
     server = app.listen(env.PORT, () => {
       logger.info(`🚀 Unisex Parlour ERP Server running in [${env.NODE_ENV}] mode on port ${env.PORT}`);
@@ -43,6 +48,7 @@ const gracefulShutdown = (signal) => {
     server.close(async () => {
       logger.info("🛑 Express server stopped.");
       try {
+        stopSubscriptionReconciliationWorker();
         await stopNotificationWorkers();
         await disconnectRedis();
         await mongoose.connection.close();

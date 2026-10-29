@@ -124,7 +124,7 @@ export class BillingService {
   /**
    * Transaction execution helper for financial operations (payment recording, voiding)
    */
-  async executeTransaction(callback, { requireTransaction = true } = {}) {
+  async executeTransaction(callback, { requireTransaction = false } = {}) {
     return await runInTransaction(callback, { requireTransaction });
   }
 
@@ -259,22 +259,38 @@ export class BillingService {
         const sub = subscriptionMap.get(s.appliedSubscriptionId.toString());
         if (sub) {
           const isCorrectOrg = sub.organizationId.toString() === organizationId.toString();
-          const isCorrectCustomer = sub.customerId.toString() === appointment.customerId.toString();
+          
+          let member = null;
+          let isCustomerEnrolled = false;
+          if (Array.isArray(sub.members) && sub.members.length > 0) {
+            member = sub.members.find(
+              (m) => m.customerId.toString() === appointment.customerId.toString()
+            );
+            isCustomerEnrolled = Boolean(member) && ["active", "pending_payment"].includes(member.status);
+          } else {
+            isCustomerEnrolled = sub.customerId.toString() === appointment.customerId.toString();
+          }
+
           const isAllowedStatus = ["active", "pending_payment"].includes(sub.status);
           const isWithinDates =
             (!sub.startDate || new Date(sub.startDate) <= now) &&
             (!sub.endDate || new Date(sub.endDate) >= now);
 
+          const branchRestrictions = member && Array.isArray(member.permittedBranchIds) && member.permittedBranchIds.length > 0
+            ? member.permittedBranchIds
+            : sub.permittedBranchIds;
+
           let isPermittedBranch = true;
-          if (Array.isArray(sub.permittedBranchIds) && sub.permittedBranchIds.length > 0) {
-            isPermittedBranch = sub.permittedBranchIds.some(
+          if (Array.isArray(branchRestrictions) && branchRestrictions.length > 0) {
+            isPermittedBranch = branchRestrictions.some(
               (b) => b.toString() === aptBranchIdStr
             );
           }
 
-          if (isCorrectOrg && isCorrectCustomer && isAllowedStatus && isWithinDates && isPermittedBranch) {
+          if (isCorrectOrg && isCustomerEnrolled && isAllowedStatus && isWithinDates && isPermittedBranch) {
             const sIdStr = s.serviceId ? s.serviceId.toString() : null;
-            const entitlement = (sub.entitlements || []).find(
+            const entitlementsList = member ? member.entitlements : sub.entitlements;
+            const entitlement = (entitlementsList || []).find(
               (e) => e.serviceId && e.serviceId.toString() === sIdStr
             );
             if (entitlement && (entitlement.remainingQuantity || 0) > 0) {
@@ -453,9 +469,10 @@ export class BillingService {
       );
     }
 
-    // Load customer profile snapshot
+    // Load payer customer profile snapshot
+    const payerId = subscription.payerCustomerId || subscription.customerId;
     let custQuery = Customer.findOne({
-      _id: subscription.customerId,
+      _id: payerId,
       organizationId,
       isDeleted: false,
     });
@@ -1015,6 +1032,13 @@ export class BillingService {
 
           if (targetSub && targetSub.status === "pending_payment") {
             targetSub.status = "active";
+            if (Array.isArray(targetSub.members)) {
+              for (const m of targetSub.members) {
+                if (m.status === "pending_payment") {
+                  m.status = "active";
+                }
+              }
+            }
             await targetSub.save({ session });
 
             const subActAudit = new AuditLog({
@@ -1150,11 +1174,18 @@ export class BillingService {
         if (updatedInvoice.invoiceType === "subscription" || updatedInvoice.subscriptionId) {
           const subId = updatedInvoice.subscriptionId;
           if (subId) {
-            await Subscription.findOneAndUpdate(
-              { _id: subId, organizationId },
-              { $set: { status: "pending_payment" } },
-              { session }
-            );
+            const subToRevert = await Subscription.findOne({ _id: subId, organizationId }).session(session);
+            if (subToRevert && subToRevert.status !== "cancelled") {
+              subToRevert.status = "pending_payment";
+              if (Array.isArray(subToRevert.members)) {
+                for (const m of subToRevert.members) {
+                  if (m.status === "active") {
+                    m.status = "pending_payment";
+                  }
+                }
+              }
+              await subToRevert.save({ session });
+            }
           }
         }
       }

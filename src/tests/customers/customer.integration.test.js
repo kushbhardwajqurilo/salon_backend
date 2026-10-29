@@ -443,6 +443,24 @@ describe("Customer Core Integration & Scoping Tests", () => {
   });
 
   describe("Customer List Filtering and Sorting", () => {
+    it("should default to sorting newly created customers first (createdAt descending) when sort is not provided", async () => {
+      const activeBranchId = new mongoose.Types.ObjectId().toString();
+      req.headers["x-branch-id"] = activeBranchId;
+      req.query = { page: 1, limit: 10 };
+      req.user.branchAccess = [{ branchId: activeBranchId, isActive: true }];
+
+      Branch.findOne.mockResolvedValue({ _id: activeBranchId, organizationId: req.user.organizationId, isActive: true });
+      CustomerService.prototype.listCustomers = jest.fn().mockResolvedValue({ data: [], meta: {} });
+
+      await listCustomers(req, res, next);
+
+      expect(CustomerService.prototype.listCustomers).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ sort: { createdAt: -1, _id: 1 } }),
+        req.organizationId
+      );
+    });
+
     it("should query customers defaulting to active-only (true or missing isActive) and using safe sorting options", async () => {
       const activeBranchId = new mongoose.Types.ObjectId().toString();
       req.headers["x-branch-id"] = activeBranchId;

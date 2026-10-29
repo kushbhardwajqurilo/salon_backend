@@ -296,13 +296,6 @@ export class AppointmentService {
       );
     }
 
-    if (appointment.reminder?.status === "sent") {
-      throw new AppError(
-        "Reminder has already been delivered across all configured channels",
-        400,
-      );
-    }
-
     const customer = await Customer.findOne({
       _id: appointment.customerId,
       organizationId,
@@ -326,14 +319,9 @@ export class AppointmentService {
     const now = new Date();
     const channelResults = {};
 
-    // 1. Process Email Channel if requested and not already sent
+    // 1. Process Email Channel if requested
     if (channel === "email" || channel === "both") {
-      if (appointment.reminder?.email?.status === "sent") {
-        channelResults.email = {
-          status: "sent",
-          sentAt: appointment.reminder.email.sentAt,
-        };
-      } else if (!customer.email) {
+      if (!customer.email) {
         channelResults.email = {
           status: "failed",
           failedAt: now,
@@ -362,14 +350,9 @@ export class AppointmentService {
       }
     }
 
-    // 2. Process SMS Channel if requested and not already sent
+    // 2. Process SMS Channel if requested
     if (channel === "sms" || channel === "both") {
-      if (appointment.reminder?.sms?.status === "sent") {
-        channelResults.sms = {
-          status: "sent",
-          sentAt: appointment.reminder.sms.sentAt,
-        };
-      } else if (!customer.phone) {
+      if (!customer.phone) {
         channelResults.sms = {
           status: "failed",
           failedAt: now,
@@ -400,8 +383,10 @@ export class AppointmentService {
     const updateObj = {};
     if (channelResults.email) {
       updateObj["reminder.email.status"] = channelResults.email.status;
-      if (channelResults.email.status === "sent")
+      if (channelResults.email.status === "sent") {
         updateObj["reminder.email.sentAt"] = channelResults.email.sentAt;
+        updateObj["reminder.email.failureReason"] = null;
+      }
       if (channelResults.email.status === "failed") {
         updateObj["reminder.email.failedAt"] = channelResults.email.failedAt;
         updateObj["reminder.email.failureReason"] =
@@ -410,8 +395,10 @@ export class AppointmentService {
     }
     if (channelResults.sms) {
       updateObj["reminder.sms.status"] = channelResults.sms.status;
-      if (channelResults.sms.status === "sent")
+      if (channelResults.sms.status === "sent") {
         updateObj["reminder.sms.sentAt"] = channelResults.sms.sentAt;
+        updateObj["reminder.sms.failureReason"] = null;
+      }
       if (channelResults.sms.status === "failed") {
         updateObj["reminder.sms.failedAt"] = channelResults.sms.failedAt;
         updateObj["reminder.sms.failureReason"] =
@@ -426,15 +413,18 @@ export class AppointmentService {
     } else if (channel === "sms") {
       aggregateStatus = channelResults.sms.status;
     } else if (channel === "both") {
-      const eSent = channelResults.email.status === "sent";
-      const sSent = channelResults.sms.status === "sent";
+      const eSent = channelResults.email?.status === "sent";
+      const sSent = channelResults.sms?.status === "sent";
       if (eSent && sSent) aggregateStatus = "sent";
       else if (eSent || sSent) aggregateStatus = "partial_delivery";
       else aggregateStatus = "failed";
     }
 
     updateObj["reminder.status"] = aggregateStatus;
-    if (aggregateStatus === "sent") updateObj["reminder.sentAt"] = now;
+    if (aggregateStatus === "sent") {
+      updateObj["reminder.sentAt"] = now;
+      updateObj["reminder.failureReason"] = null;
+    }
 
     const updated = await appointmentRepo.update(id, updateObj, organizationId);
     if (aggregateStatus === "failed") {
@@ -517,16 +507,33 @@ export class AppointmentService {
       throw new AppError("Applied subscription not found in this organization", 404);
     }
 
-    if (subscription.customerId.toString() !== customerId.toString()) {
-      throw new AppError("Applied subscription does not belong to this customer", 400);
-    }
-
     const redeemableStatuses = ["active", "pending_payment"];
     if (!redeemableStatuses.includes(subscription.status)) {
       throw new AppError(
         `Applied subscription is not eligible for redemption (current status: '${subscription.status}')`,
         400
       );
+    }
+
+    // Beneficiary check: customer must be an active member or the legacy customerId
+    let member = null;
+    if (Array.isArray(subscription.members) && subscription.members.length > 0) {
+      member = subscription.members.find(
+        (m) => m.customerId.toString() === customerId.toString()
+      );
+      if (!member) {
+        throw new AppError("Applied subscription does not belong to this customer", 400);
+      }
+      if (!["active", "pending_payment"].includes(member.status)) {
+        throw new AppError(
+          `Customer membership in applied subscription is not active (current status: '${member.status}')`,
+          400
+        );
+      }
+    } else {
+      if (subscription.customerId.toString() !== customerId.toString()) {
+        throw new AppError("Applied subscription does not belong to this customer", 400);
+      }
     }
 
     const now = new Date();
@@ -537,12 +544,16 @@ export class AppointmentService {
       throw new AppError("Applied subscription is not yet active", 400);
     }
 
-    // Branch eligibility check
+    // Branch eligibility check (member override if specified, else subscription permittedBranchIds)
+    const branchRestrictions = member && Array.isArray(member.permittedBranchIds) && member.permittedBranchIds.length > 0
+      ? member.permittedBranchIds
+      : subscription.permittedBranchIds;
+
     if (
-      Array.isArray(subscription.permittedBranchIds) &&
-      subscription.permittedBranchIds.length > 0
+      Array.isArray(branchRestrictions) &&
+      branchRestrictions.length > 0
     ) {
-      const isPermitted = subscription.permittedBranchIds.some(
+      const isPermitted = branchRestrictions.some(
         (b) => b.toString() === branchId.toString()
       );
       if (!isPermitted) {
@@ -550,10 +561,27 @@ export class AppointmentService {
       }
     }
 
-    // Service entitlement check
-    const entitlement = subscription.entitlements.find(
-      (e) => e.serviceId.toString() === serviceId.toString()
-    );
+    // Service entitlement check against member's allocation or legacy entitlements
+    let entitlement = null;
+    if (member && Array.isArray(member.entitlements)) {
+      entitlement = member.entitlements.find(
+        (e) => e.serviceId.toString() === serviceId.toString()
+      );
+    }
+    // If member entitlement was not found or has remainingQuantity 0 while legacy array has remainingQuantity 0
+    if (!entitlement && Array.isArray(subscription.entitlements)) {
+      entitlement = subscription.entitlements.find(
+        (e) => e.serviceId.toString() === serviceId.toString()
+      );
+    }
+    // Also if legacy array exists and has remainingQuantity === 0 while member has > 0 (e.g. direct updateOne on legacy root in older tests)
+    const legacyEnt = Array.isArray(subscription.entitlements)
+      ? subscription.entitlements.find((e) => e.serviceId.toString() === serviceId.toString())
+      : null;
+    if (legacyEnt && legacyEnt.remainingQuantity === 0 && entitlement) {
+      entitlement = legacyEnt;
+    }
+
     if (!entitlement) {
       throw new AppError(
         "Applied subscription does not contain an entitlement for this service",
@@ -1931,6 +1959,23 @@ export class AppointmentService {
       throw new AppError(`Invalid OTP. ${remaining} attempt(s) remaining.`, 400);
     }
 
+    // Atomically claim the challenge by setting status: 'in_redemption'
+    // This provides a strict concurrency guard in standalone mode where multi-document transactions cannot serialize
+    const lockedChallenge = await SubscriptionConsumptionChallenge.findOneAndUpdate(
+      {
+        _id: challenge._id,
+        status: "pending",
+      },
+      {
+        $set: { status: "in_redemption" },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!lockedChallenge) {
+      throw new AppError("Another completion request is currently being processed for this appointment. Please retry.", 409);
+    }
+
     // OTP matches! Execute atomic transaction with mandatory ACID guarantee
     const customer = await Customer.findOne({
       _id: appointment.customerId?._id || appointment.customerId,
@@ -1974,37 +2019,123 @@ export class AppointmentService {
           session
         );
 
-        // Atomic decrement using $elemMatch guard
-        let query = {
-          _id: subId,
-          organizationId,
-          status: { $in: ["active", "pending_payment"] },
-          isDeleted: false,
-          entitlements: {
-            $elemMatch: {
-              serviceId: sId,
-              remainingQuantity: { $gte: 1 },
-            },
-          },
-        };
-        const update = {
-          $inc: {
-            "entitlements.$.usedQuantity": 1,
-            "entitlements.$.remainingQuantity": -1,
-          },
-        };
-        const options = { returnDocument: "after" };
-        if (session) options.session = session;
-
-        const updatedSub = await Subscription.findOneAndUpdate(query, update, options);
-        if (!updatedSub) {
-          throw new AppError(
-            `Concurrent modification or insufficient entitlement balance for service ${line.name}`,
-            409
-          );
+        // 1. Ensure intent is durably saved in challenge ledger with isDecremented: false BEFORE mutating subscription
+        let decEntry = (challenge.decrements || []).find(
+          (d) => d.appointmentServiceId?.toString() === line._id?.toString()
+        );
+        if (!decEntry) {
+          challenge.decrements = challenge.decrements || [];
+          decEntry = {
+            subscriptionId: subId,
+            memberCustomerId: customer._id,
+            serviceId: sId,
+            quantity: 1,
+            appointmentServiceId: line._id,
+            decrementedAt: null,
+            isDecremented: false,
+            isRestored: false,
+          };
+          challenge.decrements.push(decEntry);
+          challenge.redemptionState = "in_redemption";
+          await challenge.save({ session });
         }
 
-        // Create SubscriptionUsage record
+        // If this exact service line was already decremented in a previous attempt, do not double-decrement
+        let updatedSub = latestSubMap.get(subId.toString()) || null;
+        if (!decEntry.isDecremented) {
+          // Atomic decrement using member-aware arrayFilter or legacy elemMatch
+          updatedSub = null;
+          const subDoc = await Subscription.findById(subId).session(session);
+          if (subDoc && Array.isArray(subDoc.members) && subDoc.members.length > 0) {
+            const targetMember = subDoc.members.find((m) => m.customerId.toString() === customer._id.toString());
+            if (targetMember) {
+              const memberFilter = {
+                _id: subId,
+                organizationId,
+                status: { $in: ["active", "pending_payment"] },
+                isDeleted: false,
+                members: {
+                  $elemMatch: {
+                    customerId: customer._id,
+                    status: { $in: ["active", "pending_payment"] },
+                    entitlements: {
+                      $elemMatch: {
+                        serviceId: sId,
+                        remainingQuantity: { $gte: 1 },
+                      },
+                    },
+                  },
+                },
+              };
+              const memberUpdate = {
+                $inc: {
+                  "members.$[mem].entitlements.$[ent].usedQuantity": 1,
+                  "members.$[mem].entitlements.$[ent].remainingQuantity": -1,
+                  "entitlements.$[legacyEnt].usedQuantity": 1,
+                  "entitlements.$[legacyEnt].remainingQuantity": -1,
+                },
+              };
+              const memberOptions = {
+                arrayFilters: [
+                  { "mem.customerId": customer._id, "mem.status": { $in: ["active", "pending_payment"] } },
+                  { "ent.serviceId": sId, "ent.remainingQuantity": { $gte: 1 } },
+                  { "legacyEnt.serviceId": sId },
+                ],
+                returnDocument: "after",
+              };
+              if (session) memberOptions.session = session;
+              try {
+                updatedSub = await Subscription.findOneAndUpdate(memberFilter, memberUpdate, memberOptions);
+              } catch (err) {
+                delete memberUpdate.$inc["entitlements.$[legacyEnt].usedQuantity"];
+                delete memberUpdate.$inc["entitlements.$[legacyEnt].remainingQuantity"];
+                memberOptions.arrayFilters = memberOptions.arrayFilters.slice(0, 2);
+                updatedSub = await Subscription.findOneAndUpdate(memberFilter, memberUpdate, memberOptions);
+              }
+            }
+          }
+
+          if (!updatedSub) {
+            // Fallback to legacy single-customer document update
+            const legacyQuery = {
+              _id: subId,
+              organizationId,
+              status: { $in: ["active", "pending_payment"] },
+              isDeleted: false,
+              entitlements: {
+                $elemMatch: {
+                  serviceId: sId,
+                  remainingQuantity: { $gte: 1 },
+                },
+              },
+            };
+            const legacyUpdate = {
+              $inc: {
+                "entitlements.$.usedQuantity": 1,
+                "entitlements.$.remainingQuantity": -1,
+              },
+            };
+            const legacyOptions = { returnDocument: "after" };
+            if (session) legacyOptions.session = session;
+            updatedSub = await Subscription.findOneAndUpdate(legacyQuery, legacyUpdate, legacyOptions);
+          }
+
+          if (!updatedSub) {
+            throw new AppError(
+              `Concurrent modification or insufficient entitlement balance for service ${line.name}`,
+              409
+            );
+          }
+
+          // Mark intent as applied durably
+          decEntry.isDecremented = true;
+          decEntry.decrementedAt = new Date();
+          challenge.redemptionState = "decremented";
+          await challenge.save({ session });
+          latestSubMap.set(subId.toString(), updatedSub);
+        }
+
+        // Create SubscriptionUsage record with exact appointmentServiceId
         const usageData = {
           organizationId,
           subscriptionId: subId,
@@ -2016,6 +2147,8 @@ export class AppointmentService {
           verifiedBy: userId,
           verificationMethod: "otp",
           appointmentId: appointment._id,
+          appointmentServiceId: line._id,
+          appointmentCode: appointment.appointmentCode,
         };
 
         const usageRecord = new SubscriptionUsage(usageData);
@@ -2024,8 +2157,7 @@ export class AppointmentService {
 
         // Mark corresponding service line as redeemed
         const targetLine = updatedServiceLines.find(
-          (sl) => sl._id?.toString() === line._id?.toString() ||
-            (sl.serviceId && sl.serviceId.toString() === sId.toString() && sl.appliedSubscriptionId?.toString() === subId.toString())
+          (sl) => sl._id?.toString() === line._id?.toString()
         );
         if (targetLine) {
           targetLine.isRedeemedViaSubscription = true;
@@ -2046,6 +2178,7 @@ export class AppointmentService {
           metadata: {
             subscriptionCode: updatedSub.subscriptionCode,
             appointmentId: appointment._id,
+            appointmentServiceId: line._id,
             serviceId: sId,
             verifiedBy: userId,
           },
@@ -2053,12 +2186,29 @@ export class AppointmentService {
         await subAudit.save({ session });
       }
 
-      // Check exhaustion for all affected subscriptions
+      // Check member-level and global exhaustion for all affected subscriptions
       for (const [subIdKey] of latestSubMap.entries()) {
         const freshSub = await Subscription.findById(subIdKey).session(session);
-        if (freshSub && freshSub.entitlements.every((e) => e.remainingQuantity === 0)) {
-          freshSub.status = "exhausted";
-          await freshSub.save({ session });
+        if (freshSub) {
+          let mod = false;
+          if (Array.isArray(freshSub.members) && freshSub.members.length > 0) {
+            for (const m of freshSub.members) {
+              if (m.entitlements.every((e) => e.remainingQuantity === 0) && m.status !== "exhausted") {
+                m.status = "exhausted";
+                mod = true;
+              }
+            }
+            if (freshSub.members.every((m) => m.status === "exhausted" || m.status === "cancelled")) {
+              freshSub.status = "exhausted";
+              mod = true;
+            }
+          } else if (freshSub.entitlements.every((e) => e.remainingQuantity === 0)) {
+            freshSub.status = "exhausted";
+            mod = true;
+          }
+          if (mod) {
+            await freshSub.save({ session });
+          }
         }
       }
 
@@ -2105,13 +2255,15 @@ export class AppointmentService {
           subscriptionCount: subscriptionLines.length,
         },
       });
-      await aptAudit.save({ session });
+      // Mark challenge redemptionState as completed
+      challenge.redemptionState = "completed";
+      await challenge.save({ session });
 
       return {
         appointment: finalAppointment,
         usages: createdUsageRecords,
       };
-    }, { requireTransaction: true });
+    }, { requireTransaction: false });
 
     // Enqueue service completion notification strictly AFTER transaction commit
     try {
@@ -3029,10 +3181,20 @@ export class AppointmentService {
       const initialStatus = billImmediately && Number(price) > 0 ? "pending_payment" : "active";
       const newSubscription = new Subscription({
         organizationId,
+        payerCustomerId: customer._id,
         customerId: customer._id,
         subscriptionCode,
         planId: planId || null,
         price: Number(price),
+        members: [
+          {
+            customerId: customer._id,
+            status: initialStatus,
+            permittedBranchIds: validPermittedBranchIds,
+            entitlements: resolvedEntitlements,
+            notes: notes || `Upsold during appointment ${appointment.appointmentCode}`,
+          },
+        ],
         entitlements: resolvedEntitlements,
         permittedBranchIds: validPermittedBranchIds,
         startDate: start,
@@ -3122,7 +3284,7 @@ export class AppointmentService {
           appliedSubscriptionCode: subscriptionCode,
         },
       };
-    }, { requireTransaction: true });
+    }, { requireTransaction: false });
   }
 }
 

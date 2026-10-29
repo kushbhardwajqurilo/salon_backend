@@ -44,11 +44,12 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
   let categoryA;
 
   beforeAll(async () => {
-    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
-    if (testUri.includes("?")) {
+    process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK = "true";
+    let testUri = process.env.TEST_MONGO_URI || process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_sub_billing_test";
+    if (!process.env.TEST_MONGO_URI && testUri.includes("?")) {
       const parts = testUri.split("?");
       testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_sub_billing_test") + "?" + parts[1];
-    } else {
+    } else if (!process.env.TEST_MONGO_URI) {
       testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_sub_billing_test");
     }
     await mongoose.connect(testUri);

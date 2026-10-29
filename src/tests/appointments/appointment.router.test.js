@@ -1216,6 +1216,43 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       expect(res.body.data.reminder.email.status).toBe("sent");
       expect(res.body.data.reminder.sms.status).toBe("sent");
     });
+
+    it("allows sending notifications multiple times consecutively", async () => {
+      await Customer.updateOne({ _id: customer._id }, { $set: { email: "alice@example.com", phone: "+919876543210" } });
+
+      const createRes = await request(app)
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          branchId: branchAId.toString(),
+          customerId: customer._id.toString(),
+          serviceIds: [serviceHaircut._id.toString()],
+          appointmentDate: getFutureDateStr(30),
+          startTime: "10:00",
+          bookingType: "advance",
+          reminder: { enabled: true, channel: "both", offsetMinutes: 60 },
+        });
+
+      const aptId = createRes.body.data.id;
+
+      // First dispatch
+      const res1 = await request(app)
+        .post(`/api/v1/appointments/${aptId}/reminder/trigger`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString() });
+      expect(res1.status).toBe(200);
+      expect(res1.body.data.reminder.status).toBe("sent");
+
+      // Second dispatch (re-trigger notification)
+      const res2 = await request(app)
+        .post(`/api/v1/appointments/${aptId}/reminder/trigger`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchAId.toString() });
+      expect(res2.status).toBe(200);
+      expect(res2.body.data.reminder.status).toBe("sent");
+      expect(res2.body.data.reminder.email.status).toBe("sent");
+      expect(res2.body.data.reminder.sms.status).toBe("sent");
+    });
   });
 
   describe("Organization-Global Services in Appointments", () => {

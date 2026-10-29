@@ -59,10 +59,33 @@ const subscriptionConsumptionChallengeSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "verified", "exhausted", "expired"],
+      enum: ["pending", "in_redemption", "verified", "exhausted", "expired"],
       default: "pending",
       index: true,
     },
+    redemptionState: {
+      type: String,
+      enum: ["pending", "in_redemption", "decremented", "completed", "failed", "restoring", "reconciled"],
+      default: "pending",
+      index: true,
+    },
+    redemptionOperationId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    decrements: [
+      {
+        subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", required: true },
+        memberCustomerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer", required: true },
+        serviceId: { type: mongoose.Schema.Types.ObjectId, ref: "Service", required: true },
+        quantity: { type: Number, required: true },
+        appointmentServiceId: { type: mongoose.Schema.Types.ObjectId, default: null },
+        decrementedAt: { type: Date, default: null },
+        isDecremented: { type: Boolean, default: false },
+        isRestored: { type: Boolean, default: false },
+      },
+    ],
   },
   {
     timestamps: true,
