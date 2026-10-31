@@ -179,6 +179,7 @@ describe("Security Scoping Middleware & Validation tests", () => {
         sort: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockReturnThis(),
         exec: jest.fn().mockResolvedValue([]),
       });
       repo.count = jest.fn().mockResolvedValue(0);

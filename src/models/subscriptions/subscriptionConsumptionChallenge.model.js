@@ -74,8 +74,14 @@ const subscriptionConsumptionChallengeSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    reconciliationClaimedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     decrements: [
       {
+        operationId: { type: String, default: null },
         subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", required: true },
         memberCustomerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer", required: true },
         serviceId: { type: mongoose.Schema.Types.ObjectId, ref: "Service", required: true },
@@ -84,6 +90,12 @@ const subscriptionConsumptionChallengeSchema = new mongoose.Schema(
         decrementedAt: { type: Date, default: null },
         isDecremented: { type: Boolean, default: false },
         isRestored: { type: Boolean, default: false },
+        restorationState: {
+          type: String,
+          enum: ["none", "restoring", "restored"],
+          default: "none",
+        },
+        restoredAt: { type: Date, default: null },
       },
     ],
   },

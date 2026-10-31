@@ -59,6 +59,71 @@ export const cancelInvoiceSchema = z.object({
   }),
 });
 
+export const applyInvoiceDiscountSchema = z.object({
+  body: z
+    .object({
+      branchId: objectIdSchema,
+      discountLevel: z.enum(["line", "selected_lines", "invoice"]),
+      lineId: objectIdSchema.optional().nullable(),
+      lineIds: z.array(objectIdSchema).optional().nullable(),
+      name: z.string().trim().min(1).max(100).default("Discount"),
+      discountType: z.enum(["fixed", "percentage"]),
+      enteredValue: z.coerce.number().positive("Discount value must be greater than zero"),
+      reason: z.string().trim().min(3, "Reason must be at least 3 characters").max(500),
+    })
+    .superRefine((data, ctx) => {
+      if (data.discountLevel === "line") {
+        if (!data.lineId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["lineId"],
+            message: "lineId is required for line-level discount",
+          });
+        }
+      }
+      if (data.discountLevel === "selected_lines") {
+        if (!Array.isArray(data.lineIds) || data.lineIds.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["lineIds"],
+            message: "lineIds array is required and must contain at least one lineId for selected_lines discount",
+          });
+        } else {
+          const uniqueIds = new Set(data.lineIds.map((id) => id.toString()));
+          if (uniqueIds.size !== data.lineIds.length) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["lineIds"],
+              message: "Duplicate line IDs are not allowed in lineIds",
+            });
+          }
+        }
+      }
+      if (data.discountType === "percentage" && data.enteredValue > 100) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["enteredValue"],
+          message: "Percentage discount cannot exceed 100%",
+        });
+      }
+    }),
+});
+
+export const modifyInvoiceDiscountSchema = z.object({
+  body: z.object({
+    branchId: objectIdSchema,
+    enteredValue: z.coerce.number().positive("Discount value must be greater than zero"),
+    reason: z.string().trim().min(3, "Reason must be at least 3 characters").max(500),
+  }),
+});
+
+export const removeInvoiceDiscountSchema = z.object({
+  body: z.object({
+    branchId: objectIdSchema,
+    reason: z.string().trim().min(3, "Reason must be at least 3 characters").max(500),
+  }),
+});
+
 export const recordPaymentSchema = z.object({
   body: z
     .object({

@@ -151,6 +151,17 @@ const subscriptionSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    // Durable operation ledger for idempotent atomic decrements and restorations
+    appliedOperations: {
+      type: [String],
+      default: [],
+    },
+    // Archival counter tracking safely pruned terminal operations
+    archivedOperationsCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   {
     timestamps: true,
@@ -213,6 +224,9 @@ subscriptionSchema.index({ organizationId: 1, "members.customerId": 1, "members.
 
 // Expiry queries index
 subscriptionSchema.index({ organizationId: 1, status: 1, endDate: 1 });
+
+// Durable operation identity lookup index
+subscriptionSchema.index({ appliedOperations: 1 });
 
 // Audit plugin provides: isDeleted, deletedAt, createdBy, updatedBy, deletedBy, softDelete(), optimisticConcurrency
 subscriptionSchema.plugin(auditPlugin);

@@ -9,8 +9,14 @@ import app from "./app.mjs";
 import { env } from "./src/config/env.js";
 import { connectRedis, disconnectRedis } from "./src/config/redis.js";
 import { logger } from "./src/utils/logger.js";
-import { startNotificationWorkers, stopNotificationWorkers } from "./src/workers/notification.worker.js";
-import { startSubscriptionReconciliationWorker, stopSubscriptionReconciliationWorker } from "./src/workers/subscriptionReconciliation.worker.js";
+import {
+  startNotificationWorkers,
+  stopNotificationWorkers,
+} from "./src/workers/notification.worker.js";
+import {
+  startSubscriptionReconciliationWorker,
+  stopSubscriptionReconciliationWorker,
+} from "./src/workers/subscriptionReconciliation.worker.js";
 import mongoose from "mongoose";
 
 let server;
@@ -31,9 +37,10 @@ const serverStart = async () => {
 
     // 4. Start Express Web Server
     server = app.listen(env.PORT, () => {
-      logger.info(`🚀 Unisex Parlour ERP Server running in [${env.NODE_ENV}] mode on port ${env.PORT}`);
+      logger.info(
+        `🚀 Unisex Parlour ERP Server running in [${env.NODE_ENV}] mode on port ${env.PORT}`,
+      );
     });
-
   } catch (error) {
     logger.error(`❌ Server failed to start: ${error.message}`);
     process.exit(1);
@@ -48,14 +55,18 @@ const gracefulShutdown = (signal) => {
     server.close(async () => {
       logger.info("🛑 Express server stopped.");
       try {
-        stopSubscriptionReconciliationWorker();
+        await stopSubscriptionReconciliationWorker();
         await stopNotificationWorkers();
         await disconnectRedis();
         await mongoose.connection.close();
-        logger.info("💾 Database, Redis, and Worker connections closed safely.");
+        logger.info(
+          "💾 Database, Redis, and Worker connections closed safely.",
+        );
         process.exit(0);
       } catch (err) {
-        logger.error(`❌ Error during shutdown connection close: ${err.message}`);
+        logger.error(
+          `❌ Error during shutdown connection close: ${err.message}`,
+        );
         process.exit(1);
       }
     });
@@ -72,4 +83,3 @@ serverStart();
 
 // "seed": "node src/seed/seed.js",
 // "permissions:sync": "node src/scripts/syncPermissions.js"
-

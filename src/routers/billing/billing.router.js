@@ -9,6 +9,9 @@ import {
   updateDraftInvoiceSchema,
   finalizeInvoiceSchema,
   cancelInvoiceSchema,
+  applyInvoiceDiscountSchema,
+  modifyInvoiceDiscountSchema,
+  removeInvoiceDiscountSchema,
   recordPaymentSchema,
   voidPaymentSchema,
   listInvoicesQuerySchema,
@@ -17,6 +20,10 @@ import {
 import {
   createInvoice,
   updateDraftInvoice,
+  applyInvoiceDiscount,
+  modifyInvoiceDiscount,
+  removeInvoiceDiscount,
+  getInvoiceDiscountHistory,
   finalizeInvoice,
   cancelInvoice,
   recordPayment,
@@ -117,6 +124,38 @@ router.patch(
   validate(updateDraftInvoiceSchema),
   requirePermission("billing.checkout"),
   updateDraftInvoice
+);
+
+// Structured Invoice Discounts
+router.post(
+  "/invoices/:id/discounts",
+  validateMutationBranch,
+  validate(applyInvoiceDiscountSchema),
+  requirePermission("billing.checkout"),
+  applyInvoiceDiscount
+);
+
+router.patch(
+  "/invoices/:id/discounts/:discountId",
+  validateMutationBranch,
+  validate(modifyInvoiceDiscountSchema),
+  requirePermission("billing.checkout"),
+  modifyInvoiceDiscount
+);
+
+router.delete(
+  "/invoices/:id/discounts/:discountId",
+  validateMutationBranch,
+  validate(removeInvoiceDiscountSchema),
+  requirePermission("billing.checkout"),
+  removeInvoiceDiscount
+);
+
+router.get(
+  "/invoices/:id/discount-history",
+  requireBranchScope,
+  requirePermission("billing.view"),
+  getInvoiceDiscountHistory
 );
 
 router.post(

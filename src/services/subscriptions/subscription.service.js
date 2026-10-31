@@ -1652,16 +1652,35 @@ export class SubscriptionService {
    * Restores decrements ONLY if the appointment was NOT completed.
    * If the appointment completed, marks the challenge as completed.
    */
-  async reconcileIncompleteRedemptions(organizationId, { maxAgeMinutes = 5 } = {}) {
+  async reconcileIncompleteRedemptions(
+    organizationId,
+    { maxAgeMinutes = 5, staleLockTimeoutMs = 120000 } = {}
+  ) {
     const SubscriptionConsumptionChallenge = mongoose.model("SubscriptionConsumptionChallenge");
     const AppointmentModel = mongoose.model("Appointment");
-    const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000);
+    const SubscriptionModel = mongoose.model("Subscription");
+    const SubscriptionUsageModel = mongoose.model("SubscriptionUsage");
+    const now = new Date();
+    const cutoff = maxAgeMinutes === 0 ? new Date(now.getTime() + 1000) : new Date(now.getTime() - maxAgeMinutes * 60 * 1000);
+    const staleLockThreshold = new Date(now.getTime() - staleLockTimeoutMs);
 
     const query = {
-      updatedAt: { $lt: cutoff },
       $or: [
-        { status: "in_redemption" },
-        { redemptionState: { $in: ["in_redemption", "decremented", "restoring"] } },
+        {
+          updatedAt: { $lte: cutoff },
+          $or: [
+            { status: "in_redemption" },
+            { redemptionState: { $in: ["in_redemption", "decremented"] } },
+          ],
+        },
+        {
+          // Recover stale restoring locks where previous worker crashed
+          redemptionState: "restoring",
+          $or: [
+            { reconciliationClaimedAt: { $lte: staleLockThreshold } },
+            { reconciliationClaimedAt: null, updatedAt: { $lte: cutoff } },
+          ],
+        },
       ],
     };
     if (organizationId) {
@@ -1679,19 +1698,32 @@ export class SubscriptionService {
     for (const candidate of candidateChallenges) {
       try {
         // Concurrency Guard: Atomically claim the challenge for reconciliation by transitioning redemptionState to 'restoring'
+        // Prevents overlap across concurrent server processes and safely recovers stale restoring leases
         const challenge = await SubscriptionConsumptionChallenge.findOneAndUpdate(
           {
             _id: candidate._id,
-            redemptionState: { $in: ["pending", "in_redemption", "decremented", "restoring"] },
+            $or: [
+              { redemptionState: { $in: ["pending", "in_redemption", "decremented"] } },
+              {
+                redemptionState: "restoring",
+                $or: [
+                  { reconciliationClaimedAt: { $lt: staleLockThreshold } },
+                  { reconciliationClaimedAt: null },
+                ],
+              },
+            ],
           },
           {
-            $set: { redemptionState: "restoring" },
+            $set: {
+              redemptionState: "restoring",
+              reconciliationClaimedAt: new Date(),
+            },
           },
           { returnDocument: "after" }
         );
 
         if (!challenge) {
-          // Another concurrent worker claimed or finalized this challenge
+          // Another concurrent worker holds an active lease on this challenge
           continue;
         }
 
@@ -1705,42 +1737,127 @@ export class SubscriptionService {
           report.reconciledCompleted++;
         } else {
           // Operation was interrupted before appointment completed.
-          // Restore ONLY decrements that were actually applied (isDecremented: true and !isRestored).
-          // Atomic Transition: Claim restoration right on the challenge per-decrement so retries/crashes cannot double-restore
+          let hasAmbiguousOrFailedDecrements = false;
+
           if (Array.isArray(challenge.decrements) && challenge.decrements.length > 0) {
             for (let i = 0; i < challenge.decrements.length; i++) {
               const dec = challenge.decrements[i];
-              if (dec.isDecremented && !dec.isRestored) {
-                // Claim the restoration lock on this specific decrement entry
-                const claimedChallenge = await SubscriptionConsumptionChallenge.findOneAndUpdate(
-                  {
-                    _id: challenge._id,
-                    [`decrements.${i}.isDecremented`]: true,
-                    [`decrements.${i}.isRestored`]: false,
-                  },
-                  {
-                    $set: { [`decrements.${i}.isRestored`]: true },
-                  },
-                  { returnDocument: "after" }
-                );
+              const lineId = dec.appointmentServiceId || dec._id;
+              const decOpId = dec.operationId || `${challenge._id.toString()}:${lineId.toString()}:dec`;
+              const restoreOpId = `${decOpId}:restore`;
 
-                if (claimedChallenge) {
-                  await this.subscriptionRepo.atomicRestoreMemberEntitlement(
-                    dec.subscriptionId,
-                    challenge.organizationId,
-                    dec.memberCustomerId,
-                    dec.serviceId,
-                    dec.quantity || 1
+              // Inspect Subscription document to establish verifiable operation state
+              const subDoc = await SubscriptionModel.findById(dec.subscriptionId);
+              if (!subDoc) {
+                // Subscription missing - ambiguous state; must not treat as resolved if balance may have changed
+                hasAmbiguousOrFailedDecrements = true;
+                continue;
+              }
+
+              const isRestoredInSub = subDoc.appliedOperations?.includes(restoreOpId) ||
+                subDoc.appliedOperations?.includes(`${challenge._id.toString()}:${lineId.toString()}:restore`);
+              const isDecrementedInSub = subDoc.appliedOperations?.includes(decOpId);
+
+              // 1. Balance restoration already committed in Subscription doc or marked restored:
+              if (isRestoredInSub || dec.isRestored) {
+                if (!dec.isRestored || dec.restorationState !== "restored") {
+                  await SubscriptionConsumptionChallenge.updateOne(
+                    { _id: challenge._id },
+                    {
+                      $set: {
+                        [`decrements.${i}.isDecremented`]: true,
+                        [`decrements.${i}.isRestored`]: true,
+                        [`decrements.${i}.restorationState`]: "restored",
+                        [`decrements.${i}.restoredAt`]: dec.restoredAt || new Date(),
+                      },
+                    }
                   );
                 }
+                continue;
+              }
+
+              // 2. Distinguish a decrement that never happened from one that committed but acknowledgment was lost:
+              const decrementActuallyCommitted = isDecrementedInSub || dec.isDecremented === true;
+              const decrementNeverCommitted = !isDecrementedInSub && dec.isDecremented === false;
+
+              if (decrementNeverCommitted) {
+                // Fencing: Permanently record fence token on Subscription to prevent in-flight
+                // or delayed workers from committing this decrement after recovery classified it as unapplied
+                await this.subscriptionRepo.fenceOperation(dec.subscriptionId, decOpId);
+
+                // Decrement never happened on MongoDB - no balance restoration required
+                await SubscriptionConsumptionChallenge.updateOne(
+                  { _id: challenge._id },
+                  {
+                    $set: {
+                      [`decrements.${i}.isDecremented`]: false,
+                      [`decrements.${i}.isRestored`]: false,
+                      [`decrements.${i}.restorationState`]: "none",
+                    },
+                  }
+                );
+                continue;
+              }
+
+              if (decrementActuallyCommitted) {
+                // Claim restoration lock on decrement entry
+                await SubscriptionConsumptionChallenge.updateOne(
+                  { _id: challenge._id },
+                  {
+                    $set: {
+                      [`decrements.${i}.isDecremented`]: true,
+                      [`decrements.${i}.restorationState`]: "restoring",
+                    },
+                  }
+                );
+
+                // Execute idempotent balance restoration targeting durable operation identity
+                await this.subscriptionRepo.atomicRestoreMemberEntitlement(
+                  dec.subscriptionId,
+                  challenge.organizationId,
+                  dec.memberCustomerId,
+                  dec.serviceId,
+                  dec.quantity || 1,
+                  null, // session
+                  restoreOpId // durable restoration operation identity!
+                );
+
+                // Confirm restoration in challenge ledger
+                await SubscriptionConsumptionChallenge.updateOne(
+                  { _id: challenge._id },
+                  {
+                    $set: {
+                      [`decrements.${i}.isRestored`]: true,
+                      [`decrements.${i}.restorationState`]: "restored",
+                      [`decrements.${i}.restoredAt`]: new Date(),
+                    },
+                  }
+                );
               }
             }
           }
-          await SubscriptionConsumptionChallenge.updateOne(
-            { _id: challenge._id },
-            { $set: { status: "exhausted", redemptionState: "reconciled" } }
-          );
-          report.reconciledRestored++;
+
+          // Clean up any orphan SubscriptionUsage records created during interrupted appointment completion
+          if (challenge.appointmentId) {
+            await SubscriptionUsageModel.deleteMany({
+              appointmentId: challenge.appointmentId,
+            });
+          }
+
+          if (hasAmbiguousOrFailedDecrements) {
+            // Do NOT mark ambiguous operation exhausted and treat it as resolved if the balance may already have changed!
+            await SubscriptionConsumptionChallenge.updateOne(
+              { _id: challenge._id },
+              { $set: { redemptionState: "failed" } }
+            );
+            report.errors++;
+          } else {
+            await SubscriptionConsumptionChallenge.updateOne(
+              { _id: challenge._id },
+              { $set: { status: "exhausted", redemptionState: "reconciled" } }
+            );
+            report.reconciledRestored++;
+          }
         }
       } catch (err) {
         report.errors++;

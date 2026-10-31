@@ -240,4 +240,3 @@ Never:
 - Duplicate authorization rules in controllers if middleware already owns them.
 - Allow feature modules to invent their own auth transport.
 - Return inconsistent response envelopes without a documented reason.
-

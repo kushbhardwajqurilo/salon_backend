@@ -40,8 +40,9 @@ export class SubscriptionRepository extends BaseRepository {
   }
 
   /**
-   * Atomic decrement targeting exact member and exact service entitlement
-   * uses synchronized document-level $elemMatch and element-level arrayFilters $[mem] and $[ent]
+   * Atomic decrement targeting exact member and exact service entitlement.
+   * Uses synchronized document-level $elemMatch and element-level arrayFilters $[mem] and $[ent].
+   * Supports durable operation identity via operationId to prevent double decrements across crashes.
    */
   async atomicDecrementMemberEntitlement(
     subscriptionId,
@@ -49,7 +50,8 @@ export class SubscriptionRepository extends BaseRepository {
     memberCustomerId,
     serviceId,
     quantity,
-    session = null
+    session = null,
+    operationId = null
   ) {
     const query = {
       _id: subscriptionId,
@@ -70,29 +72,51 @@ export class SubscriptionRepository extends BaseRepository {
       },
     };
 
+    if (operationId) {
+      query.appliedOperations = { $nin: [operationId, `fence:${operationId}`] };
+    }
+
     const update = {
       $inc: {
         "members.$[mem].entitlements.$[ent].usedQuantity": quantity,
         "members.$[mem].entitlements.$[ent].remainingQuantity": -quantity,
+        "entitlements.$[legacyEnt].usedQuantity": quantity,
+        "entitlements.$[legacyEnt].remainingQuantity": -quantity,
       },
     };
+
+    if (operationId) {
+      update.$push = { appliedOperations: operationId };
+    }
 
     const options = {
       arrayFilters: [
         { "mem.customerId": memberCustomerId, "mem.status": { $in: ["active", "pending_payment"] } },
         { "ent.serviceId": serviceId, "ent.remainingQuantity": { $gte: quantity } },
+        { "legacyEnt.serviceId": serviceId },
       ],
-      new: true,
+      returnDocument: "after",
     };
     if (session) {
       options.session = session;
     }
 
-    return this.model.findOneAndUpdate(query, update, options);
+    let result;
+    try {
+      result = await this.model.findOneAndUpdate(query, update, options);
+    } catch (err) {
+      delete update.$inc["entitlements.$[legacyEnt].usedQuantity"];
+      delete update.$inc["entitlements.$[legacyEnt].remainingQuantity"];
+      options.arrayFilters = options.arrayFilters.slice(0, 2);
+      result = await this.model.findOneAndUpdate(query, update, options);
+    }
+
+    return result;
   }
 
   /**
-   * Atomic restore for aborted standalone transactions / compensation
+   * Atomic restore for aborted standalone transactions / compensation.
+   * Supports durable restoration identity via restoreOperationId to enforce strict idempotency.
    */
   async atomicRestoreMemberEntitlement(
     subscriptionId,
@@ -100,7 +124,8 @@ export class SubscriptionRepository extends BaseRepository {
     memberCustomerId,
     serviceId,
     quantity,
-    session = null
+    session = null,
+    restoreOperationId = null
   ) {
     const query = {
       _id: subscriptionId,
@@ -110,25 +135,46 @@ export class SubscriptionRepository extends BaseRepository {
       "members.entitlements.serviceId": serviceId,
     };
 
+    if (restoreOperationId) {
+      query.appliedOperations = { $ne: restoreOperationId };
+    }
+
     const update = {
       $inc: {
         "members.$[mem].entitlements.$[ent].usedQuantity": -quantity,
         "members.$[mem].entitlements.$[ent].remainingQuantity": quantity,
+        "entitlements.$[legacyEnt].usedQuantity": -quantity,
+        "entitlements.$[legacyEnt].remainingQuantity": quantity,
       },
     };
+
+    if (restoreOperationId) {
+      update.$push = { appliedOperations: restoreOperationId };
+    }
 
     const options = {
       arrayFilters: [
         { "mem.customerId": memberCustomerId },
         { "ent.serviceId": serviceId },
+        { "legacyEnt.serviceId": serviceId },
       ],
-      new: true,
+      returnDocument: "after",
     };
     if (session) {
       options.session = session;
     }
 
-    return this.model.findOneAndUpdate(query, update, options);
+    let result;
+    try {
+      result = await this.model.findOneAndUpdate(query, update, options);
+    } catch (err) {
+      delete update.$inc["entitlements.$[legacyEnt].usedQuantity"];
+      delete update.$inc["entitlements.$[legacyEnt].remainingQuantity"];
+      options.arrayFilters = options.arrayFilters.slice(0, 2);
+      result = await this.model.findOneAndUpdate(query, update, options);
+    }
+
+    return result;
   }
 
   /**
@@ -139,7 +185,8 @@ export class SubscriptionRepository extends BaseRepository {
     organizationId,
     serviceId,
     quantity,
-    session = null
+    session = null,
+    operationId = null
   ) {
     // Try updating members first if members array exists
     const sub = await this.model.findById(subscriptionId).session(session);
@@ -156,7 +203,8 @@ export class SubscriptionRepository extends BaseRepository {
           targetMember.customerId,
           serviceId,
           quantity,
-          session
+          session,
+          operationId
         );
       }
     }
@@ -175,6 +223,10 @@ export class SubscriptionRepository extends BaseRepository {
       },
     };
 
+    if (operationId) {
+      query.appliedOperations = { $nin: [operationId, `fence:${operationId}`] };
+    }
+
     const update = {
       $inc: {
         "entitlements.$.usedQuantity": quantity,
@@ -182,11 +234,52 @@ export class SubscriptionRepository extends BaseRepository {
       },
     };
 
-    const options = { new: true };
+    if (operationId) {
+      update.$push = { appliedOperations: operationId };
+    }
+
+    const options = { returnDocument: "after" };
     if (session) {
       options.session = session;
     }
 
     return this.model.findOneAndUpdate(query, update, options);
+  }
+
+  /**
+   * Verifies if a durable operation identity was already applied on this subscription
+   */
+  async hasOperation(subscriptionId, operationId) {
+    if (!operationId) return false;
+    return !!(await this.model.exists({ _id: subscriptionId, appliedOperations: operationId }));
+  }
+
+  /**
+   * Fences an operation ID on a Subscription to prevent in-flight or delayed
+   * workers from executing this operation after reconciliation classified it as unapplied.
+   */
+  async fenceOperation(subscriptionId, operationId) {
+    if (!operationId) return null;
+    const fenceKey = `fence:${operationId}`;
+    return this.model.updateOne(
+      { _id: subscriptionId, appliedOperations: { $nin: [operationId, fenceKey] } },
+      { $addToSet: { appliedOperations: fenceKey } }
+    );
+  }
+
+  /**
+   * Safely prunes archived operation IDs from appliedOperations once all retries,
+   * challenges, and reconciliation windows have fully elapsed.
+   */
+  async pruneArchivedOperations(subscriptionId, operationIds) {
+    if (!Array.isArray(operationIds) || operationIds.length === 0) return null;
+    return this.model.findByIdAndUpdate(
+      subscriptionId,
+      {
+        $pull: { appliedOperations: { $in: operationIds } },
+        $inc: { archivedOperationsCount: operationIds.length },
+      },
+      { returnDocument: "after" }
+    );
   }
 }

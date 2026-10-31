@@ -971,6 +971,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
 
   describe("Concurrency & Overlap Detection Strategy", () => {
     it("rejects overlapping booking for the same staff member with 409 Conflict", async () => {
+      const futureDate = getFutureDateStr(35);
       // Create first booking: 10:00 to 10:30 (30 mins)
       await request(app)
         .post("/api/v1/appointments")
@@ -980,7 +981,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-25",
+          appointmentDate: futureDate,
           startTime: "10:00",
           bookingType: "advance",
         });
@@ -994,7 +995,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
           customerId: customer._id.toString(),
           staffId: staffA._id.toString(),
           serviceIds: [serviceHaircut._id.toString()],
-          appointmentDate: "2026-10-25",
+          appointmentDate: futureDate,
           startTime: "10:15",
           bookingType: "advance",
         });

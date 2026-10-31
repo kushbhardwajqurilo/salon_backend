@@ -39,6 +39,70 @@ export const updateDraftInvoice = asyncHandler(async (req, res) => {
   });
 });
 
+export const applyInvoiceDiscount = asyncHandler(async (req, res) => {
+  const branchId = req.branchId || req.body?.branchId;
+  const result = await billingService.applyInvoiceDiscount(
+    req.params.id,
+    req.body,
+    req.user.organizationId,
+    branchId,
+    req.user.id || req.user._id
+  );
+  res.status(200).json({
+    success: true,
+    message: "Discount applied successfully",
+    data: result,
+  });
+});
+
+export const modifyInvoiceDiscount = asyncHandler(async (req, res) => {
+  const branchId = req.branchId || req.body?.branchId;
+  const result = await billingService.modifyInvoiceDiscount(
+    req.params.id,
+    req.params.discountId,
+    req.body,
+    req.user.organizationId,
+    branchId,
+    req.user.id || req.user._id
+  );
+  res.status(200).json({
+    success: true,
+    message: "Discount modified successfully",
+    data: result,
+  });
+});
+
+export const removeInvoiceDiscount = asyncHandler(async (req, res) => {
+  const branchId = req.branchId || req.body?.branchId;
+  const result = await billingService.removeInvoiceDiscount(
+    req.params.id,
+    req.params.discountId,
+    req.body,
+    req.user.organizationId,
+    branchId,
+    req.user.id || req.user._id
+  );
+  res.status(200).json({
+    success: true,
+    message: "Discount removed successfully",
+    data: result,
+  });
+});
+
+export const getInvoiceDiscountHistory = asyncHandler(async (req, res) => {
+  const branchId = req.branchId || req.headers["x-branch-id"] || null;
+  const history = await billingService.getInvoiceDiscountHistory(
+    req.params.id,
+    req.user.organizationId,
+    branchId
+  );
+  res.status(200).json({
+    success: true,
+    message: "Discount history retrieved successfully",
+    data: history,
+  });
+});
+
 export const finalizeInvoice = asyncHandler(async (req, res) => {
   const branchId = req.branchId || req.body?.branchId;
   const invoice = await billingService.finalizeInvoice(

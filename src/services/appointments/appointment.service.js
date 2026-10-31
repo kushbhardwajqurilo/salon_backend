@@ -2019,6 +2019,12 @@ export class AppointmentService {
           session
         );
 
+        if (!line._id) {
+          line._id = new mongoose.Types.ObjectId();
+        }
+        const lineIdStr = line._id.toString();
+        const decOpId = `${challenge._id.toString()}:${lineIdStr}:dec`;
+
         // 1. Ensure intent is durably saved in challenge ledger with isDecremented: false BEFORE mutating subscription
         let decEntry = (challenge.decrements || []).find(
           (d) => d.appointmentServiceId?.toString() === line._id?.toString()
@@ -2026,6 +2032,7 @@ export class AppointmentService {
         if (!decEntry) {
           challenge.decrements = challenge.decrements || [];
           decEntry = {
+            operationId: decOpId,
             subscriptionId: subId,
             memberCustomerId: customer._id,
             serviceId: sId,
@@ -2034,105 +2041,152 @@ export class AppointmentService {
             decrementedAt: null,
             isDecremented: false,
             isRestored: false,
+            restorationState: "none",
           };
           challenge.decrements.push(decEntry);
           challenge.redemptionState = "in_redemption";
+          await challenge.save({ session });
+        } else if (!decEntry.operationId) {
+          decEntry.operationId = decOpId;
           await challenge.save({ session });
         }
 
         // If this exact service line was already decremented in a previous attempt, do not double-decrement
         let updatedSub = latestSubMap.get(subId.toString()) || null;
         if (!decEntry.isDecremented) {
-          // Atomic decrement using member-aware arrayFilter or legacy elemMatch
-          updatedSub = null;
-          const subDoc = await Subscription.findById(subId).session(session);
-          if (subDoc && Array.isArray(subDoc.members) && subDoc.members.length > 0) {
-            const targetMember = subDoc.members.find((m) => m.customerId.toString() === customer._id.toString());
-            if (targetMember) {
-              const memberFilter = {
+          // Check verifiable state on Subscription: did this operation already commit?
+          const alreadyCommitted = await Subscription.exists({
+            _id: subId,
+            appliedOperations: decOpId,
+          });
+
+          if (alreadyCommitted) {
+            // Acknowledgment was lost during previous attempt; decrement committed in MongoDB
+            decEntry.isDecremented = true;
+            decEntry.decrementedAt = decEntry.decrementedAt || new Date();
+            challenge.redemptionState = "decremented";
+            await challenge.save({ session });
+            updatedSub = await Subscription.findById(subId).session(session);
+            latestSubMap.set(subId.toString(), updatedSub);
+          } else {
+            // Atomic decrement using member-aware arrayFilter or legacy elemMatch with durable operation identity
+            updatedSub = null;
+            const subDoc = await Subscription.findById(subId).session(session);
+            if (subDoc && Array.isArray(subDoc.members) && subDoc.members.length > 0) {
+              const targetMember = subDoc.members.find((m) => m.customerId.toString() === customer._id.toString());
+              if (targetMember) {
+                const memberFilter = {
+                  _id: subId,
+                  organizationId,
+                  status: { $in: ["active", "pending_payment"] },
+                  isDeleted: false,
+                  appliedOperations: { $nin: [decOpId, `fence:${decOpId}`] },
+                  members: {
+                    $elemMatch: {
+                      customerId: customer._id,
+                      status: { $in: ["active", "pending_payment"] },
+                      entitlements: {
+                        $elemMatch: {
+                          serviceId: sId,
+                          remainingQuantity: { $gte: 1 },
+                        },
+                      },
+                    },
+                  },
+                };
+                const memberUpdate = {
+                  $inc: {
+                    "members.$[mem].entitlements.$[ent].usedQuantity": 1,
+                    "members.$[mem].entitlements.$[ent].remainingQuantity": -1,
+                    "entitlements.$[legacyEnt].usedQuantity": 1,
+                    "entitlements.$[legacyEnt].remainingQuantity": -1,
+                  },
+                  $push: {
+                    appliedOperations: decOpId,
+                  },
+                };
+                const memberOptions = {
+                  arrayFilters: [
+                    { "mem.customerId": customer._id, "mem.status": { $in: ["active", "pending_payment"] } },
+                    { "ent.serviceId": sId, "ent.remainingQuantity": { $gte: 1 } },
+                    { "legacyEnt.serviceId": sId },
+                  ],
+                  returnDocument: "after",
+                };
+                if (session) memberOptions.session = session;
+                try {
+                  updatedSub = await Subscription.findOneAndUpdate(memberFilter, memberUpdate, memberOptions);
+                } catch (err) {
+                  delete memberUpdate.$inc["entitlements.$[legacyEnt].usedQuantity"];
+                  delete memberUpdate.$inc["entitlements.$[legacyEnt].remainingQuantity"];
+                  memberOptions.arrayFilters = memberOptions.arrayFilters.slice(0, 2);
+                  updatedSub = await Subscription.findOneAndUpdate(memberFilter, memberUpdate, memberOptions);
+                }
+              }
+            }
+
+            if (!updatedSub) {
+              // Fallback to legacy single-customer document update
+              const legacyQuery = {
                 _id: subId,
                 organizationId,
                 status: { $in: ["active", "pending_payment"] },
                 isDeleted: false,
-                members: {
+                appliedOperations: { $nin: [decOpId, `fence:${decOpId}`] },
+                entitlements: {
                   $elemMatch: {
-                    customerId: customer._id,
-                    status: { $in: ["active", "pending_payment"] },
-                    entitlements: {
-                      $elemMatch: {
-                        serviceId: sId,
-                        remainingQuantity: { $gte: 1 },
-                      },
-                    },
+                    serviceId: sId,
+                    remainingQuantity: { $gte: 1 },
                   },
                 },
               };
-              const memberUpdate = {
+              const legacyUpdate = {
                 $inc: {
-                  "members.$[mem].entitlements.$[ent].usedQuantity": 1,
-                  "members.$[mem].entitlements.$[ent].remainingQuantity": -1,
-                  "entitlements.$[legacyEnt].usedQuantity": 1,
-                  "entitlements.$[legacyEnt].remainingQuantity": -1,
+                  "entitlements.$.usedQuantity": 1,
+                  "entitlements.$.remainingQuantity": -1,
+                },
+                $push: {
+                  appliedOperations: decOpId,
                 },
               };
-              const memberOptions = {
-                arrayFilters: [
-                  { "mem.customerId": customer._id, "mem.status": { $in: ["active", "pending_payment"] } },
-                  { "ent.serviceId": sId, "ent.remainingQuantity": { $gte: 1 } },
-                  { "legacyEnt.serviceId": sId },
-                ],
-                returnDocument: "after",
-              };
-              if (session) memberOptions.session = session;
-              try {
-                updatedSub = await Subscription.findOneAndUpdate(memberFilter, memberUpdate, memberOptions);
-              } catch (err) {
-                delete memberUpdate.$inc["entitlements.$[legacyEnt].usedQuantity"];
-                delete memberUpdate.$inc["entitlements.$[legacyEnt].remainingQuantity"];
-                memberOptions.arrayFilters = memberOptions.arrayFilters.slice(0, 2);
-                updatedSub = await Subscription.findOneAndUpdate(memberFilter, memberUpdate, memberOptions);
+              const legacyOptions = { returnDocument: "after" };
+              if (session) legacyOptions.session = session;
+              updatedSub = await Subscription.findOneAndUpdate(legacyQuery, legacyUpdate, legacyOptions);
+            }
+
+            if (!updatedSub) {
+              // Check if it was applied concurrently
+              const wasAppliedConcurrently = await Subscription.exists({
+                _id: subId,
+                appliedOperations: decOpId,
+              });
+              if (wasAppliedConcurrently) {
+                updatedSub = await Subscription.findById(subId).session(session);
+              } else {
+                const wasFenced = await Subscription.exists({
+                  _id: subId,
+                  appliedOperations: `fence:${decOpId}`,
+                });
+                if (wasFenced) {
+                  throw new AppError(
+                    `Redemption operation was expired or cancelled by reconciliation recovery`,
+                    409
+                  );
+                }
+                throw new AppError(
+                  `Concurrent modification or insufficient entitlement balance for service ${line.name}`,
+                  409
+                );
               }
             }
-          }
 
-          if (!updatedSub) {
-            // Fallback to legacy single-customer document update
-            const legacyQuery = {
-              _id: subId,
-              organizationId,
-              status: { $in: ["active", "pending_payment"] },
-              isDeleted: false,
-              entitlements: {
-                $elemMatch: {
-                  serviceId: sId,
-                  remainingQuantity: { $gte: 1 },
-                },
-              },
-            };
-            const legacyUpdate = {
-              $inc: {
-                "entitlements.$.usedQuantity": 1,
-                "entitlements.$.remainingQuantity": -1,
-              },
-            };
-            const legacyOptions = { returnDocument: "after" };
-            if (session) legacyOptions.session = session;
-            updatedSub = await Subscription.findOneAndUpdate(legacyQuery, legacyUpdate, legacyOptions);
+            // Mark intent as applied durably
+            decEntry.isDecremented = true;
+            decEntry.decrementedAt = new Date();
+            challenge.redemptionState = "decremented";
+            await challenge.save({ session });
+            latestSubMap.set(subId.toString(), updatedSub);
           }
-
-          if (!updatedSub) {
-            throw new AppError(
-              `Concurrent modification or insufficient entitlement balance for service ${line.name}`,
-              409
-            );
-          }
-
-          // Mark intent as applied durably
-          decEntry.isDecremented = true;
-          decEntry.decrementedAt = new Date();
-          challenge.redemptionState = "decremented";
-          await challenge.save({ session });
-          latestSubMap.set(subId.toString(), updatedSub);
         }
 
         // Create SubscriptionUsage record with exact appointmentServiceId
@@ -2255,7 +2309,8 @@ export class AppointmentService {
           subscriptionCount: subscriptionLines.length,
         },
       });
-      // Mark challenge redemptionState as completed
+      // Mark challenge redemptionState as completed (Audit saved)
+      await aptAudit.save({ session });
       challenge.redemptionState = "completed";
       await challenge.save({ session });
 

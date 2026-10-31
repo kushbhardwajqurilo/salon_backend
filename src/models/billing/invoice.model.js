@@ -18,6 +18,94 @@ const appointmentPricingSnapshotSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const discountAllocationSchema = new mongoose.Schema(
+  {
+    lineId: { type: mongoose.Schema.Types.ObjectId, required: true },
+    lineName: { type: String, default: null },
+    allocatedAmount: { type: Number, required: true, min: 0 },
+  },
+  { _id: false }
+);
+
+const activeDiscountItemSchema = new mongoose.Schema(
+  {
+    discountId: { type: mongoose.Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
+    name: { type: String, trim: true, default: "Discount" },
+    discountLevel: {
+      type: String,
+      enum: ["line", "selected_lines", "invoice"],
+      required: true,
+    },
+    lineId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    lineIds: { type: [mongoose.Schema.Types.ObjectId], default: undefined },
+    discountType: {
+      type: String,
+      enum: ["fixed", "percentage"],
+      required: true,
+    },
+    enteredValue: { type: Number, required: true, min: 0 },
+    calculatedAmount: { type: Number, required: true, min: 0 },
+    reason: { type: String, required: true, trim: true, maxlength: 500 },
+    appliedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    appliedAt: { type: Date, default: Date.now },
+    isLegacy: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+const discountHistorySnapshotSchema = new mongoose.Schema(
+  {
+    subtotal: { type: Number, required: true },
+    subscriptionCoveredAmount: { type: Number, required: true },
+    eligibleUncoveredAmount: { type: Number, default: 0 },
+    lineDiscountsTotal: { type: Number, required: true },
+    invoiceDiscountsTotal: { type: Number, required: true },
+    loyaltyDiscountAmount: { type: Number, default: 0 },
+    discountTotal: { type: Number, required: true },
+    grossPayable: { type: Number, default: 0 },
+    payableAmount: { type: Number, required: true },
+    amountPaid: { type: Number, required: true },
+    amountDue: { type: Number, required: true },
+    paymentStatus: { type: String, default: "unpaid" },
+  },
+  { _id: false }
+);
+
+const discountHistorySchema = new mongoose.Schema(
+  {
+    historyId: { type: mongoose.Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
+    action: {
+      type: String,
+      enum: ["applied", "modified", "removed"],
+      required: true,
+    },
+    discountId: { type: mongoose.Schema.Types.ObjectId, required: true },
+    discountLevel: {
+      type: String,
+      enum: ["line", "selected_lines", "invoice"],
+      required: true,
+    },
+    lineId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    lineIds: { type: [mongoose.Schema.Types.ObjectId], default: undefined },
+    lineName: { type: String, default: null },
+    allocations: { type: [discountAllocationSchema], default: undefined },
+    discountType: {
+      type: String,
+      enum: ["fixed", "percentage"],
+      required: true,
+    },
+    enteredValue: { type: Number, required: true, min: 0 },
+    calculatedAmount: { type: Number, required: true, min: 0 },
+    reason: { type: String, required: true, trim: true, minlength: 3, maxlength: 500 },
+    performedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    performedAt: { type: Date, default: Date.now },
+    snapshotBefore: { type: discountHistorySnapshotSchema, required: true },
+    snapshotAfter: { type: discountHistorySnapshotSchema, required: true },
+    notes: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
 const invoiceLineSchema = new mongoose.Schema(
   {
     lineType: {
@@ -72,6 +160,11 @@ const invoiceLineSchema = new mongoose.Schema(
     appliedSubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
     subscriptionUsageId: { type: mongoose.Schema.Types.ObjectId, ref: "SubscriptionUsage", default: null },
     subscriptionCoveredAmount: { type: Number, default: 0, min: 0, required: true },
+
+    // Discount tracking per line
+    appliedDiscounts: { type: [activeDiscountItemSchema], default: [] },
+    lineDiscountTotal: { type: Number, default: 0, min: 0 },
+    allocatedInvoiceDiscount: { type: Number, default: 0, min: 0 },
     discountAmount: { type: Number, default: 0, min: 0, required: true },
 
     customerPayable: { type: Number, required: true, min: 0 },
@@ -122,7 +215,11 @@ const invoiceSchema = new mongoose.Schema(
 
     // Financial breakdown (NO TAX / NO GST)
     subtotal: { type: Number, required: true, min: 0 },
+    lineDiscountsTotal: { type: Number, default: 0, min: 0 },
+    invoiceDiscountsTotal: { type: Number, default: 0, min: 0 },
     discountTotal: { type: Number, required: true, min: 0, default: 0 },
+    appliedDiscounts: { type: [activeDiscountItemSchema], default: [] },
+    discountHistory: { type: [discountHistorySchema], default: [] },
     loyaltyRedeemedPoints: { type: Number, default: 0, min: 0 },
     loyaltyDiscountAmount: { type: Number, default: 0, min: 0 },
     loyaltyPointsEarned: { type: Number, default: 0, min: 0 },
