@@ -1047,6 +1047,62 @@ describe("Billing Invoice Discounts Comprehensive Integration Test Suite", () =>
 
       expect(res.status).toBe(404);
     });
+
+    it("rejects concurrent mutations when two requests use the same initial invoice version", async () => {
+      const invoice = await createDraftInvoice({
+        lines: [
+          { name: "Service A", price: 1000 },
+          { name: "Service B", price: 1000 },
+        ],
+      });
+
+      const initialInvoice = await Invoice.findById(invoice._id);
+      const initialVersion = initialInvoice.__v || 0;
+
+      // Prepare two concurrent mutation requests that race against the exact same initial invoice
+      const req1 = request(app)
+        .post(`/api/v1/billing/invoices/${invoice._id}/discounts`)
+        .set("Authorization", `Bearer ${cashierTokenA}`)
+        .set("X-Branch-Id", branchA1._id.toString())
+        .send({
+          branchId: branchA1._id,
+          discountLevel: "invoice",
+          discountType: "fixed",
+          enteredValue: 100,
+          reason: "Concurrent racer 1",
+        });
+
+      const req2 = request(app)
+        .post(`/api/v1/billing/invoices/${invoice._id}/discounts`)
+        .set("Authorization", `Bearer ${cashierTokenA}`)
+        .set("X-Branch-Id", branchA1._id.toString())
+        .send({
+          branchId: branchA1._id,
+          discountLevel: "invoice",
+          discountType: "fixed",
+          enteredValue: 200,
+          reason: "Concurrent racer 2",
+        });
+
+      const [res1, res2] = await Promise.all([req1, req2]);
+
+      const statuses = [res1.status, res2.status].sort();
+      // Exactly one must succeed (200) and the other must fail with 409 Conflict
+      expect(statuses).toEqual([200, 409]);
+
+      const winningRes = res1.status === 200 ? res1 : res2;
+      const losingRes = res1.status === 409 ? res1 : res2;
+
+      expect(winningRes.body.success).toBe(true);
+      expect(losingRes.status).toBe(409);
+      expect(losingRes.body.message).toMatch(/modified concurrently|refresh and retry/i);
+
+      // Verify the final invoice version incremented atomically
+      const finalInvoice = await Invoice.findById(invoice._id);
+      expect(finalInvoice.__v).toBe(initialVersion + 1);
+      // Ensure only the winner's discount exists in appliedDiscounts
+      expect(finalInvoice.appliedDiscounts).toHaveLength(1);
+    });
   });
 
   describe("9. Multiple Selected Lines Discounts", () => {
@@ -1240,7 +1296,7 @@ describe("Billing Invoice Discounts Comprehensive Integration Test Suite", () =>
       expect(notFoundRes.body.message).toMatch(/not found on this invoice/i);
     });
 
-    it("rejects fixed discount exceeding the available eligible balance across selected lines", async () => {
+    it("clamps requested fixed amount when exceeding the available eligible balance across selected lines and allocates proportionally", async () => {
       const invoice = await createDraftInvoice({
         lines: [
           { name: "Service A", price: 300 },
@@ -1251,6 +1307,10 @@ describe("Billing Invoice Discounts Comprehensive Integration Test Suite", () =>
       const lineAId = invoice.lines[0]._id.toString();
       const lineBId = invoice.lines[1]._id.toString();
 
+      // Total eligible base is 700 (300 + 400). Requested amount is 750 (exceeds balance).
+      // Clamped to 700:
+      // Line A (300/700 * 700) = 300.00
+      // Line B (remainder) = 400.00
       const res = await request(app)
         .post(`/api/v1/billing/invoices/${invoice._id}/discounts`)
         .set("Authorization", `Bearer ${cashierTokenA}`)
@@ -1261,11 +1321,25 @@ describe("Billing Invoice Discounts Comprehensive Integration Test Suite", () =>
           lineIds: [lineAId, lineBId],
           discountType: "fixed",
           enteredValue: 750, // Base is 700
-          reason: "Excessive discount",
+          reason: "Excessive discount clamped to eligible balance",
         });
 
-      expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/exceeds the total remaining eligible amount/i);
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const inv = res.body.data.invoice;
+      expect(inv.lineDiscountsTotal).toBe(700);
+      expect(inv.discountTotal).toBe(700);
+      expect(inv.payableAmount).toBe(0);
+      expect(inv.lines[0].lineDiscountTotal).toBe(300);
+      expect(inv.lines[0].customerPayable).toBe(0);
+      expect(inv.lines[1].lineDiscountTotal).toBe(400);
+      expect(inv.lines[1].customerPayable).toBe(0);
+
+      const historyEntry = res.body.data.historyEntry;
+      expect(historyEntry.calculatedAmount).toBe(700);
+      expect(historyEntry.allocations).toHaveLength(2);
+      expect(historyEntry.allocations[0].allocatedAmount).toBe(300);
+      expect(historyEntry.allocations[1].allocatedAmount).toBe(400);
     });
 
     it("modifies a multi-line discount and recalculates allocations proportionally", async () => {

@@ -862,14 +862,40 @@ export class SubscriptionService {
       throw new AppError("endDate is required for subscription renewal", 400);
     }
 
-    // Construct fresh entitlements resetting usedQuantity to 0 and totalQuantity to original
-    const freshEntitlements = (existingSub.entitlements || []).map((e) => ({
-      serviceId: e.serviceId,
-      quantity: e.totalQuantity,
-    }));
+    // Preserve canonical multi-member structure or fallback to legacy single-member format
+    let renewalPayload;
+    if (Array.isArray(existingSub.members) && existingSub.members.length > 0) {
+      const renewedMembers = existingSub.members.map((m) => ({
+        customerId: m.customerId,
+        permittedBranchIds: m.permittedBranchIds || [],
+        notes: m.notes || "",
+        entitlements: (m.entitlements || []).map((e) => ({
+          serviceId: e.serviceId,
+          quantity: e.totalQuantity,
+        })),
+      }));
 
-    return await this.createSubscription(
-      {
+      renewalPayload = {
+        payerCustomerId: existingSub.payerCustomerId || existingSub.customerId,
+        customerId: existingSub.customerId,
+        planId: existingSub.planId,
+        price,
+        members: renewedMembers,
+        permittedBranchIds,
+        startDate,
+        endDate,
+        notes,
+        billImmediately,
+        branchId,
+      };
+    } else {
+      // Legacy single-member subscription renewal
+      const freshEntitlements = (existingSub.entitlements || []).map((e) => ({
+        serviceId: e.serviceId,
+        quantity: e.totalQuantity,
+      }));
+
+      renewalPayload = {
         customerId: existingSub.customerId,
         planId: existingSub.planId,
         price,
@@ -880,7 +906,11 @@ export class SubscriptionService {
         notes,
         billImmediately,
         branchId,
-      },
+      };
+    }
+
+    return await this.createSubscription(
+      renewalPayload,
       organizationId,
       userId,
     );
@@ -1459,6 +1489,7 @@ export class SubscriptionService {
             appointmentId: appointmentId || null,
             appointmentServiceId: matchingAptService?._id || null,
             appointmentCode: appointment ? appointment.appointmentCode : null,
+            subscriptionInvoiceId: subscription.invoiceId || null,
           },
           userId,
           session,
@@ -1607,6 +1638,7 @@ export class SubscriptionService {
           ? obj.appointmentId.appointmentCode
           : null) ||
         null;
+      obj.subscriptionInvoice = obj.subscriptionInvoiceId || null;
       return obj;
     });
   }

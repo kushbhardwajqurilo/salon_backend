@@ -1014,4 +1014,237 @@ describe("Multi-Customer Subscriptions, Member Isolation & Exact Idempotency Tes
       expect(reloaded.members[1].entitlements[0].remainingQuantity).toBe(3);
     });
   });
+
+  describe("6. Multi-Member Subscription Renewal Preservation", () => {
+    it("renews a multi-member subscription preserving distinct member allocations, resetting quantities and linking payer invoice", async () => {
+      // 1. Create an active multi-member subscription with different services & quantities
+      const initialSub = await Subscription.create({
+        organizationId: org._id,
+        payerCustomerId: customerPayer._id,
+        customerId: customerPayer._id,
+        subscriptionCode: `SUB-RENEW-${Date.now()}-001`,
+        price: 7500,
+        status: "active",
+        startDate: new Date("2026-01-01"),
+        endDate: new Date("2026-12-31"),
+        permittedBranchIds: [branch1._id],
+        notes: "Family Package Original",
+        members: [
+          {
+            customerId: customerMemberA._id,
+            status: "active",
+            permittedBranchIds: [branch1._id],
+            notes: "Alice preference notes",
+            entitlements: [
+              {
+                serviceId: serviceHairCut._id,
+                serviceName: "Signature Haircut",
+                totalQuantity: 5,
+                usedQuantity: 3, // Already partially consumed
+                remainingQuantity: 2,
+              },
+              {
+                serviceId: serviceSpa._id,
+                serviceName: "Relaxing Spa",
+                totalQuantity: 2,
+                usedQuantity: 2, // Fully consumed
+                remainingQuantity: 0,
+              },
+            ],
+          },
+          {
+            customerId: customerMemberB._id,
+            status: "active",
+            permittedBranchIds: [branch1._id, branch2._id],
+            notes: "Bob preference notes",
+            entitlements: [
+              {
+                serviceId: serviceHairCut._id,
+                serviceName: "Signature Haircut",
+                totalQuantity: 3,
+                usedQuantity: 1, // Partially consumed
+                remainingQuantity: 2,
+              },
+            ],
+          },
+        ],
+      });
+
+      // 2. Perform renewal via API endpoint
+      const renewRes = await request(app)
+        .post(`/api/v1/subscriptions/${initialSub._id}/renew`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("X-Branch-Id", branch1._id.toString())
+        .send({
+          price: 8000,
+          startDate: "2027-01-01",
+          endDate: "2027-12-31",
+          billImmediately: true,
+          notes: "Renewed Family Package for 2027",
+        });
+
+      expect(renewRes.status).toBe(201);
+      const renewedSubData = renewRes.body.data;
+      expect(renewedSubData).toBeDefined();
+
+      // Verify the renewed document in DB
+      const renewedSub = await Subscription.findById(renewedSubData._id || renewedSubData.id);
+      expect(renewedSub).toBeDefined();
+
+      // Invariants check:
+      // a. Payer remains preserved
+      expect(renewedSub.payerCustomerId.toString()).toBe(customerPayer._id.toString());
+      expect(renewedSub.price).toBe(8000);
+
+      // b. Members array is preserved and not flattened
+      expect(renewedSub.members).toHaveLength(2);
+
+      // c. Member A allocations & reset quantities
+      const renewedAlice = renewedSub.members.find(
+        (m) => m.customerId.toString() === customerMemberA._id.toString()
+      );
+      expect(renewedAlice).toBeDefined();
+      expect(renewedAlice.notes).toBe("Alice preference notes");
+      expect(renewedAlice.permittedBranchIds.map((id) => id.toString())).toContain(branch1._id.toString());
+      expect(renewedAlice.entitlements).toHaveLength(2);
+
+      const aliceHaircut = renewedAlice.entitlements.find(
+        (e) => e.serviceId.toString() === serviceHairCut._id.toString()
+      );
+      expect(aliceHaircut.totalQuantity).toBe(5);
+      expect(aliceHaircut.usedQuantity).toBe(0); // Reset to 0
+      expect(aliceHaircut.remainingQuantity).toBe(5); // Reset to totalQuantity
+
+      const aliceSpa = renewedAlice.entitlements.find(
+        (e) => e.serviceId.toString() === serviceSpa._id.toString()
+      );
+      expect(aliceSpa.totalQuantity).toBe(2);
+      expect(aliceSpa.usedQuantity).toBe(0); // Reset to 0
+      expect(aliceSpa.remainingQuantity).toBe(2); // Reset to totalQuantity
+
+      // d. Member B allocations & reset quantities
+      const renewedBob = renewedSub.members.find(
+        (m) => m.customerId.toString() === customerMemberB._id.toString()
+      );
+      expect(renewedBob).toBeDefined();
+      expect(renewedBob.notes).toBe("Bob preference notes");
+      expect(renewedBob.permittedBranchIds.map((id) => id.toString())).toContain(branch2._id.toString());
+      expect(renewedBob.entitlements).toHaveLength(1);
+
+      const bobHaircut = renewedBob.entitlements.find(
+        (e) => e.serviceId.toString() === serviceHairCut._id.toString()
+      );
+      expect(bobHaircut.totalQuantity).toBe(3);
+      expect(bobHaircut.usedQuantity).toBe(0); // Reset to 0
+      expect(bobHaircut.remainingQuantity).toBe(3); // Reset to totalQuantity
+
+      // e. Single invoice created strictly for the payer customer
+      expect(renewedSub.invoiceId).toBeDefined();
+      const invoice = await Invoice.findById(renewedSub.invoiceId);
+      expect(invoice).toBeDefined();
+      expect(invoice.customerId.toString()).toBe(customerPayer._id.toString());
+      expect(invoice.payableAmount).toBe(8000);
+      expect(invoice.lines).toHaveLength(1);
+      expect(invoice.lines[0].lineType).toBe("subscription");
+
+      // Verify original subscription was not mutated
+      const originalCheck = await Subscription.findById(initialSub._id);
+      expect(originalCheck.members[0].entitlements[0].usedQuantity).toBe(3);
+      expect(originalCheck.members[0].entitlements[0].remainingQuantity).toBe(2);
+    });
+
+    it("preserves legacy single-member format renewal compatibility", async () => {
+      // Create a legacy subscription with root entitlements and customerId
+      const legacySub = await Subscription.create({
+        organizationId: org._id,
+        customerId: customerPayer._id,
+        payerCustomerId: customerPayer._id,
+        subscriptionCode: `SUB-LEGACY-${Date.now()}`,
+        price: 3000,
+        status: "active",
+        startDate: new Date("2026-01-01"),
+        endDate: new Date("2026-12-31"),
+        permittedBranchIds: [branch1._id],
+        entitlements: [
+          {
+            serviceId: serviceHairCut._id,
+            serviceName: "Signature Haircut",
+            totalQuantity: 3,
+            usedQuantity: 2,
+            remainingQuantity: 1,
+          },
+        ],
+      });
+
+      const renewRes = await request(app)
+        .post(`/api/v1/subscriptions/${legacySub._id}/renew`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("X-Branch-Id", branch1._id.toString())
+        .send({
+          price: 3500,
+          startDate: "2027-01-01",
+          endDate: "2027-12-31",
+          billImmediately: true,
+        });
+
+      expect(renewRes.status).toBe(201);
+      const renewed = await Subscription.findById(renewRes.body.data._id || renewRes.body.data.id);
+      expect(renewed).toBeDefined();
+      expect(renewed.payerCustomerId.toString()).toBe(customerPayer._id.toString());
+      expect(renewed.price).toBe(3500);
+      expect(renewed.members).toHaveLength(1);
+      expect(renewed.members[0].customerId.toString()).toBe(customerPayer._id.toString());
+      expect(renewed.members[0].entitlements[0].totalQuantity).toBe(3);
+      expect(renewed.members[0].entitlements[0].usedQuantity).toBe(0);
+      expect(renewed.members[0].entitlements[0].remainingQuantity).toBe(3);
+    });
+
+    it("ensures failed renewal does not partially mutate the original subscription", async () => {
+      const activeSub = await Subscription.create({
+        organizationId: org._id,
+        payerCustomerId: customerPayer._id,
+        customerId: customerPayer._id,
+        subscriptionCode: `SUB-FAILTEST-${Date.now()}`,
+        price: 5000,
+        status: "active",
+        startDate: new Date("2026-01-01"),
+        endDate: new Date("2026-12-31"),
+        members: [
+          {
+            customerId: customerMemberA._id,
+            status: "active",
+            entitlements: [
+              {
+                serviceId: serviceHairCut._id,
+                serviceName: "Signature Haircut",
+                totalQuantity: 2,
+                usedQuantity: 1,
+                remainingQuantity: 1,
+              },
+            ],
+          },
+        ],
+      });
+
+      // Attempt invalid renewal with negative price
+      const failRes = await request(app)
+        .post(`/api/v1/subscriptions/${activeSub._id}/renew`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("X-Branch-Id", branch1._id.toString())
+        .send({
+          price: -500, // Invalid
+          startDate: "2027-01-01",
+          endDate: "2027-12-31",
+        });
+
+      expect(failRes.status).toBe(400);
+
+      // Verify activeSub remains completely untouched
+      const untouched = await Subscription.findById(activeSub._id);
+      expect(untouched.status).toBe("active");
+      expect(untouched.price).toBe(5000);
+      expect(untouched.members[0].entitlements[0].usedQuantity).toBe(1);
+      expect(untouched.members[0].entitlements[0].remainingQuantity).toBe(1);
+    });
+  });
 });

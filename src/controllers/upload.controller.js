@@ -1,5 +1,8 @@
 import crypto from "crypto";
-import { cloudinary, deleteFromCloudinary } from "../services/cloudinary.service.js";
+import {
+  cloudinary,
+  deleteFromCloudinary,
+} from "../services/cloudinary.service.js";
 import { env } from "../config/env.js";
 
 const ALLOWED_FOLDERS = {
@@ -35,13 +38,15 @@ export const generateUploadSignature = async (req, res) => {
       timestamp,
     };
 
-    const apiSecret = env.CLOUDINARY_API_SECRET || process.env.CLOUDINARY_API_SECRET;
+    const apiSecret =
+      env.CLOUDINARY_API_SECRET || process.env.CLOUDINARY_API_SECRET;
     const apiKey = env.CLOUDINARY_API_KEY || process.env.CLOUDINARY_API_KEY;
-    const cloudName = env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME;
+    const cloudName =
+      env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME;
 
     const signature = cloudinary.utils.api_sign_request(
       paramsToSign,
-      apiSecret
+      apiSecret,
     );
 
     return res.status(200).json({
@@ -58,7 +63,10 @@ export const generateUploadSignature = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("[Upload Controller Error] Failed to generate signature:", error);
+    console.error(
+      "[Upload Controller Error] Failed to generate signature:",
+      error,
+    );
     return res.status(500).json({
       success: false,
       message: "Internal error generating media upload credentials.",
@@ -88,7 +96,10 @@ export const cleanupUpload = async (req, res) => {
       message: "Media asset purged successfully.",
     });
   } catch (error) {
-    console.error("[Upload Controller Error] Failed to run asset cleanup:", error);
+    console.error(
+      "[Upload Controller Error] Failed to run asset cleanup:",
+      error,
+    );
     return res.status(500).json({
       success: false,
       message: "Internal error purging asset.",

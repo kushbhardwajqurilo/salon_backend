@@ -1048,28 +1048,24 @@ export class BillingService {
           totalEligibleBase = Number((totalEligibleBase + remBase).toFixed(2));
         }
 
-        if (val > totalEligibleBase) {
-          throw new AppError(
-            `Discount amount (₹${val.toFixed(2)}) exceeds the total remaining eligible amount across selected lines (₹${totalEligibleBase.toFixed(2)})`,
-            400
-          );
-        }
+        // Align with preview behavior: clamp requested fixed amount to total remaining eligible amount
+        const effectiveVal = Math.min(val, totalEligibleBase);
 
         // 2. Allocate proportionally across selected lines with two-decimal rounding & remainder assigned to the last line
-        let remainingToDistribute = val;
+        let remainingToDistribute = effectiveVal;
         for (let i = 0; i < lineEligibleBases.length; i++) {
           const item = lineEligibleBases[i];
           const isLast = i === lineEligibleBases.length - 1;
           let alloc = 0;
 
-          if (totalEligibleBase === 0 || val === 0) {
+          if (totalEligibleBase === 0 || effectiveVal === 0) {
             alloc = 0;
           } else if (isLast) {
             alloc = Number(remainingToDistribute.toFixed(2));
             alloc = Math.min(alloc, item.eligibleBase);
             remainingToDistribute = 0;
           } else {
-            const prop = Number(((item.eligibleBase / totalEligibleBase) * val).toFixed(2));
+            const prop = Number(((item.eligibleBase / totalEligibleBase) * effectiveVal).toFixed(2));
             alloc = Math.min(remainingToDistribute, prop);
             alloc = Math.min(alloc, item.eligibleBase);
             remainingToDistribute = Number((remainingToDistribute - alloc).toFixed(2));
@@ -1195,6 +1191,7 @@ export class BillingService {
     }
 
     const updateDoc = {
+      $inc: { __v: 1 },
       $set: {
         lines,
         appliedDiscounts: invoiceAppliedDiscounts,
@@ -1350,28 +1347,24 @@ export class BillingService {
           totalEligibleBase = Number((totalEligibleBase + remBase).toFixed(2));
         }
 
-        if (val > totalEligibleBase) {
-          throw new AppError(
-            `Discount amount (₹${val.toFixed(2)}) exceeds the total remaining eligible amount across selected lines (₹${totalEligibleBase.toFixed(2)})`,
-            400
-          );
-        }
+        // Align with preview behavior: clamp requested fixed amount to total remaining eligible amount
+        const effectiveVal = Math.min(val, totalEligibleBase);
 
         // 2. Re-allocate proportionally
-        let remainingToDistribute = val;
+        let remainingToDistribute = effectiveVal;
         for (let i = 0; i < lineEligibleBases.length; i++) {
           const baseItem = lineEligibleBases[i];
           const isLast = i === lineEligibleBases.length - 1;
           let alloc = 0;
 
-          if (totalEligibleBase === 0 || val === 0) {
+          if (totalEligibleBase === 0 || effectiveVal === 0) {
             alloc = 0;
           } else if (isLast) {
             alloc = Number(remainingToDistribute.toFixed(2));
             alloc = Math.min(alloc, baseItem.eligibleBase);
             remainingToDistribute = 0;
           } else {
-            const prop = Number(((baseItem.eligibleBase / totalEligibleBase) * val).toFixed(2));
+            const prop = Number(((baseItem.eligibleBase / totalEligibleBase) * effectiveVal).toFixed(2));
             alloc = Math.min(remainingToDistribute, prop);
             alloc = Math.min(alloc, baseItem.eligibleBase);
             remainingToDistribute = Number((remainingToDistribute - alloc).toFixed(2));
@@ -1465,6 +1458,7 @@ export class BillingService {
     }
 
     const updateDoc = {
+      $inc: { __v: 1 },
       $set: {
         lines,
         appliedDiscounts: invoiceAppliedDiscounts,
@@ -1644,6 +1638,7 @@ export class BillingService {
     }
 
     const updateDoc = {
+      $inc: { __v: 1 },
       $set: {
         lines,
         appliedDiscounts: invoiceAppliedDiscounts,

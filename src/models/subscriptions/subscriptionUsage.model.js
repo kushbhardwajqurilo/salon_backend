@@ -73,6 +73,12 @@ const subscriptionUsageSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    subscriptionInvoiceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Invoice",
+      default: null,
+      index: true,
+    },
   },
   {
     timestamps: true,

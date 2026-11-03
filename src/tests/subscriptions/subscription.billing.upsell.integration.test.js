@@ -454,6 +454,141 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
       sub = await Subscription.findById(subId);
       expect(sub.status).toBe("pending_payment");
     });
+
+    it("verifies consumption -> payment void -> unchanged entitlement balance -> successful subsequent redemption", async () => {
+      // 1. Create a subscription with price > 0, billImmediately: true (starts as pending_payment)
+      const subRes = await request(app)
+        .post("/api/v1/subscriptions")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .send({
+          customerId: customerA._id.toString(),
+          price: 2500,
+          entitlements: [{ serviceId: serviceA1._id.toString(), quantity: 3 }],
+          startDate: "2026-01-01",
+          endDate: "2026-12-31",
+          billImmediately: true,
+          branchId: branchA1._id.toString(),
+        });
+
+      expect(subRes.status).toBe(201);
+      const subId = subRes.body.data._id;
+      const invoiceId = subRes.body.data.invoice._id;
+
+      // 2. Finalize & pay invoice in full -> activates subscription
+      await request(app)
+        .post(`/api/v1/billing/invoices/${invoiceId}/finalize`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .send({});
+
+      const payRes = await request(app)
+        .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .send({ amount: 2500, method: "upi" });
+
+      expect(payRes.status).toBe(201);
+      const paymentId = payRes.body.data.payment._id;
+
+      let sub = await Subscription.findById(subId);
+      expect(sub.status).toBe("active");
+
+      // 3. First consumption: redeem 1 entitlement via standalone redemption (manual verification)
+      const redeem1Res = await request(app)
+        .post(`/api/v1/subscriptions/${sub._id}/redeem`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .send({
+          branchId: branchA1._id.toString(),
+          isManual: true,
+          reason: "Customer verified on-site",
+          services: [{ serviceId: serviceA1._id.toString(), quantity: 1 }],
+        });
+
+      expect(redeem1Res.status).toBe(200);
+
+      // Verify entitlement balance after 1st consumption: usedQuantity = 1, remainingQuantity = 2
+      sub = await Subscription.findById(subId);
+      expect(sub.entitlements[0].usedQuantity).toBe(1);
+      expect(sub.entitlements[0].remainingQuantity).toBe(2);
+
+      // 4. Void the payment -> subscription returns to pending_payment
+      const voidRes = await request(app)
+        .post(`/api/v1/billing/payments/${paymentId}/void`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .send({ reason: "Payment dispute - reversed" });
+
+      expect(voidRes.status).toBe(200);
+      expect(voidRes.body.data.invoice.paymentStatus).toBe("unpaid");
+
+      // Verify entitlement balances are UNCHANGED by payment void, and status returns to pending_payment
+      sub = await Subscription.findById(subId);
+      expect(sub.status).toBe("pending_payment");
+      expect(sub.entitlements[0].usedQuantity).toBe(1);
+      expect(sub.entitlements[0].remainingQuantity).toBe(2);
+
+      // 5. Subsequent redemption while in pending_payment status: consume another entitlement
+      const redeem2Res = await request(app)
+        .post(`/api/v1/subscriptions/${sub._id}/redeem`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .send({
+          branchId: branchA1._id.toString(),
+          isManual: true,
+          reason: "Customer verified second on-site visit",
+          services: [{ serviceId: serviceA1._id.toString(), quantity: 1 }],
+        });
+
+      expect(redeem2Res.status).toBe(200);
+
+      // 6. Verify final balances: usedQuantity = 2, remainingQuantity = 1
+      sub = await Subscription.findById(subId);
+      expect(sub.status).toBe("pending_payment");
+      expect(sub.entitlements[0].usedQuantity).toBe(2);
+      expect(sub.entitlements[0].remainingQuantity).toBe(1);
+
+      // 7. Verify GET /api/v1/subscriptions/:id/usage returns both usage records, populated with subscriptionInvoice
+      const usageRes = await request(app)
+        .get(`/api/v1/subscriptions/${sub._id}/usage`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString());
+
+      expect(usageRes.status).toBe(200);
+      expect(usageRes.body.data).toHaveLength(2);
+      expect(usageRes.body.data[0].subscriptionInvoice).toBeDefined();
+      expect(usageRes.body.data[1].subscriptionInvoice).toBeDefined();
+
+      // 8. Test robustness against missing/deleted invoice reference in GET /api/v1/subscriptions/:id/usage
+      // Simulate an orphan usage record with a nonexistent invoice ID
+      const fakeInvoiceId = new mongoose.Types.ObjectId();
+      await SubscriptionUsage.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        subscriptionId: sub._id,
+        customerId: customerA._id,
+        serviceId: serviceA1._id,
+        serviceName: "Classic Haircut",
+        quantity: 1,
+        verifiedBy: ownerUser._id,
+        subscriptionInvoiceId: fakeInvoiceId,
+      });
+
+      const usageResAfterOrphan = await request(app)
+        .get(`/api/v1/subscriptions/${sub._id}/usage`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString());
+
+      expect(usageResAfterOrphan.status).toBe(200);
+      expect(usageResAfterOrphan.body.data).toHaveLength(3);
+      // Mongoose populate sets unresolvable refs to null on the populated field (subscriptionInvoiceId)
+      const orphanItem = usageResAfterOrphan.body.data.find(
+        (u) => u.subscriptionInvoice === null
+      );
+      expect(orphanItem).toBeDefined();
+      expect(orphanItem.serviceName).toBe("Classic Haircut");
+    });
   });
 
   describe("4. Existing Appointment Billing Regression", () => {
@@ -1056,13 +1191,23 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
       expect(subAfterComplete.entitlements[0].usedQuantity).toBe(1);
       expect(subAfterComplete.entitlements[0].remainingQuantity).toBe(2);
 
-      // Verify usage record created
+      // Verify usage record created with subscription invoice reference
       const usage = await SubscriptionUsage.findOne({
         subscriptionId: sub._id,
         appointmentId: apt._id,
       });
       expect(usage).toBeDefined();
       expect(usage.quantity).toBe(1);
+      expect(usage.subscriptionInvoiceId?.toString()).toBe(sub.invoiceId.toString());
+
+      // Verify GET /api/v1/subscriptions/:id/usage exposes subscriptionInvoice reference
+      const usageRes = await request(app)
+        .get(`/api/v1/subscriptions/${sub._id}/usage`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString());
+      expect(usageRes.status).toBe(200);
+      expect(usageRes.body.data.length).toBeGreaterThan(0);
+      expect(usageRes.body.data[0].subscriptionInvoice).toBeDefined();
 
       // Verify subscription invoice remains separate and unpaid
       const subInvoice = await Invoice.findById(sub.invoiceId);

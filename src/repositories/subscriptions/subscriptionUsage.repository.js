@@ -21,6 +21,7 @@ export class SubscriptionUsageRepository extends BaseRepository {
       .populate("branchId", "name")
       .populate("verifiedBy", "name")
       .populate("appointmentId", "appointmentCode")
+      .populate("subscriptionInvoiceId", "invoiceNumber paymentStatus amountDue payableAmount status")
       .sort({ createdAt: -1 })
       .exec();
   }

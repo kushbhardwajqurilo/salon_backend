@@ -2203,6 +2203,7 @@ export class AppointmentService {
           appointmentId: appointment._id,
           appointmentServiceId: line._id,
           appointmentCode: appointment.appointmentCode,
+          subscriptionInvoiceId: updatedSub.invoiceId || null,
         };
 
         const usageRecord = new SubscriptionUsage(usageData);
