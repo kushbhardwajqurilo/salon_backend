@@ -743,6 +743,20 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
         subscriptionIds: [activeSub._id],
         customerId: customerA._id,
         serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: appointment.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: activeSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: appointment.services[1]._id,
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: activeSub._id,
+            customerId: customerA._id,
+          },
+        ],
         otpHash,
         attempts: 4, // 1 attempt remaining
         resendAvailableAt: new Date(Date.now() + 60000),
@@ -824,6 +838,14 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
       await SubscriptionConsumptionChallenge.findByIdAndUpdate(chWrongCust._id, {
         subscriptionIds: [activeSub._id],
         serviceIds: [serviceA1._id], // Missing serviceA2
+        serviceLines: [
+          {
+            appointmentServiceId: appointment.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: activeSub._id,
+            customerId: customerA._id,
+          },
+        ],
         status: "pending",
       });
 
@@ -965,7 +987,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
         .send({ branchId: branchA1._id.toString(), otp: rawOtp });
 
       expect(resMissingLineCustomer.status).toBe(400);
-      expect(resMissingLineCustomer.body.message).toContain("Appointment service line binding does not match OTP challenge");
+      expect(resMissingLineCustomer.body.message).toMatch(/OTP challenge contains incomplete service line bindings|Appointment service line binding does not match OTP challenge/);
 
       // 10. Duplicate identical catalog services require distinct one-to-one challenge line matches
       await SubscriptionConsumptionChallenge.collection.updateOne(
@@ -1013,6 +1035,20 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
         subscriptionIds: [activeSub._id],
         customerId: customerA._id,
         serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: appointment.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: activeSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: appointment.services[1]._id,
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: activeSub._id,
+            customerId: customerA._id,
+          },
+        ],
         otpHash,
         attempts: 0,
         resendAvailableAt: new Date(Date.now() + 60000),
@@ -1546,6 +1582,14 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
         subscriptionIds: [activeSub._id],
         customerId: customerA._id,
         serviceIds: [serviceA1._id],
+        serviceLines: [
+          {
+            appointmentServiceId: concurrentApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: activeSub._id,
+            customerId: customerA._id,
+          },
+        ],
         otpHash: crypto.createHash("sha256").update(testOtp).digest("hex"),
         attempts: 0,
         resendAvailableAt: new Date(Date.now() + 60000),
@@ -1801,6 +1845,14 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
         subscriptionIds: [sub._id],
         customerId: customerA._id,
         serviceIds: [serviceA1._id],
+        serviceLines: [
+          {
+            appointmentServiceId: appointment.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: sub._id,
+            customerId: customerA._id,
+          },
+        ],
         otpHash: crypto.createHash("sha256").update(testOtp).digest("hex"),
         attempts: 0,
         resendAvailableAt: new Date(Date.now() + 60000),
@@ -1905,6 +1957,977 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
       expect(invLine.subscriptionUsageId.toString()).toBe(historicalUsageId.toString());
       expect(invLine.subscriptionCoveredAmount).toBe(500);
       expect(invLine.customerPayable).toBe(0);
+    });
+  });
+
+  describe("5. Exact Service-Line Validation — Fail Closed Regression Suite", () => {
+    let testApt;
+    let testSub;
+    let testSub2;
+    const testOtp = "123456";
+    const otpHash = crypto.createHash("sha256").update(testOtp).digest("hex");
+
+    beforeEach(async () => {
+      // Create subscription for customerA covering serviceA1 and serviceA2
+      testSub = await Subscription.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        subscriptionCode: `SUB-TEST-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        price: 1000,
+        customerId: customerA._id,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        status: "active",
+        entitlements: [
+          {
+            serviceId: serviceA1._id,
+            serviceName: "Classic Haircut",
+            totalQuantity: 5,
+            usedQuantity: 0,
+            remainingQuantity: 5,
+          },
+          {
+            serviceId: serviceA2._id,
+            serviceName: "Beard Trim",
+            totalQuantity: 5,
+            usedQuantity: 0,
+            remainingQuantity: 5,
+          },
+        ],
+        permittedBranchIds: [branchA1._id],
+      });
+
+      testSub2 = await Subscription.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        subscriptionCode: `SUB-TEST2-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        price: 1000,
+        customerId: customerA._id,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        status: "active",
+        entitlements: [
+          {
+            serviceId: serviceA1._id,
+            serviceName: "Classic Haircut",
+            totalQuantity: 5,
+            usedQuantity: 0,
+            remainingQuantity: 5,
+          },
+        ],
+        permittedBranchIds: [branchA1._id],
+      });
+
+      // Create in-progress appointment with 2 subscription service lines
+      testApt = await Appointment.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentCode: `APT-VAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        customerId: customerA._id,
+        staffId: staffMember._id,
+        appointmentDate: "2026-05-10",
+        startTime: "10:00",
+        endTime: "11:00",
+        startAt: new Date("2026-05-10T10:00:00Z"),
+        endAt: new Date("2026-05-10T11:00:00Z"),
+        bookingType: "advance",
+        status: "in_progress",
+        totalDuration: 60,
+        services: [
+          {
+            serviceType: "registered",
+            serviceId: serviceA1._id,
+            name: "Classic Haircut",
+            duration: 30,
+            price: 500,
+            appliedSubscriptionId: testSub._id,
+            isRedeemedViaSubscription: false,
+            subscriptionUsageId: null,
+          },
+          {
+            serviceType: "registered",
+            serviceId: serviceA2._id,
+            name: "Beard Trim",
+            duration: 30,
+            price: 300,
+            appliedSubscriptionId: testSub._id,
+            isRedeemedViaSubscription: false,
+            subscriptionUsageId: null,
+          },
+        ],
+        pricing: { subtotal: 800, discount: 0, total: 800 },
+      });
+    });
+
+    afterEach(async () => {
+      await SubscriptionConsumptionChallenge.deleteMany({ appointmentId: testApt._id });
+    });
+
+    // 1. Missing serviceLines
+    it("1. rejects completion if challenge.serviceLines is missing entirely", async () => {
+      await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("OTP challenge is missing required service line bindings");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[0].usedQuantity).toBe(0);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].usedQuantity).toBe(0);
+    });
+
+    // 2. Empty serviceLines
+    it("2. rejects completion if challenge.serviceLines is an empty array", async () => {
+      await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("OTP challenge is missing required service line bindings");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[0].usedQuantity).toBe(0);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].usedQuantity).toBe(0);
+    });
+
+    // 3. Incorrect line count
+    it("3. rejects completion if challenge.serviceLines count differs from appointment subscription lines", async () => {
+      await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ], // Only 1 line for 2 appointment subscription lines
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("Appointment service lines do not match OTP challenge");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[0].usedQuantity).toBe(0);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].usedQuantity).toBe(0);
+    });
+
+    // 4. Missing customerId on line
+    it("4. rejects completion if any challenge service line is missing customerId", async () => {
+      const challenge = await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: testApt.services[1]._id,
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      // Remove customerId on second line directly via collection update
+      await SubscriptionConsumptionChallenge.collection.updateOne(
+        { _id: challenge._id },
+        { $unset: { "serviceLines.1.customerId": 1 } }
+      );
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("OTP challenge contains incomplete service line bindings");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[0].usedQuantity).toBe(0);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].usedQuantity).toBe(0);
+    });
+
+    // 5. Wrong appointment service-line ID
+    it("5. rejects completion if challenge service line references a wrong appointmentServiceId", async () => {
+      await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: new mongoose.Types.ObjectId(), // Wrong line id
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("Appointment service line binding does not match OTP challenge");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[0].usedQuantity).toBe(0);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].usedQuantity).toBe(0);
+    });
+
+    // 6. Wrong applied subscription ID
+    it("6. rejects completion if challenge service line references a wrong appliedSubscriptionId", async () => {
+      await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id, testSub2._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub2._id, // Wrong subscription for line 0 (which has testSub)
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: testApt.services[1]._id,
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("Appointment service line binding does not match OTP challenge");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[0].usedQuantity).toBe(0);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].usedQuantity).toBe(0);
+    });
+
+    // 7. Wrong customer ID
+    it("7. rejects completion if challenge service line customerId does not match appointment beneficiary customer", async () => {
+      const otherCust = await Customer.create({
+        organizationId: orgA._id,
+        homeBranchId: branchA1._id,
+        name: "Mismatch Line Beneficiary",
+        phone: "+919999900011",
+      });
+
+      await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: testApt.services[1]._id,
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: otherCust._id, // Wrong beneficiary customer on line 1
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("Appointment service line binding does not match OTP challenge");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[0].usedQuantity).toBe(0);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].usedQuantity).toBe(0);
+    });
+
+    // 8. Duplicate challenge-line reuse
+    it("8. rejects completion if a challenge line is reused for multiple appointment lines", async () => {
+      await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+          {
+            // Reusing appointmentServiceId of line 0
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("Appointment service line binding does not match OTP challenge");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[0].usedQuantity).toBe(0);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].usedQuantity).toBe(0);
+    });
+
+    // 9. Two appointment lines using the same catalog service but different appointment line IDs
+    it("9. rejects cross-matched line IDs and accepts distinct one-to-one matching for two appointment lines of same catalog service", async () => {
+      // Create appointment with two identical catalog service lines
+      const dupServiceApt = await Appointment.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentCode: `APT-DUP-${Date.now()}`,
+        customerId: customerA._id,
+        staffId: staffMember._id,
+        appointmentDate: "2026-05-11",
+        startTime: "12:00",
+        endTime: "13:00",
+        startAt: new Date("2026-05-11T12:00:00Z"),
+        endAt: new Date("2026-05-11T13:00:00Z"),
+        bookingType: "advance",
+        status: "in_progress",
+        totalDuration: 60,
+        services: [
+          {
+            serviceType: "registered",
+            serviceId: serviceA1._id,
+            name: "Classic Haircut #1",
+            duration: 30,
+            price: 500,
+            appliedSubscriptionId: testSub._id,
+            isRedeemedViaSubscription: false,
+          },
+          {
+            serviceType: "registered",
+            serviceId: serviceA1._id, // Same catalog service
+            name: "Classic Haircut #2",
+            duration: 30,
+            price: 500,
+            appliedSubscriptionId: testSub._id,
+            isRedeemedViaSubscription: false,
+          },
+        ],
+        pricing: { subtotal: 1000, discount: 0, total: 1000 },
+      });
+
+      const line0Id = dupServiceApt.services[0]._id;
+      const line1Id = dupServiceApt.services[1]._id;
+      expect(line0Id.toString()).not.toBe(line1Id.toString());
+
+      // Try challenge with duplicate line0Id covering both lines
+      const invalidChal = await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: dupServiceApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA1._id],
+        serviceLines: [
+          {
+            appointmentServiceId: line0Id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: line0Id, // Duplicate line id!
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      const resInvalid = await request(app)
+        .post(`/api/v1/appointments/${dupServiceApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(resInvalid.status).toBe(400);
+      expect(resInvalid.body.message).toContain("Appointment service line binding does not match OTP challenge");
+
+      // Assert non-completion and untouched entitlements on failure
+      const dupAptAfter = await Appointment.findById(dupServiceApt._id);
+      expect(dupAptAfter.status).toBe("in_progress");
+      expect(dupAptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(dupAptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subBeforeValid = await Subscription.findById(testSub._id);
+      expect(subBeforeValid.entitlements.find((e) => e.serviceId.equals(serviceA1._id)).remainingQuantity).toBe(5);
+
+      // Now update challenge with distinct exact one-to-one matching line0Id and line1Id
+      await SubscriptionConsumptionChallenge.findByIdAndUpdate(invalidChal._id, {
+        serviceLines: [
+          {
+            appointmentServiceId: line0Id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: line1Id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+      });
+
+      const resValid = await request(app)
+        .post(`/api/v1/appointments/${dupServiceApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(resValid.status).toBe(200);
+      expect(resValid.body.data.status).toBe("completed");
+    });
+
+    // 10. Valid exact one-to-one matching
+    it("10. completes appointment successfully with valid exact one-to-one service-line matching", async () => {
+      await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: testApt.services[1]._id,
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.status).toBe("completed");
+      expect(res.body.data.services[0].isRedeemedViaSubscription).toBe(true);
+      expect(res.body.data.services[1].isRedeemedViaSubscription).toBe(true);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements.find((e) => e.serviceId.equals(serviceA1._id)).remainingQuantity).toBe(4);
+      expect(subAfter.entitlements.find((e) => e.serviceId.equals(serviceA2._id)).remainingQuantity).toBe(4);
+    });
+
+    // 11. Missing appointmentServiceId on challenge line
+    it("11. rejects completion if challenge service line is missing appointmentServiceId", async () => {
+      const challenge = await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: testApt.services[1]._id,
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      await SubscriptionConsumptionChallenge.collection.updateOne(
+        { _id: challenge._id },
+        { $unset: { "serviceLines.0.appointmentServiceId": 1 } }
+      );
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("OTP challenge contains incomplete service line bindings");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+    });
+
+    // 12. Missing serviceId on challenge line
+    it("12. rejects completion if challenge service line is missing serviceId", async () => {
+      const challenge = await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: testApt.services[1]._id,
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      await SubscriptionConsumptionChallenge.collection.updateOne(
+        { _id: challenge._id },
+        { $unset: { "serviceLines.0.serviceId": 1 } }
+      );
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("OTP challenge contains incomplete service line bindings");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+    });
+
+    // 13. Missing appliedSubscriptionId on challenge line
+    it("13. rejects completion if challenge service line is missing appliedSubscriptionId", async () => {
+      const challenge = await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: testApt.services[1]._id,
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      await SubscriptionConsumptionChallenge.collection.updateOne(
+        { _id: challenge._id },
+        { $unset: { "serviceLines.0.appliedSubscriptionId": 1 } }
+      );
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("OTP challenge contains incomplete service line bindings");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+    });
+
+    // 14. serviceLines: null
+    it("14. rejects completion if challenge.serviceLines is null", async () => {
+      const challenge = await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      await SubscriptionConsumptionChallenge.collection.updateOne(
+        { _id: challenge._id },
+        { $set: { serviceLines: null } }
+      );
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("OTP challenge is missing required service line bindings");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+    });
+
+    // 15. serviceLines is not an array (e.g. object / string / number)
+    it("15. rejects completion if challenge.serviceLines is not an array", async () => {
+      const challenge = await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      await SubscriptionConsumptionChallenge.collection.updateOne(
+        { _id: challenge._id },
+        { $set: { serviceLines: "invalid_non_array_string" } }
+      );
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("OTP challenge is missing required service line bindings");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
+    });
+
+    // 16. Wrong serviceId on challenge line
+    it("16. rejects completion if challenge service line has wrong serviceId", async () => {
+      const wrongService = await Service.create({
+        organizationId: orgA._id,
+        name: "Completely Different Service",
+        categoryId: categoryA._id,
+        duration: 45,
+        pricing: { basePrice: 600 },
+        status: "active",
+      });
+
+      await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: testApt._id,
+        customerId: customerA._id,
+        subscriptionIds: [testSub._id],
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: testApt.services[0]._id,
+            serviceId: wrongService._id, // Wrong service ID
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: testApt.services[1]._id,
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: testSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        otpHash,
+        status: "pending",
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/appointments/${testApt._id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: testOtp });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("Appointment service line binding does not match OTP challenge");
+
+      // Assert non-completion and untouched entitlements
+      const aptAfter = await Appointment.findById(testApt._id);
+      expect(aptAfter.status).toBe("in_progress");
+      expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      expect(aptAfter.services[1].isRedeemedViaSubscription).toBe(false);
+
+      const subAfter = await Subscription.findById(testSub._id);
+      expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+      expect(subAfter.entitlements[1].remainingQuantity).toBe(5);
     });
   });
 });

@@ -1783,10 +1783,16 @@ export class AppointmentService {
     }
 
     // Ensure every unredeemed subscription line has an _id so it can be uniquely tracked
+    let modifiedLineIds = false;
     for (const line of subscriptionLines) {
       if (!line._id) {
         line._id = new mongoose.Types.ObjectId();
+        modifiedLineIds = true;
       }
+    }
+    if (modifiedLineIds) {
+      appointment.markModified("services");
+      await appointment.save();
     }
 
     // Collect all unique applied subscription IDs for this appointment
@@ -1965,8 +1971,8 @@ export class AppointmentService {
       throw new AppError("OTP challenge does not match the subscriptions applied to this appointment", 400);
     }
 
-    // 3. Mandatory service verification:
-    // A. Check catalog serviceIds
+    // 3. Mandatory service and exact service-line verification (Fail Closed):
+    // Catalog serviceIds check
     const currentServiceIds = subscriptionLines.map((l) => l.serviceId?.toString()).filter(Boolean);
     const challengeServiceIds = (challenge.serviceIds || []).map((id) => id.toString());
     if (challengeServiceIds.length === 0) {
@@ -1977,36 +1983,54 @@ export class AppointmentService {
       throw new AppError("OTP challenge does not match the services on this appointment", 400);
     }
 
-    // B. Check exact appointment service line bindings if present on challenge
-    if (Array.isArray(challenge.serviceLines) && challenge.serviceLines.length > 0) {
-      // Must match count and each subscriptionLine must match an exact challenge serviceLine
-      if (challenge.serviceLines.length !== subscriptionLines.length) {
-        throw new AppError("Appointment service lines were modified after OTP generation", 400);
-      }
-      const matchedChallengeIndices = new Set();
-      for (const line of subscriptionLines) {
-        const lineIdStr = line._id ? line._id.toString() : null;
-        let matchedIdx = -1;
-        for (let i = 0; i < challenge.serviceLines.length; i++) {
-          if (matchedChallengeIndices.has(i)) continue;
-          const cl = challenge.serviceLines[i];
-          const matchesId = !lineIdStr || cl.appointmentServiceId.toString() === lineIdStr;
-          const matchesService = cl.serviceId.toString() === line.serviceId.toString();
-          const matchesSub = cl.appliedSubscriptionId.toString() === line.appliedSubscriptionId.toString();
-          // Customer/member binding check: every challenge service line must contain a valid, non-empty customerId matching the appointment beneficiary customer
-          const matchesCustomer = !!cl.customerId && cl.customerId.toString() === appointmentCustomerId;
+    // Exact appointment service-line matching (Fail Closed)
+    // Challenge serviceLines is mandatory and must strictly bind 1-to-1 to subscriptionLines
+    if (!Array.isArray(challenge.serviceLines) || challenge.serviceLines.length === 0) {
+      throw new AppError("OTP challenge is missing required service line bindings", 400);
+    }
+    if (challenge.serviceLines.length !== subscriptionLines.length) {
+      throw new AppError("Appointment service lines do not match OTP challenge", 400);
+    }
 
-          if (matchesId && matchesService && matchesSub && matchesCustomer) {
-            matchedIdx = i;
-            break;
-          }
+    const matchedChallengeIndices = new Set();
+    for (const line of subscriptionLines) {
+      const lineIdStr = line._id ? line._id.toString() : null;
+      if (!lineIdStr) {
+        throw new AppError("Appointment service line is missing a valid identifier", 400);
+      }
+      if (!line.serviceId || !line.appliedSubscriptionId) {
+        throw new AppError("Appointment service line is missing service or subscription reference", 400);
+      }
+
+      let matchedIdx = -1;
+      for (let i = 0; i < challenge.serviceLines.length; i++) {
+        if (matchedChallengeIndices.has(i)) continue;
+        const cl = challenge.serviceLines[i];
+        if (
+          !cl ||
+          !cl.appointmentServiceId ||
+          !cl.serviceId ||
+          !cl.appliedSubscriptionId ||
+          !cl.customerId
+        ) {
+          throw new AppError("OTP challenge contains incomplete service line bindings", 400);
         }
 
-        if (matchedIdx === -1) {
-          throw new AppError("Appointment service line binding does not match OTP challenge", 400);
+        const matchesId = cl.appointmentServiceId.toString() === lineIdStr;
+        const matchesService = cl.serviceId.toString() === line.serviceId.toString();
+        const matchesSub = cl.appliedSubscriptionId.toString() === line.appliedSubscriptionId.toString();
+        const matchesCustomer = cl.customerId.toString() === appointmentCustomerId;
+
+        if (matchesId && matchesService && matchesSub && matchesCustomer) {
+          matchedIdx = i;
+          break;
         }
-        matchedChallengeIndices.add(matchedIdx);
       }
+
+      if (matchedIdx === -1) {
+        throw new AppError("Appointment service line binding does not match OTP challenge", 400);
+      }
+      matchedChallengeIndices.add(matchedIdx);
     }
 
     if (challenge.status === "exhausted" || challenge.attempts >= 5) {

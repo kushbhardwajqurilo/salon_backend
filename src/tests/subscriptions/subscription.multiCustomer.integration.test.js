@@ -519,6 +519,20 @@ describe("Multi-Customer Subscriptions, Member Isolation & Exact Idempotency Tes
         subscriptionIds: [sub._id],
         customerId: customerMemberA._id,
         serviceIds: [serviceHairCut._id, serviceHairCut._id],
+        serviceLines: [
+          {
+            appointmentServiceId: apt.services[0]._id,
+            serviceId: serviceHairCut._id,
+            appliedSubscriptionId: sub._id,
+            customerId: customerMemberA._id,
+          },
+          {
+            appointmentServiceId: apt.services[1]._id,
+            serviceId: serviceHairCut._id,
+            appliedSubscriptionId: sub._id,
+            customerId: customerMemberA._id,
+          },
+        ],
         otpHash,
         attempts: 0,
         resendAvailableAt: new Date(Date.now() + 60000),
@@ -625,6 +639,14 @@ describe("Multi-Customer Subscriptions, Member Isolation & Exact Idempotency Tes
         subscriptionIds: [sub._id],
         customerId: customerMemberA._id,
         serviceIds: [serviceHairCut._id],
+        serviceLines: [
+          {
+            appointmentServiceId: apt.services[0]._id,
+            serviceId: serviceHairCut._id,
+            appliedSubscriptionId: sub._id,
+            customerId: customerMemberA._id,
+          },
+        ],
         otpHash,
         attempts: 0,
         resendAvailableAt: new Date(Date.now() + 60000),

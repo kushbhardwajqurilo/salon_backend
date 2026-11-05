@@ -1583,6 +1583,14 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
         customerId: customerA._id,
         subscriptionIds: [sub._id],
         serviceIds: [serviceA1._id],
+        serviceLines: [
+          {
+            appointmentServiceId: apt.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: sub._id,
+            customerId: customerA._id,
+          },
+        ],
         otpHash,
         status: "pending",
         attempts: 0,
