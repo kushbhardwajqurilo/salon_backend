@@ -772,6 +772,237 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
       expect(resExhausted.body.message).toContain("Too many incorrect OTP attempts");
     });
 
+    it("rejects completion if OTP challenge was generated for another customer, subscription or service", async () => {
+      const otherCust = await Customer.create({
+        organizationId: orgA._id,
+        homeBranchId: branchA1._id,
+        name: "Different Customer",
+        phone: "+919811199999",
+      });
+      const rawOtp = "112233";
+      const otpHash = crypto.createHash("sha256").update(rawOtp).digest("hex");
+
+      // 1. Cross-customer binding test
+      const chWrongCust = await SubscriptionConsumptionChallenge.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        appointmentId: appointment.id,
+        subscriptionIds: [activeSub._id],
+        customerId: otherCust._id, // Wrong customer
+        serviceIds: [serviceA1._id, serviceA2._id],
+        otpHash,
+        attempts: 0,
+        resendAvailableAt: new Date(Date.now() + 60000),
+        expiresAt: new Date(Date.now() + 300000),
+        status: "pending",
+      });
+
+      const resWrongCust = await request(app)
+        .post(`/api/v1/appointments/${appointment.id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: rawOtp });
+
+      expect(resWrongCust.status).toBe(400);
+      expect(resWrongCust.body.message).toContain("OTP challenge does not match the customer on this appointment");
+
+      // 2. Mismatched subscription binding test
+      await SubscriptionConsumptionChallenge.findByIdAndUpdate(chWrongCust._id, {
+        customerId: customerA._id,
+        subscriptionIds: [new mongoose.Types.ObjectId()], // Wrong subscription
+        status: "pending",
+      });
+
+      const resWrongSub = await request(app)
+        .post(`/api/v1/appointments/${appointment.id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: rawOtp });
+
+      expect(resWrongSub.status).toBe(400);
+      expect(resWrongSub.body.message).toContain("OTP challenge does not match the subscriptions applied to this appointment");
+
+      // 3. Mismatched service binding test
+      await SubscriptionConsumptionChallenge.findByIdAndUpdate(chWrongCust._id, {
+        subscriptionIds: [activeSub._id],
+        serviceIds: [serviceA1._id], // Missing serviceA2
+        status: "pending",
+      });
+
+      const resWrongService = await request(app)
+        .post(`/api/v1/appointments/${appointment.id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: rawOtp });
+
+      expect(resWrongService.status).toBe(400);
+      expect(resWrongService.body.message).toContain("OTP challenge does not match the services on this appointment");
+
+      // 4. Missing customerId test
+      await SubscriptionConsumptionChallenge.findByIdAndUpdate(chWrongCust._id, {
+        $unset: { customerId: 1 },
+        serviceIds: [serviceA1._id, serviceA2._id],
+        status: "pending",
+      });
+
+      const resMissingCust = await request(app)
+        .post(`/api/v1/appointments/${appointment.id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: rawOtp });
+
+      expect(resMissingCust.status).toBe(400);
+      expect(resMissingCust.body.message).toContain("missing required customer binding");
+
+      // 5. Empty subscriptionIds test
+      await SubscriptionConsumptionChallenge.findByIdAndUpdate(chWrongCust._id, {
+        customerId: customerA._id,
+        subscriptionIds: [],
+        status: "pending",
+      });
+
+      const resEmptySubs = await request(app)
+        .post(`/api/v1/appointments/${appointment.id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: rawOtp });
+
+      expect(resEmptySubs.status).toBe(400);
+      expect(resEmptySubs.body.message).toContain("missing required subscription bindings");
+
+      // 6. Empty serviceIds test
+      await SubscriptionConsumptionChallenge.findByIdAndUpdate(chWrongCust._id, {
+        subscriptionIds: [activeSub._id],
+        serviceIds: [],
+        status: "pending",
+      });
+
+      const resEmptyServices = await request(app)
+        .post(`/api/v1/appointments/${appointment.id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: rawOtp });
+
+      expect(resEmptyServices.status).toBe(400);
+      expect(resEmptyServices.body.message).toContain("missing required service bindings");
+
+      // 7. Substituted appointment service line test via serviceLines binding
+      await SubscriptionConsumptionChallenge.findByIdAndUpdate(chWrongCust._id, {
+        serviceIds: [serviceA1._id, serviceA2._id],
+        serviceLines: [
+          {
+            appointmentServiceId: new mongoose.Types.ObjectId(), // Non-existent service line
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: activeSub._id,
+            customerId: customerA._id,
+          },
+          {
+            appointmentServiceId: new mongoose.Types.ObjectId(),
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: activeSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        status: "pending",
+      });
+
+      const resSubstitutedLine = await request(app)
+        .post(`/api/v1/appointments/${appointment.id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: rawOtp });
+
+      expect(resSubstitutedLine.status).toBe(400);
+      expect(resSubstitutedLine.body.message).toContain("Appointment service line binding does not match OTP challenge");
+
+      // 8. Service line customerId redirection / mismatch test
+      await SubscriptionConsumptionChallenge.findByIdAndUpdate(chWrongCust._id, {
+        serviceLines: [
+          {
+            appointmentServiceId: appointment.services[0]._id,
+            serviceId: serviceA1._id,
+            appliedSubscriptionId: activeSub._id,
+            customerId: otherCust._id, // Beneficiary redirected on service line
+          },
+          {
+            appointmentServiceId: appointment.services[1]._id,
+            serviceId: serviceA2._id,
+            appliedSubscriptionId: activeSub._id,
+            customerId: customerA._id,
+          },
+        ],
+        status: "pending",
+      });
+
+      const resRedirectedBeneficiary = await request(app)
+        .post(`/api/v1/appointments/${appointment.id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: rawOtp });
+
+      expect(resRedirectedBeneficiary.status).toBe(400);
+      expect(resRedirectedBeneficiary.body.message).toContain("Appointment service line binding does not match OTP challenge");
+
+      // 9. Service line missing customerId rejection test
+      await SubscriptionConsumptionChallenge.collection.updateOne(
+        { _id: chWrongCust._id },
+        {
+          $set: {
+            serviceLines: [
+              {
+                appointmentServiceId: appointment.services[0]._id,
+                serviceId: serviceA1._id,
+                appliedSubscriptionId: activeSub._id,
+                customerId: null, // Missing customerId on service line
+              },
+              {
+                appointmentServiceId: appointment.services[1]._id,
+                serviceId: serviceA2._id,
+                appliedSubscriptionId: activeSub._id,
+                customerId: customerA._id,
+              },
+            ],
+            status: "pending",
+          },
+        }
+      );
+
+      const resMissingLineCustomer = await request(app)
+        .post(`/api/v1/appointments/${appointment.id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: rawOtp });
+
+      expect(resMissingLineCustomer.status).toBe(400);
+      expect(resMissingLineCustomer.body.message).toContain("Appointment service line binding does not match OTP challenge");
+
+      // 10. Duplicate identical catalog services require distinct one-to-one challenge line matches
+      await SubscriptionConsumptionChallenge.collection.updateOne(
+        { _id: chWrongCust._id },
+        {
+          $set: {
+            serviceLines: [
+              {
+                appointmentServiceId: appointment.services[0]._id,
+                serviceId: serviceA1._id,
+                appliedSubscriptionId: activeSub._id,
+                customerId: customerA._id,
+              },
+              {
+                appointmentServiceId: appointment.services[0]._id, // Duplicate appointmentServiceId, cannot cover second appointment line
+                serviceId: serviceA1._id,
+                appliedSubscriptionId: activeSub._id,
+                customerId: customerA._id,
+              },
+            ],
+            status: "pending",
+          },
+        }
+      );
+
+      const resDuplicateLineBinding = await request(app)
+        .post(`/api/v1/appointments/${appointment.id}/complete-with-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId: branchA1._id.toString(), otp: rawOtp });
+
+      expect(resDuplicateLineBinding.status).toBe(400);
+      expect(resDuplicateLineBinding.body.message).toContain("Appointment service line binding does not match OTP challenge");
+
+      // Clean up test challenge
+      await SubscriptionConsumptionChallenge.findByIdAndDelete(chWrongCust._id);
+    });
+
     it("completes appointment, decrements multi-service entitlements, creates usages, and prevents replay", async () => {
       const rawOtp = "123456";
       const otpHash = crypto.createHash("sha256").update(rawOtp).digest("hex");

@@ -545,5 +545,168 @@ describe("SubscriptionService Unit Tests - Redemption & Concurrency", () => {
         userId
       );
     });
+
+    it("should reject standalone redemption if member is restricted to Branch A and attempts Branch B", async () => {
+      const memberCustId = new mongoose.Types.ObjectId().toString();
+      mockSubscriptionRepo.findOne.mockResolvedValue({
+        _id: subId,
+        organizationId: orgId,
+        customerId,
+        subscriptionCode: "SUB-MEMBER-BRANCH-01",
+        status: "active",
+        permittedBranchIds: [], // Root allows all branches
+        endDate: new Date(Date.now() + 86400000),
+        members: [
+          {
+            customerId: memberCustId,
+            status: "active",
+            permittedBranchIds: [branchAId], // Member strictly restricted to Branch A
+            entitlements: [{ serviceId, remainingQuantity: 5 }],
+          },
+        ],
+      });
+
+      await expect(
+        subscriptionService.redeemSubscription(
+          subId,
+          branchBId, // Branch B is attempted
+          null,
+          [{ serviceId, quantity: 1 }],
+          null,
+          orgId,
+          userId,
+          { isManual: true, reason: "Manual redemption test", memberCustomerId: memberCustId }
+        )
+      ).rejects.toThrow("Subscription is not valid for redemption at this branch");
+    });
+
+    it("should reject standalone redemption if subscription permits Branch A only even if member specifies Branch A+B", async () => {
+      const memberCustId = new mongoose.Types.ObjectId().toString();
+      const mockSub = {
+        _id: subId,
+        organizationId: orgId,
+        customerId,
+        subscriptionCode: "SUB-MEMBER-BRANCH-02",
+        status: "active",
+        permittedBranchIds: [branchAId], // Root restricts to Branch A only
+        endDate: new Date(Date.now() + 86400000),
+        members: [
+          {
+            customerId: memberCustId,
+            status: "active",
+            permittedBranchIds: [branchAId, branchBId], // Member lists A + B
+            entitlements: [{ serviceId, remainingQuantity: 5 }],
+          },
+        ],
+      };
+      mockSubscriptionRepo.findOne.mockResolvedValue(mockSub);
+      mockCustomerRepo.findById.mockResolvedValue({
+        _id: memberCustId,
+        name: "Member Customer",
+        isDeleted: false,
+        status: "active",
+      });
+
+      await expect(
+        subscriptionService.redeemSubscription(
+          subId,
+          branchBId, // Attempt at Branch B
+          null,
+          [{ serviceId, quantity: 1 }],
+          null,
+          orgId,
+          userId,
+          { isManual: true, reason: "Manual redemption test", memberCustomerId: memberCustId }
+        )
+      ).rejects.toThrow("Subscription is not valid for redemption at this branch");
+    });
+
+    it("should allow standalone redemption if both subscription and member permit the target branch", async () => {
+      const memberCustId = new mongoose.Types.ObjectId().toString();
+      const mockSub = {
+        _id: subId,
+        organizationId: orgId,
+        customerId,
+        subscriptionCode: "SUB-MEMBER-BRANCH-02B",
+        status: "active",
+        permittedBranchIds: [branchAId, branchBId], // Root permits A + B
+        endDate: new Date(Date.now() + 86400000),
+        members: [
+          {
+            customerId: memberCustId,
+            status: "active",
+            permittedBranchIds: [branchBId], // Member restricts to B
+            entitlements: [{ serviceId, remainingQuantity: 5 }],
+          },
+        ],
+      };
+      mockSubscriptionRepo.findOne.mockResolvedValue(mockSub);
+      mockCustomerRepo.findById.mockResolvedValue({
+        _id: memberCustId,
+        name: "Member Customer",
+        isDeleted: false,
+        status: "active",
+      });
+      mockSubscriptionRepo.atomicDecrementMemberEntitlement = jest.fn().mockResolvedValue({
+        ...mockSub,
+        members: [
+          {
+            customerId: memberCustId,
+            status: "active",
+            permittedBranchIds: [branchBId],
+            entitlements: [{ serviceId, remainingQuantity: 4, usedQuantity: 1, serviceName: "Hair Cut" }],
+          },
+        ],
+      });
+      subscriptionService.executeTransaction = jest.fn().mockImplementation(async (cb) => cb(null));
+
+      const result = await subscriptionService.redeemSubscription(
+        subId,
+        branchBId,
+        null,
+        [{ serviceId, quantity: 1 }],
+        null,
+        orgId,
+        userId,
+        { isManual: true, reason: "Manual redemption test", memberCustomerId: memberCustId }
+      );
+
+      expect(result).toBeDefined();
+      expect(mockSubscriptionRepo.atomicDecrementMemberEntitlement).toHaveBeenCalled();
+    });
+
+    it("should fall back to subscription-level branch restrictions when member has no branch overrides", async () => {
+      const memberCustId = new mongoose.Types.ObjectId().toString();
+      mockSubscriptionRepo.findOne.mockResolvedValue({
+        _id: subId,
+        organizationId: orgId,
+        customerId,
+        subscriptionCode: "SUB-MEMBER-BRANCH-03",
+        status: "active",
+        permittedBranchIds: [branchAId], // Root restricts to Branch A
+        endDate: new Date(Date.now() + 86400000),
+        members: [
+          {
+            customerId: memberCustId,
+            status: "active",
+            permittedBranchIds: [], // Empty -> follows subscription root
+            entitlements: [{ serviceId, remainingQuantity: 5 }],
+          },
+        ],
+      });
+
+      await expect(
+        subscriptionService.redeemSubscription(
+          subId,
+          branchBId,
+          null,
+          [{ serviceId, quantity: 1 }],
+          null,
+          orgId,
+          userId,
+          { isManual: true, reason: "Manual redemption test", memberCustomerId: memberCustId }
+        )
+      ).rejects.toThrow("Subscription is not valid for redemption at this branch");
+    });
   });
 });

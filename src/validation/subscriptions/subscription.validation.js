@@ -134,6 +134,8 @@ export const querySubscriptionSchema = z.object({
     page: z.string().regex(/^\d+$/).transform(Number).optional().default("1"),
     limit: z.string().regex(/^\d+$/).transform(Number).optional().default("20"),
     customerId: objectIdSchema.optional(),
+    payerId: objectIdSchema.optional(),
+    memberId: objectIdSchema.optional(),
     status: z.enum(["active", "pending_payment", "expired", "exhausted", "cancelled"]).optional(),
     branchId: objectIdSchema.optional(),
     search: z.string().trim().optional(),

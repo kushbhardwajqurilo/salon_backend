@@ -544,19 +544,21 @@ export class AppointmentService {
       throw new AppError("Applied subscription is not yet active", 400);
     }
 
-    // Branch eligibility check (member override if specified, else subscription permittedBranchIds)
-    const branchRestrictions = member && Array.isArray(member.permittedBranchIds) && member.permittedBranchIds.length > 0
-      ? member.permittedBranchIds
-      : subscription.permittedBranchIds;
+    // Branch eligibility check (effective intersection: sub is hard maximum, member further restricts)
+    const subBranches = Array.isArray(subscription.permittedBranchIds) ? subscription.permittedBranchIds : [];
+    const memberBranches = member && Array.isArray(member.permittedBranchIds) ? member.permittedBranchIds : [];
+    const branchIdStr = branchId.toString();
 
-    if (
-      Array.isArray(branchRestrictions) &&
-      branchRestrictions.length > 0
-    ) {
-      const isPermitted = branchRestrictions.some(
-        (b) => b.toString() === branchId.toString()
-      );
-      if (!isPermitted) {
+    if (subBranches.length > 0) {
+      const isAllowedBySub = subBranches.some((b) => b.toString() === branchIdStr);
+      if (!isAllowedBySub) {
+        throw new AppError("Applied subscription is not valid at this branch", 403);
+      }
+    }
+
+    if (memberBranches.length > 0) {
+      const isAllowedByMember = memberBranches.some((b) => b.toString() === branchIdStr);
+      if (!isAllowedByMember) {
         throw new AppError("Applied subscription is not valid at this branch", 403);
       }
     }
@@ -1765,15 +1767,6 @@ export class AppointmentService {
       );
     }
 
-    // Collect all unique applied subscription IDs for this appointment
-    const uniqueSubscriptionIds = [
-      ...new Set(
-        subscriptionLines
-          .map((l) => l.appliedSubscriptionId?.toString())
-          .filter(Boolean)
-      ),
-    ];
-
     // Validate customer and phone number
     const customer = await Customer.findOne({
       _id: appointment.customerId?._id || appointment.customerId,
@@ -1788,6 +1781,29 @@ export class AppointmentService {
     if (!customer.phone) {
       throw new AppError("Customer does not have a registered phone number for OTP delivery", 400);
     }
+
+    // Ensure every unredeemed subscription line has an _id so it can be uniquely tracked
+    for (const line of subscriptionLines) {
+      if (!line._id) {
+        line._id = new mongoose.Types.ObjectId();
+      }
+    }
+
+    // Collect all unique applied subscription IDs for this appointment
+    const uniqueSubscriptionIds = [
+      ...new Set(
+        subscriptionLines
+          .map((l) => l.appliedSubscriptionId?.toString())
+          .filter(Boolean)
+      ),
+    ];
+
+    const serviceLineBindings = subscriptionLines.map((l) => ({
+      appointmentServiceId: l._id,
+      serviceId: l.serviceId,
+      appliedSubscriptionId: l.appliedSubscriptionId,
+      customerId: customer._id,
+    }));
 
     // Revalidate subscription eligibility for every subscription-backed line
     for (const line of subscriptionLines) {
@@ -1829,6 +1845,7 @@ export class AppointmentService {
       existingChallenge.attempts = 0;
       existingChallenge.subscriptionIds = uniqueSubscriptionIds;
       existingChallenge.serviceIds = serviceIds;
+      existingChallenge.serviceLines = serviceLineBindings;
       existingChallenge.expiresAt = expiresAt;
       existingChallenge.resendAvailableAt = resendAvailableAt;
       existingChallenge.status = "pending";
@@ -1841,6 +1858,7 @@ export class AppointmentService {
         subscriptionIds: uniqueSubscriptionIds,
         customerId: customer._id,
         serviceIds,
+        serviceLines: serviceLineBindings,
         otpHash,
         attempts: 0,
         resendAvailableAt,
@@ -1921,6 +1939,74 @@ export class AppointmentService {
         "No OTP challenge found. Please request an OTP first.",
         400
       );
+    }
+
+    // 1. Mandatory customer verification: challenge customer must exist and match appointment customer
+    const appointmentCustomerId = (
+      appointment.customerId?._id || appointment.customerId
+    ).toString();
+    if (!challenge.customerId) {
+      throw new AppError("OTP challenge is missing required customer binding", 400);
+    }
+    if (challenge.customerId.toString() !== appointmentCustomerId) {
+      throw new AppError("OTP challenge does not match the customer on this appointment", 400);
+    }
+
+    // 2. Mandatory subscription verification: challenge must have non-empty subscriptionIds and cover all unredeemed applied subscriptions
+    const currentSubIds = [
+      ...new Set(subscriptionLines.map((l) => l.appliedSubscriptionId?.toString()).filter(Boolean)),
+    ];
+    const challengeSubIds = (challenge.subscriptionIds || []).map((id) => id.toString());
+    if (challengeSubIds.length === 0) {
+      throw new AppError("OTP challenge is missing required subscription bindings", 400);
+    }
+    const subsMatch = currentSubIds.every((subId) => challengeSubIds.includes(subId));
+    if (!subsMatch) {
+      throw new AppError("OTP challenge does not match the subscriptions applied to this appointment", 400);
+    }
+
+    // 3. Mandatory service verification:
+    // A. Check catalog serviceIds
+    const currentServiceIds = subscriptionLines.map((l) => l.serviceId?.toString()).filter(Boolean);
+    const challengeServiceIds = (challenge.serviceIds || []).map((id) => id.toString());
+    if (challengeServiceIds.length === 0) {
+      throw new AppError("OTP challenge is missing required service bindings", 400);
+    }
+    const servicesMatch = currentServiceIds.every((sId) => challengeServiceIds.includes(sId));
+    if (!servicesMatch) {
+      throw new AppError("OTP challenge does not match the services on this appointment", 400);
+    }
+
+    // B. Check exact appointment service line bindings if present on challenge
+    if (Array.isArray(challenge.serviceLines) && challenge.serviceLines.length > 0) {
+      // Must match count and each subscriptionLine must match an exact challenge serviceLine
+      if (challenge.serviceLines.length !== subscriptionLines.length) {
+        throw new AppError("Appointment service lines were modified after OTP generation", 400);
+      }
+      const matchedChallengeIndices = new Set();
+      for (const line of subscriptionLines) {
+        const lineIdStr = line._id ? line._id.toString() : null;
+        let matchedIdx = -1;
+        for (let i = 0; i < challenge.serviceLines.length; i++) {
+          if (matchedChallengeIndices.has(i)) continue;
+          const cl = challenge.serviceLines[i];
+          const matchesId = !lineIdStr || cl.appointmentServiceId.toString() === lineIdStr;
+          const matchesService = cl.serviceId.toString() === line.serviceId.toString();
+          const matchesSub = cl.appliedSubscriptionId.toString() === line.appliedSubscriptionId.toString();
+          // Customer/member binding check: every challenge service line must contain a valid, non-empty customerId matching the appointment beneficiary customer
+          const matchesCustomer = !!cl.customerId && cl.customerId.toString() === appointmentCustomerId;
+
+          if (matchesId && matchesService && matchesSub && matchesCustomer) {
+            matchedIdx = i;
+            break;
+          }
+        }
+
+        if (matchedIdx === -1) {
+          throw new AppError("Appointment service line binding does not match OTP challenge", 400);
+        }
+        matchedChallengeIndices.add(matchedIdx);
+      }
     }
 
     if (challenge.status === "exhausted" || challenge.attempts >= 5) {

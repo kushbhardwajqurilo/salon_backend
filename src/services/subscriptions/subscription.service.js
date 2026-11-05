@@ -468,35 +468,64 @@ export class SubscriptionService {
       page = 1,
       limit = 20,
       customerId,
+      payerId,
+      memberId,
       status,
       branchId,
       search,
     } = query;
 
-    const filter = {
-      organizationId,
-      isDeleted: false,
-    };
+    const conditions = [
+      { organizationId },
+      { isDeleted: false },
+    ];
 
     if (customerId) {
-      filter.customerId = customerId;
+      conditions.push({
+        $or: [
+          { customerId },
+          { payerCustomerId: customerId },
+          { "members.customerId": customerId },
+        ],
+      });
+    }
+
+    if (payerId) {
+      conditions.push({
+        $or: [
+          { payerCustomerId: payerId },
+          { customerId: payerId },
+        ],
+      });
+    }
+
+    if (memberId) {
+      conditions.push({
+        "members.customerId": memberId,
+      });
     }
 
     if (status) {
-      filter.status = status;
+      conditions.push({ status });
     }
 
     if (branchId) {
       // Return subscriptions where permittedBranchIds is empty (all branches) or includes branchId
-      filter.$or = [
-        { permittedBranchIds: { $size: 0 } },
-        { permittedBranchIds: branchId },
-      ];
+      conditions.push({
+        $or: [
+          { permittedBranchIds: { $size: 0 } },
+          { permittedBranchIds: branchId },
+        ],
+      });
     }
 
     if (search) {
-      filter.subscriptionCode = { $regex: search, $options: "i" };
+      conditions.push({
+        subscriptionCode: { $regex: search, $options: "i" },
+      });
     }
+
+    const filter = conditions.length === 1 ? conditions[0] : { $and: conditions };
 
     const options = {
       page: parseInt(page, 10),
@@ -941,24 +970,25 @@ export class SubscriptionService {
       );
     }
 
-    // Branch permission check
-    this.validateBranchPermission(subscription, branchId);
-
     // Determine target customer (beneficiary member or payer)
     let targetCustomerId = memberCustomerId;
     if (!targetCustomerId) {
       targetCustomerId = subscription.customerId;
     }
 
+    let targetMember = null;
     // If subscription has members array, verify customer is an active member
     if (Array.isArray(subscription.members) && subscription.members.length > 0) {
-      const isMember = subscription.members.some(
+      targetMember = subscription.members.find(
         (m) => m.customerId.toString() === targetCustomerId.toString() && ["active", "pending_payment"].includes(m.status)
       );
-      if (!isMember) {
+      if (!targetMember) {
         throw new AppError("Customer is not an active member of this subscription", 400);
       }
     }
+
+    // Branch permission check (member override if specified, else subscription permittedBranchIds)
+    this.validateBranchPermission(subscription, branchId, targetMember);
 
     // Load customer
     let customer;
@@ -1227,9 +1257,7 @@ export class SubscriptionService {
       );
     }
 
-    // 2. Validate branch permission
-    this.validateBranchPermission(subscription, branchId);
-
+    // 2. Determine target member customer and handle verification
     // 2.1 Fetch appointment if appointmentId provided
     let appointment = null;
     if (appointmentId) {
@@ -1245,7 +1273,6 @@ export class SubscriptionService {
       }
     }
 
-    // 3. Determine target member customer and handle verification
     let targetCustomerId = options.memberCustomerId;
     if (!targetCustomerId) {
       if (appointmentId && appointment) {
@@ -1264,6 +1291,9 @@ export class SubscriptionService {
         throw new AppError("Customer is not an active member of this subscription", 400);
       }
     }
+
+    // 2.2 Validate branch permission (member override if specified, else subscription permittedBranchIds)
+    this.validateBranchPermission(subscription, branchId, targetMember);
 
     let customer;
     if (this.customerRepo && typeof this.customerRepo.findById === "function") {
@@ -1644,24 +1674,50 @@ export class SubscriptionService {
   }
 
   /**
-   * Helper: Check if branch is permitted for this subscription
+   * Helper: Check if branch is permitted for this subscription and member
+   * Business rule:
+   * - subscription.permittedBranchIds, when non-empty, is the hard maximum boundary.
+   * - member.permittedBranchIds, when non-empty, further restricts that member within the subscription's permitted branches.
+   * - An empty member list inherits the subscription's permitted branches.
+   * - An empty subscription list means all organization branches, subject to any member-level restriction.
+   * Effective set is the intersection when both lists are non-empty.
    */
-  validateBranchPermission(subscription, branchId) {
-    if (
-      Array.isArray(subscription.permittedBranchIds) &&
-      subscription.permittedBranchIds.length > 0
-    ) {
-      const isPermitted = subscription.permittedBranchIds.some(
-        (b) => b.toString() === branchId.toString(),
+  validateBranchPermission(subscription, branchId, targetMember = null) {
+    const subBranches = Array.isArray(subscription.permittedBranchIds)
+      ? subscription.permittedBranchIds
+      : [];
+    const memberBranches =
+      targetMember && Array.isArray(targetMember.permittedBranchIds)
+        ? targetMember.permittedBranchIds
+        : [];
+
+    const branchIdStr = branchId.toString();
+
+    // 1. Subscription hard boundary check
+    if (subBranches.length > 0) {
+      const isAllowedBySub = subBranches.some(
+        (b) => b.toString() === branchIdStr,
       );
-      if (!isPermitted) {
+      if (!isAllowedBySub) {
         throw new AppError(
           "Subscription is not valid for redemption at this branch",
           403,
         );
       }
     }
-    // If empty array, permitted at all branches
+
+    // 2. Member restriction check (narrowing)
+    if (memberBranches.length > 0) {
+      const isAllowedByMember = memberBranches.some(
+        (b) => b.toString() === branchIdStr,
+      );
+      if (!isAllowedByMember) {
+        throw new AppError(
+          "Subscription is not valid for redemption at this branch",
+          403,
+        );
+      }
+    }
   }
 
   /**

@@ -40,6 +40,29 @@ const subscriptionConsumptionChallengeSchema = new mongoose.Schema(
         required: true,
       },
     ],
+    serviceLines: [
+      {
+        appointmentServiceId: {
+          type: mongoose.Schema.Types.ObjectId,
+          required: true,
+        },
+        serviceId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Service",
+          required: true,
+        },
+        appliedSubscriptionId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Subscription",
+          required: true,
+        },
+        customerId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Customer",
+          required: true,
+        },
+      },
+    ],
     otpHash: {
       type: String,
       required: true,

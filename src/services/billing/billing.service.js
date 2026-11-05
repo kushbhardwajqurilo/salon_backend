@@ -409,15 +409,15 @@ export class BillingService {
             (!sub.startDate || new Date(sub.startDate) <= now) &&
             (!sub.endDate || new Date(sub.endDate) >= now);
 
-          const branchRestrictions = member && Array.isArray(member.permittedBranchIds) && member.permittedBranchIds.length > 0
-            ? member.permittedBranchIds
-            : sub.permittedBranchIds;
-
+          // Branch eligibility check (effective intersection: sub is hard maximum, member further restricts)
+          const subBranches = Array.isArray(sub.permittedBranchIds) ? sub.permittedBranchIds : [];
+          const memberBranches = member && Array.isArray(member.permittedBranchIds) ? member.permittedBranchIds : [];
           let isPermittedBranch = true;
-          if (Array.isArray(branchRestrictions) && branchRestrictions.length > 0) {
-            isPermittedBranch = branchRestrictions.some(
-              (b) => b.toString() === aptBranchIdStr
-            );
+          if (subBranches.length > 0) {
+            isPermittedBranch = subBranches.some((b) => b.toString() === aptBranchIdStr);
+          }
+          if (isPermittedBranch && memberBranches.length > 0) {
+            isPermittedBranch = memberBranches.some((b) => b.toString() === aptBranchIdStr);
           }
 
           if (isCorrectOrg && isCustomerEnrolled && isAllowedStatus && isWithinDates && isPermittedBranch) {
