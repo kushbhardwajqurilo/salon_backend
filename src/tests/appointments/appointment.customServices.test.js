@@ -17,6 +17,7 @@ import { Invoice } from "../../models/billing/invoice.model.js";
 import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
 import { redis } from "../../utils/redis.js";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 
 jest.spyOn(redis, "get").mockResolvedValue(null);
 jest.spyOn(redis, "setex").mockResolvedValue("OK");
@@ -37,13 +38,7 @@ describe("Appointment Custom Services & Agreed Pricing Suite", () => {
   let serviceHaircut, serviceColor;
 
   beforeAll(async () => {
-    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
-    if (testUri.includes("?")) {
-      const parts = testUri.split("?");
-      testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_custom_services_test") + "?" + parts[1];
-    } else {
-      testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_custom_services_test");
-    }
+    const testUri = getIsolatedTestMongoUri("custom_services_test");
     dbConnection = await mongoose.connect(testUri);
     await Appointment.syncIndexes();
   });

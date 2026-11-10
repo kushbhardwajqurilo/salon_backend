@@ -1,5 +1,6 @@
 /node_modules
 .env
+.env.test
 /backend_branch_prompt.md
 /tmp-mongo-rs
 /data

@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { connectDB } from "../../database/db.js";
 import { Permission } from "../../models/permissions/permission.model.js";
 import { Role } from "../../models/roles/role.model.js";
 import { CANONICAL_PERMISSIONS } from "../../config/permissions.js";
@@ -7,21 +6,16 @@ import { User } from "../../models/users/user.model.js";
 import { syncPermissionsLogic } from "../../scripts/syncPermissions.js";
 import { redis } from "../../utils/redis.js";
 import { jest } from "@jest/globals";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 
 describe("Permissions Synchronization Integration Tests", () => {
   let originalPermissions;
 
   beforeAll(async () => {
-    // Connect to separate integration test database to protect dev database data
-    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
-    if (testUri.includes("?")) {
-      const parts = testUri.split("?");
-      testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_integration_test") + "?" + parts[1];
-    } else {
-      testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_integration_test");
-    }
+    // Connect to separate isolated test database to protect dev database data
+    const testUri = getIsolatedTestMongoUri("permissions_sync_test");
     await mongoose.connect(testUri);
-    
+
     // Save original canonical permissions array content to restore later
     originalPermissions = [...CANONICAL_PERMISSIONS.map(p => ({ ...p }))];
   });
@@ -30,12 +24,12 @@ describe("Permissions Synchronization Integration Tests", () => {
     // Restore original canonical permissions array
     CANONICAL_PERMISSIONS.length = 0;
     originalPermissions.forEach(p => CANONICAL_PERMISSIONS.push(p));
-    
+
     // Cleanup test collections
     await Permission.deleteMany({});
     await Role.deleteMany({});
     await User.deleteMany({});
-    
+
     // Disconnect
     await mongoose.connection.close();
   });
@@ -45,11 +39,11 @@ describe("Permissions Synchronization Integration Tests", () => {
     await Permission.deleteMany({});
     await Role.deleteMany({});
     await User.deleteMany({});
-    
+
     // Restore registry to canonical 88 permissions
     CANONICAL_PERMISSIONS.length = 0;
     originalPermissions.forEach(p => CANONICAL_PERMISSIONS.push(p));
-    
+
     // Reset mock spies
     jest.clearAllMocks();
   });
@@ -74,7 +68,7 @@ describe("Permissions Synchronization Integration Tests", () => {
   it("should create no duplicates and have unchanged count on repeated sync", async () => {
     // First sync
     await syncPermissionsLogic();
-    
+
     // Second sync
     const summary = await syncPermissionsLogic();
     expect(summary.canonicalCount).toBe(88);
@@ -116,7 +110,7 @@ describe("Permissions Synchronization Integration Tests", () => {
 
     const dbPerm = await Permission.findOne({ name: targetPermName });
     expect(dbPerm.description).toBe("Updated description for test");
-    
+
     // Restore
     CANONICAL_PERMISSIONS[0].description = oldDesc;
   });
@@ -182,7 +176,7 @@ describe("Permissions Synchronization Integration Tests", () => {
     // Pre-create a non-owner role (manager) with specific permissions
     await syncPermissionsLogic();
     const allPerms = await Permission.find({});
-    
+
     const managerRole = await Role.create({
       name: "manager",
       description: "Manager Role",
@@ -208,39 +202,39 @@ describe("Permissions Synchronization Integration Tests", () => {
 
   it("should invalidate owner's permissions cache after synchronization", async () => {
     const redisDelSpy = jest.spyOn(redis, "del");
-    
+
     await syncPermissionsLogic();
-    
+
     expect(redisDelSpy).toHaveBeenCalledWith("rbac:role:owner:permissions");
   });
 
   it("should invalidate cache when role permissions are changed via controller", async () => {
     await syncPermissionsLogic();
-    
+
     const ownerRole = await Role.findOne({ name: "owner" });
     const redisDelSpy = jest.spyOn(redis, "del");
-    
+
     // We mock req and res for assignPermissionsToRole
     const req = {
       params: { roleId: ownerRole._id.toString() },
       body: { permissions: ["dashboard.view"] },
       user: { id: "some-user-id" }
     };
-    
+
     const res = {
-      status: function(code) {
+      status: function (code) {
         this.statusCode = code;
         return this;
       },
-      json: function(data) {
+      json: function (data) {
         this.body = data;
         return this;
       }
     };
-    
+
     // Import controller dynamically or directly
     const { assignPermissionsToRole } = await import("../../controllers/rbac/rbac.controller.js");
-    
+
     await new Promise((resolve, reject) => {
       const next = (err) => {
         if (err) reject(err);
@@ -253,13 +247,13 @@ describe("Permissions Synchronization Integration Tests", () => {
       };
       assignPermissionsToRole(req, res, next);
     });
-    
+
     expect(redisDelSpy).toHaveBeenCalledWith(`rbac:role:owner:permissions`);
   });
 
   it("should return resolved permission names in /api/v1/auth/me response", async () => {
     await syncPermissionsLogic();
-    
+
     // Create a specific user linked to a role
     const matchedPerms = await Permission.find({ name: { $in: ["dashboard.view", "customers.view"] } });
     const testRole = await Role.create({
@@ -267,7 +261,7 @@ describe("Permissions Synchronization Integration Tests", () => {
       description: "Custom Stylist",
       permissions: matchedPerms.map(p => p._id)
     });
-    
+
     const testUser = await User.create({
       name: "Test Stylist",
       email: "stylist@example.com",
@@ -280,20 +274,20 @@ describe("Permissions Synchronization Integration Tests", () => {
     const req = {
       user: { id: testUser._id.toString() }
     };
-    
+
     const res = {
-      status: function(code) {
+      status: function (code) {
         this.statusCode = code;
         return this;
       },
-      json: function(data) {
+      json: function (data) {
         this.body = data;
         return this;
       }
     };
 
     const { me } = await import("../../controllers/auth/auth.controller.js");
-    
+
     await new Promise((resolve, reject) => {
       const next = (err) => {
         if (err) reject(err);
@@ -316,7 +310,7 @@ describe("Permissions Synchronization Integration Tests", () => {
 
   it("should return all 88 canonical permission names in Owner's /auth/me response after synchronization", async () => {
     await syncPermissionsLogic();
-    
+
     const ownerRole = await Role.findOne({ name: "owner" });
     const testOwner = await User.create({
       name: "Owner User",
@@ -330,20 +324,20 @@ describe("Permissions Synchronization Integration Tests", () => {
     const req = {
       user: { id: testOwner._id.toString() }
     };
-    
+
     const res = {
-      status: function(code) {
+      status: function (code) {
         this.statusCode = code;
         return this;
       },
-      json: function(data) {
+      json: function (data) {
         this.body = data;
         return this;
       }
     };
 
     const { me } = await import("../../controllers/auth/auth.controller.js");
-    
+
     await new Promise((resolve, reject) => {
       const next = (err) => {
         if (err) reject(err);

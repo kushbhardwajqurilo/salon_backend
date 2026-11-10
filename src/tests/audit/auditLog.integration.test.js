@@ -11,6 +11,7 @@ import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
 import { redis } from "../../utils/redis.js";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 
 jest.spyOn(redis, "get").mockResolvedValue(null);
 jest.spyOn(redis, "setex").mockResolvedValue("OK");
@@ -25,13 +26,7 @@ describe("Audit Logs Module Integration Test Suite", () => {
   let log1, log2, log3, logOrgB;
 
   beforeAll(async () => {
-    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
-    if (testUri.includes("?")) {
-      const parts = testUri.split("?");
-      testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_audit_test") + "?" + parts[1];
-    } else {
-      testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_audit_test");
-    }
+    const testUri = getIsolatedTestMongoUri("audit_test");
     await mongoose.connect(testUri);
   });
 

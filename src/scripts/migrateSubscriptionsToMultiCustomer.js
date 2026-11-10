@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { connectDB } from "../database/db.js";
 import { Subscription } from "../models/subscriptions/subscription.model.js";
 import { logger } from "../utils/logger.js";
 import dotenv from "dotenv";
@@ -89,10 +90,8 @@ export async function migrateSubscriptionsToMultiCustomer(dryRun = false) {
 // If executed directly from command line
 if (process.argv[1]?.endsWith("migrateSubscriptionsToMultiCustomer.js")) {
   const isDryRun = process.argv.includes("--dry-run");
-  const mongoUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp";
 
-  mongoose
-    .connect(mongoUri)
+  connectDB()
     .then(async () => {
       await migrateSubscriptionsToMultiCustomer(isDryRun);
       await mongoose.disconnect();

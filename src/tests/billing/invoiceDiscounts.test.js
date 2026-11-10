@@ -7,6 +7,7 @@ import app from "../../../app.mjs";
 import { env } from "../../../src/config/env.js";
 import { redis } from "../../../src/utils/redis.js";
 import "../../database/db.js";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 
 try {
   dns.setServers(["8.8.8.8", "1.1.1.1"]);
@@ -40,13 +41,7 @@ describe("Billing Invoice Discounts Comprehensive Integration Test Suite", () =>
 
   beforeAll(async () => {
     process.env.NODE_ENV = "test";
-    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
-    if (testUri.includes("?")) {
-      const parts = testUri.split("?");
-      testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_invoice_discounts_test") + "?" + parts[1];
-    } else {
-      testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_invoice_discounts_test");
-    }
+    const testUri = getIsolatedTestMongoUri("invoice_discounts_test");
     await mongoose.connect(testUri);
   });
 

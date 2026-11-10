@@ -14,6 +14,15 @@ mongoose.plugin(auditPlugin);
 
 export const connectDB = async () => {
   try {
+    if (!env.MONGO_URI || !env.MONGO_URI.startsWith("mongodb+srv://")) {
+      throw new Error("Atlas-only policy: MONGO_URI must be a valid Atlas SRV connection string (mongodb+srv://... targeting *.mongodb.net).");
+    }
+    const hostPart = env.MONGO_URI.replace("mongodb+srv://", "").split("/")[0].split("?")[0];
+    const hostWithoutAuth = hostPart.includes("@") ? hostPart.split("@")[1] : hostPart;
+    const cleanHost = hostWithoutAuth.split(":")[0].toLowerCase();
+    if (!cleanHost.endsWith(".mongodb.net")) {
+      throw new Error(`Atlas-only policy: Host '${cleanHost}' is not a valid MongoDB Atlas domain (*.mongodb.net).`);
+    }
     const conn = await mongoose.connect(env.MONGO_URI);
     await mongoose.connection.syncIndexes();
     logger.info(`💾 MongoDB Connected: ${conn.connection.host}`);

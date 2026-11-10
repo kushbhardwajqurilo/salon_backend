@@ -17,6 +17,7 @@ import { AuditLog } from "../../models/audit/auditLog.model.js";
 import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
 import { redis } from "../../utils/redis.js";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 
 jest.spyOn(redis, "get").mockResolvedValue(null);
 jest.spyOn(redis, "setex").mockResolvedValue("OK");
@@ -33,7 +34,7 @@ describe("Subscription Listing - Customer, Payer, and Beneficiary Filters Regres
 
   beforeAll(async () => {
     process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK = "true";
-    const testUri = process.env.TEST_MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_sub_listing_test";
+    const testUri = getIsolatedTestMongoUri("sub_listing_test");
     await mongoose.connect(testUri);
   });
 

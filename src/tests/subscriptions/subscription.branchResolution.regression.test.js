@@ -23,6 +23,7 @@ import { SubscriptionUsage } from "../../../src/models/subscriptions/subscriptio
 import { Invoice } from "../../../src/models/billing/invoice.model.js";
 import { Payment } from "../../../src/models/billing/payment.model.js";
 import { AuditLog } from "../../../src/models/audit/auditLog.model.js";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 import jwt from "jsonwebtoken";
 import { env } from "../../../src/config/env.js";
 import { redis } from "../../../src/utils/redis.js";
@@ -42,13 +43,7 @@ describe("Subscription Sale Branch Resolution Regression Tests", () => {
   let categoryOrg;
 
   beforeAll(async () => {
-    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
-    if (testUri.includes("?")) {
-      const parts = testUri.split("?");
-      testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_sub_branch_reg_test") + "?" + parts[1];
-    } else {
-      testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_sub_branch_reg_test");
-    }
+    const testUri = getIsolatedTestMongoUri("sub_branch_reg_test");
     await mongoose.connect(testUri);
 
     // 1. Create Organization

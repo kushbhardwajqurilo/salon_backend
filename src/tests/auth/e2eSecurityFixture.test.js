@@ -12,6 +12,7 @@ import { Session } from "../../models/auth/session.model.js";
 import { Permission } from "../../models/permissions/permission.model.js";
 import { syncPermissionsLogic } from "../../scripts/syncPermissions.js";
 import { UserService } from "../../services/users/user.service.js";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 
 describe("E2E Security Fixture Verification (Phase 5.4.2)", () => {
   jest.setTimeout(45000);
@@ -26,13 +27,7 @@ describe("E2E Security Fixture Verification (Phase 5.4.2)", () => {
   let ownerToken, managerToken, restrictedToken;
 
   beforeAll(async () => {
-    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
-    if (testUri.includes("?")) {
-      const parts = testUri.split("?");
-      testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_integration_test") + "?" + parts[1];
-    } else {
-      testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_integration_test");
-    }
+    const testUri = getIsolatedTestMongoUri("integration_test");
     // Connect to integration test DB
     dbConnection = await mongoose.connect(testUri);
 

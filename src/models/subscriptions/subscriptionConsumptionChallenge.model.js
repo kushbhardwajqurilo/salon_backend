@@ -18,7 +18,6 @@ const subscriptionConsumptionChallengeSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Appointment",
       required: true,
-      index: true,
     },
     subscriptionIds: [
       {
@@ -66,6 +65,22 @@ const subscriptionConsumptionChallengeSchema = new mongoose.Schema(
     otpHash: {
       type: String,
       required: true,
+    },
+    dispatchJobId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    dispatchSeq: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+    dispatchStatus: {
+      type: String,
+      enum: ["pending", "queued", "failed"],
+      default: "pending",
+      index: true,
     },
     attempts: {
       type: Number,
@@ -135,6 +150,24 @@ subscriptionConsumptionChallengeSchema.index({
   appointmentId: 1,
   status: 1,
 });
+
+// Partial unique index guaranteeing at most ONE active consumption challenge per appointment
+// Strictly enforces database-level uniqueness across clustered backend instances for any non-terminal state:
+// - status in ('pending', 'in_redemption')
+// - redemptionState in ('in_redemption', 'decremented', 'restoring')
+subscriptionConsumptionChallengeSchema.index(
+  { appointmentId: 1 },
+  {
+    name: "unique_active_appointment_challenge",
+    unique: true,
+    partialFilterExpression: {
+      $or: [
+        { status: { $in: ["pending", "in_redemption"] } },
+        { redemptionState: { $in: ["in_redemption", "decremented", "restoring"] } },
+      ],
+    },
+  }
+);
 
 export const SubscriptionConsumptionChallenge = mongoose.model(
   "SubscriptionConsumptionChallenge",

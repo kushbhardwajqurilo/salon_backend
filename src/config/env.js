@@ -7,7 +7,27 @@ dotenv.config();
 const envSchema = z.object({
   PORT: z.coerce.number().default(5000),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  MONGO_URI: z.string().min(1, "MONGO_URI is required"),
+  MONGO_URI: z
+    .string()
+    .min(1, "MONGO_URI is required")
+    .refine(
+      (uri) => {
+        try {
+          const trimmed = uri.trim();
+          if (!trimmed.startsWith("mongodb+srv://")) return false;
+          const afterScheme = trimmed.replace("mongodb+srv://", "");
+          const hostPart = afterScheme.split("/")[0].split("?")[0];
+          const hostWithoutAuth = hostPart.includes("@") ? hostPart.split("@")[1] : hostPart;
+          const hostOnly = hostWithoutAuth.split(":")[0].toLowerCase();
+          return hostOnly.endsWith(".mongodb.net");
+        } catch (_) {
+          return false;
+        }
+      },
+      {
+        message: "MONGO_URI must be a valid MongoDB Atlas SRV connection string targeting *.mongodb.net (e.g. mongodb+srv://<user>:<password>@cluster.xxxx.mongodb.net/<dbname>). Localhost and non-Atlas hosts are strictly forbidden.",
+      }
+    ),
   REDIS_HOST: z.string().default("127.0.0.1"),
   REDIS_PORT: z.coerce.number().default(6379),
   REDIS_URL: z.string().optional(),

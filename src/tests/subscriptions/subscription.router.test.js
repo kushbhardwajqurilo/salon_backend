@@ -23,6 +23,7 @@ import { Appointment } from "../../../src/models/appointments/appointment.model.
 import { AuditLog } from "../../../src/models/audit/auditLog.model.js";
 import jwt from "jsonwebtoken";
 import { env } from "../../../src/config/env.js";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 import { redis } from "../../../src/utils/redis.js";
 
 jest.spyOn(redis, "get").mockResolvedValue(null);
@@ -40,13 +41,7 @@ describe("Subscription Module Integration Tests", () => {
   let categoryA;
 
   beforeAll(async () => {
-    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
-    if (testUri.includes("?")) {
-      const parts = testUri.split("?");
-      testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_sub_test") + "?" + parts[1];
-    } else {
-      testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_sub_test");
-    }
+    const testUri = getIsolatedTestMongoUri("sub_test");
     await mongoose.connect(testUri);
   });
 

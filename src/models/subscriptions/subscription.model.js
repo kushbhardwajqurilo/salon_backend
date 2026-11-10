@@ -109,6 +109,7 @@ const subscriptionSchema = new mongoose.Schema(
     // Canonical member allocations - one per enrolled customer
     members: {
       type: [memberSchema],
+      default: undefined,
       required: true,
       validate: [
         (val) => Array.isArray(val) && val.length > 0,

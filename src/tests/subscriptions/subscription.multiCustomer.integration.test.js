@@ -20,6 +20,7 @@ import { AuditLog } from "../../models/audit/auditLog.model.js";
 import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
 import { redis } from "../../utils/redis.js";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 
 jest.spyOn(redis, "get").mockResolvedValue(null);
 jest.spyOn(redis, "setex").mockResolvedValue("OK");
@@ -36,7 +37,7 @@ describe("Multi-Customer Subscriptions, Member Isolation & Exact Idempotency Tes
 
   beforeAll(async () => {
     process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK = "true";
-    const testUri = process.env.TEST_MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_multi_sub_test";
+    const testUri = getIsolatedTestMongoUri("multi_sub_test");
     await mongoose.connect(testUri);
   });
 

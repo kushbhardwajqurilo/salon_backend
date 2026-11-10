@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import dns from "dns";
+import { connectDB } from "../database/db.js";
 import { Service } from "../models/services/service.model.js";
 import { ServiceCategory } from "../models/services/serviceCategory.model.js";
 
@@ -72,14 +73,9 @@ export const classifyServiceGender = (service) => {
 };
 
 export const migrateServicesGender = async () => {
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
-  if (!mongoUri) {
-    throw new Error("MONGO_URI or MONGODB_URI must be set in environment variables");
-  }
-
   const isAlreadyConnected = mongoose.connection.readyState === 1;
   if (!isAlreadyConnected) {
-    await mongoose.connect(mongoUri);
+    await connectDB();
   }
 
   // Fetch all services with category populated

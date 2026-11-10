@@ -1,12 +1,17 @@
 import dns from "dns";
 import mongoose from "mongoose";
 
-try {
-  dns.setServers(["8.8.8.8", "1.1.1.1"]);
-} catch (_) { }
+/**
+ * DEPRECATED AND NEUTRALIZED HISTORICAL SCRIPT
+ * This one-time data transfer script was used during the initial migration to Atlas.
+ * Under the Atlas-only architecture policy, local MongoDB is not used and plaintext credentials
+ * are strictly forbidden. This script is disabled to prevent accidental execution.
+ */
+console.error("DISABLED: src/scripts/transferToAtlas.js is an obsolete migration script and cannot be executed.");
+process.exit(1);
 
-const SOURCE_URI = "mongodb://127.0.0.1:27017/saloon_erp_test";
-const TARGET_URI = "mongodb+srv://kushbhardwaj8800:xxxxxxxxx@kushcluster.hinejtf.mongodb.net/saloon_erp_test";
+const SOURCE_URI = "mongodb+srv://[REDACTED_SOURCE]/saloon_erp";
+const TARGET_URI = "mongodb+srv://[REDACTED_TARGET]/saloon_erp";
 
 async function transferData() {
   console.log("🚀 Starting data migration from Local to Atlas...");

@@ -517,7 +517,15 @@ export class AppointmentService {
 
     // Beneficiary check: customer must be an active member or the legacy customerId
     let member = null;
-    if (Array.isArray(subscription.members) && subscription.members.length > 0) {
+    const rawDoc = subscription._doc || subscription;
+    const hasMembersField = "members" in rawDoc && rawDoc.members !== undefined;
+    const isExplicitEmptyMembers = hasMembersField && Array.isArray(rawDoc.members) && rawDoc.members.length === 0;
+    const hasPopulatedMembers = hasMembersField && Array.isArray(rawDoc.members) && rawDoc.members.length > 0;
+
+    if (isExplicitEmptyMembers) {
+      // Explicit empty members array on a multi-customer subscription must fail closed
+      throw new AppError("Applied subscription does not belong to this customer", 400);
+    } else if (hasPopulatedMembers) {
       member = subscription.members.find(
         (m) => m.customerId.toString() === customerId.toString()
       );
@@ -531,6 +539,7 @@ export class AppointmentService {
         );
       }
     } else {
+      // Genuine legacy single-customer subscription (members field is undefined in storage)
       if (subscription.customerId.toString() !== customerId.toString()) {
         throw new AppError("Applied subscription does not belong to this customer", 400);
       }
@@ -563,25 +572,19 @@ export class AppointmentService {
       }
     }
 
-    // Service entitlement check against member's allocation or legacy entitlements
+    // Service entitlement check:
+    // When a member is present, validate exclusively against that member's allocated entitlements.
+    // Never fall back to root subscription.entitlements for a member-based subscription.
     let entitlement = null;
-    if (member && Array.isArray(member.entitlements)) {
-      entitlement = member.entitlements.find(
+    if (member) {
+      entitlement = (member.entitlements || []).find(
         (e) => e.serviceId.toString() === serviceId.toString()
       );
-    }
-    // If member entitlement was not found or has remainingQuantity 0 while legacy array has remainingQuantity 0
-    if (!entitlement && Array.isArray(subscription.entitlements)) {
-      entitlement = subscription.entitlements.find(
+    } else {
+      // Legacy single-customer subscription without members array uses root entitlements
+      entitlement = (subscription.entitlements || []).find(
         (e) => e.serviceId.toString() === serviceId.toString()
       );
-    }
-    // Also if legacy array exists and has remainingQuantity === 0 while member has > 0 (e.g. direct updateOne on legacy root in older tests)
-    const legacyEnt = Array.isArray(subscription.entitlements)
-      ? subscription.entitlements.find((e) => e.serviceId.toString() === serviceId.toString())
-      : null;
-    if (legacyEnt && legacyEnt.remainingQuantity === 0 && entitlement) {
-      entitlement = legacyEnt;
     }
 
     if (!entitlement) {
@@ -618,22 +621,65 @@ export class AppointmentService {
     session = null
   ) {
     const now = new Date();
+    const customerObjId = new mongoose.Types.ObjectId(customerId);
+    const serviceObjId = new mongoose.Types.ObjectId(serviceId);
+    const branchObjId = branchId ? new mongoose.Types.ObjectId(branchId) : null;
+
     const candidateQuery = {
       organizationId,
-      customerId,
       status: { $in: ["active", "pending_payment"] },
       isDeleted: false,
       endDate: { $gte: now },
-      entitlements: {
-        $elemMatch: {
-          serviceId: serviceId,
-          remainingQuantity: { $gte: 1 },
-        },
-      },
       $or: [
-        { permittedBranchIds: { $exists: false } },
-        { permittedBranchIds: { $size: 0 } },
-        { permittedBranchIds: branchId },
+        // Case A: Root/Payer subscription (genuine legacy single-customer where members field is undefined)
+        {
+          customerId: customerObjId,
+          members: { $exists: false },
+          entitlements: {
+            $elemMatch: {
+              serviceId: serviceObjId,
+              remainingQuantity: { $gte: 1 },
+            },
+          },
+          $and: [
+            {
+              $or: [
+                { permittedBranchIds: { $exists: false } },
+                { permittedBranchIds: { $size: 0 } },
+                { permittedBranchIds: branchObjId },
+              ],
+            },
+          ],
+        },
+        // Case B: Multi-member beneficiary entitlement
+        {
+          members: {
+            $elemMatch: {
+              customerId: customerObjId,
+              status: { $in: ["active", "pending_payment"] },
+              entitlements: {
+                $elemMatch: {
+                  serviceId: serviceObjId,
+                  remainingQuantity: { $gte: 1 },
+                },
+              },
+              $or: [
+                { permittedBranchIds: { $exists: false } },
+                { permittedBranchIds: { $size: 0 } },
+                { permittedBranchIds: branchObjId },
+              ],
+            },
+          },
+          $and: [
+            {
+              $or: [
+                { permittedBranchIds: { $exists: false } },
+                { permittedBranchIds: { $size: 0 } },
+                { permittedBranchIds: branchObjId },
+              ],
+            },
+          ],
+        },
       ],
     };
 
@@ -795,11 +841,11 @@ export class AppointmentService {
 
     const dbServices = extractedIds.length > 0
       ? await Service.find({
-          _id: { $in: extractedIds },
-          organizationId,
-          isDeleted: false,
-          status: "active",
-        })
+        _id: { $in: extractedIds },
+        organizationId,
+        isDeleted: false,
+        status: "active",
+      })
       : [];
 
     if (dbServices.length !== extractedIds.length) {
@@ -1143,11 +1189,11 @@ export class AppointmentService {
 
       const dbServices = extractedIds.length > 0
         ? await Service.find({
-            _id: { $in: extractedIds },
-            organizationId,
-            isDeleted: false,
-            status: "active",
-          })
+          _id: { $in: extractedIds },
+          organizationId,
+          isDeleted: false,
+          status: "active",
+        })
         : [];
 
       if (dbServices.length !== extractedIds.length) {
@@ -1198,8 +1244,8 @@ export class AppointmentService {
           // If existing custom line matched by _id, preserve its agreed price if item.price not specified
           const existingLine = item._id
             ? existingServices.find(
-                (es) => es._id && es._id.toString() === item._id.toString(),
-              )
+              (es) => es._id && es._id.toString() === item._id.toString(),
+            )
             : null;
 
           const resolvedPrice =
@@ -1822,19 +1868,66 @@ export class AppointmentService {
       );
     }
 
-    // Check existing challenge and enforce 60s resend cooldown (scoped strictly to appointment)
-    const existingChallenge = await SubscriptionConsumptionChallenge.findOne({
-      appointmentId: appointment._id,
-      status: "pending",
-    });
-
     const now = new Date();
-    if (existingChallenge && existingChallenge.resendAvailableAt > now) {
-      const waitSeconds = Math.ceil((existingChallenge.resendAvailableAt - now) / 1000);
-      throw new AppError(
-        `Too many OTP requests. Please wait ${waitSeconds} seconds before requesting a new OTP.`,
-        429
-      );
+
+    // 1. Conditionally and atomically transition any expired, unused pending challenge to 'expired'
+    // This frees the partial unique index slot for new challenge creation without needing a replacement doc
+    // if creating anew, or allows safe in-place reuse.
+    // Crucial: Only challenges with status: "pending" AND redemptionState: "pending" where expiresAt <= now are expired.
+    // If a challenge has entered redemption (in_redemption, decremented, restoring), it MUST NEVER be expired here!
+    await SubscriptionConsumptionChallenge.updateMany(
+      {
+        appointmentId: appointment._id,
+        status: "pending",
+        redemptionState: "pending",
+        expiresAt: { $lte: now },
+      },
+      {
+        $set: { status: "expired" },
+      }
+    );
+
+    // 2. Query any active or unexpired challenge for this appointment
+    // Non-terminal states:
+    // - status: "pending" (unexpired) or "in_redemption"
+    // - redemptionState: non-terminal redemption states ("in_redemption", "decremented", "restoring")
+    // Also include any challenge for this appointment that has not expired (expiresAt > now)
+    const activeOrPendingChallenge = await SubscriptionConsumptionChallenge.findOne({
+      appointmentId: appointment._id,
+      $or: [
+        { status: { $in: ["pending", "in_redemption"] } },
+        { redemptionState: { $in: ["in_redemption", "decremented", "restoring"] } },
+        { expiresAt: { $gt: now } },
+      ],
+    }).sort({ createdAt: -1 });
+
+    if (activeOrPendingChallenge) {
+      if (
+        activeOrPendingChallenge.status === "in_redemption" ||
+        ["in_redemption", "decremented", "restoring"].includes(activeOrPendingChallenge.redemptionState)
+      ) {
+        throw new AppError(
+          "A subscription redemption is currently in progress or awaiting reconciliation for this appointment. Please wait.",
+          409
+        );
+      }
+
+      // Check attempt exhaustion limit on existing active challenge
+      if (activeOrPendingChallenge.status === "exhausted" || (activeOrPendingChallenge.attempts || 0) >= 5) {
+        throw new AppError(
+          "Too many incorrect OTP attempts. This challenge is exhausted. Please wait for it to expire before requesting a new OTP.",
+          429
+        );
+      }
+
+      // It is an unexpired pending challenge: enforce 60s cooldown
+      if (activeOrPendingChallenge.resendAvailableAt > now) {
+        const waitSeconds = Math.ceil((activeOrPendingChallenge.resendAvailableAt - now) / 1000);
+        throw new AppError(
+          `Too many OTP requests. Please wait ${waitSeconds} seconds before requesting a new OTP.`,
+          429
+        );
+      }
     }
 
     // Generate 6-digit OTP and SHA-256 hash
@@ -1845,42 +1938,189 @@ export class AppointmentService {
 
     const serviceIds = subscriptionLines.map((l) => l.serviceId);
 
-    // Upsert or create appointment-scoped challenge
-    if (existingChallenge) {
-      existingChallenge.otpHash = otpHash;
-      existingChallenge.attempts = 0;
-      existingChallenge.subscriptionIds = uniqueSubscriptionIds;
-      existingChallenge.serviceIds = serviceIds;
-      existingChallenge.serviceLines = serviceLineBindings;
-      existingChallenge.expiresAt = expiresAt;
-      existingChallenge.resendAvailableAt = resendAvailableAt;
-      existingChallenge.status = "pending";
-      await existingChallenge.save();
-    } else {
-      await SubscriptionConsumptionChallenge.create({
-        organizationId,
-        branchId,
-        appointmentId: appointment._id,
-        subscriptionIds: uniqueSubscriptionIds,
-        customerId: customer._id,
-        serviceIds,
-        serviceLines: serviceLineBindings,
-        otpHash,
-        attempts: 0,
-        resendAvailableAt,
-        expiresAt,
-        status: "pending",
-      });
-    }
+    // Atomic Resend vs Create:
+    // If an unexpired pending challenge exists whose 60s cooldown has elapsed, atomically rotate its OTP
+    // using findOneAndUpdate with CAS filter on status, redemptionState, resendAvailableAt, and attempts (< 5).
+    // Preserves the existing verification attempt limit across resends to prevent unlimited brute-force attempts.
+    if (activeOrPendingChallenge && activeOrPendingChallenge.status === "pending") {
+      const nextSeq = (activeOrPendingChallenge.dispatchSeq || 1) + 1;
+      const dispatchJobId = `sub_otp_${activeOrPendingChallenge._id}_${nextSeq}`;
 
-    // Dispatch SMS via BullMQ queue (never logs or returns rawOtp)
-    try {
-      await smsQueue.add("sendOtpSMS", {
-        phone: customer.phone,
-        otp: rawOtp,
+      const updatedChallenge = await SubscriptionConsumptionChallenge.findOneAndUpdate(
+        {
+          _id: activeOrPendingChallenge._id,
+          status: "pending",
+          redemptionState: "pending",
+          attempts: { $lt: 5 },
+          resendAvailableAt: { $lte: now },
+        },
+        {
+          $set: {
+            otpHash,
+            subscriptionIds: uniqueSubscriptionIds,
+            serviceIds,
+            serviceLines: serviceLineBindings,
+            expiresAt,
+            resendAvailableAt,
+            status: "pending",
+            redemptionState: "pending",
+            dispatchJobId,
+            dispatchSeq: nextSeq,
+            dispatchStatus: "pending",
+          },
+        },
+        { returnDocument: "after" }
+      );
+
+      if (!updatedChallenge) {
+        // Another concurrent request either already rotated the OTP or advanced the challenge
+        throw new AppError(
+          "An OTP request was recently processed or redemption is in progress. Please wait before retrying.",
+          409
+        );
+      }
+
+      // Dispatch SMS via BullMQ queue with idempotent jobId.
+      // In the event of an ambiguous queue failure (e.g., Redis client-side timeout after Redis accepted the job),
+      // we NEVER rollback the otpHash or delete the challenge! The OTP hash in MongoDB remains authoritative and valid.
+      // If Redis accepted the job, the user receives an SMS with an OTP that will successfully verify.
+      // If Redis dropped the job, dispatchStatus is marked "failed" so the user/client can safely retry.
+      try {
+        await smsQueue.add(
+          "sendOtpSMS",
+          {
+            phone: customer.phone,
+            otp: rawOtp,
+            challengeId: activeOrPendingChallenge._id.toString(),
+            appointmentId: appointment._id.toString(),
+            dispatchSeq: nextSeq,
+          },
+          {
+            jobId: dispatchJobId,
+          }
+        );
+
+        await SubscriptionConsumptionChallenge.updateOne(
+          { _id: activeOrPendingChallenge._id, dispatchJobId },
+          { $set: { dispatchStatus: "queued" } }
+        ).catch(() => {});
+      } catch (queueErr) {
+        logger.error(`Failed or ambiguous enqueue of consumption OTP SMS on resend [${dispatchJobId}]: ${queueErr.message}`);
+
+        // Mark dispatchStatus: "failed" on the challenge record without invalidating the active otpHash
+        await SubscriptionConsumptionChallenge.updateOne(
+          { _id: activeOrPendingChallenge._id, dispatchJobId },
+          { $set: { dispatchStatus: "failed" } }
+        ).catch(() => {});
+
+        throw new AppError(
+          "Failed to dispatch OTP SMS. Please try again in a few moments.",
+          500
+        );
+      }
+    } else {
+      // Atomic concurrency guard: double-check no challenge transitioned to in_redemption/restoring in between
+      const conflictCheck = await SubscriptionConsumptionChallenge.findOne({
+        appointmentId: appointment._id,
+        $or: [
+          { status: "in_redemption" },
+          { redemptionState: { $in: ["in_redemption", "decremented", "restoring"] } },
+        ],
       });
-    } catch (queueErr) {
-      logger.warn(`Failed to enqueue consumption OTP SMS: ${queueErr.message}`);
+      if (conflictCheck) {
+        throw new AppError(
+          "A subscription redemption is currently in progress or awaiting reconciliation for this appointment. Please wait.",
+          409
+        );
+      }
+
+      let createdChallenge;
+      const initialSeq = 1;
+      const challengeId = new mongoose.Types.ObjectId();
+      const dispatchJobId = `sub_otp_${challengeId}_${initialSeq}`;
+
+      try {
+        createdChallenge = await SubscriptionConsumptionChallenge.create({
+          _id: challengeId,
+          organizationId,
+          branchId,
+          appointmentId: appointment._id,
+          subscriptionIds: uniqueSubscriptionIds,
+          customerId: customer._id,
+          serviceIds,
+          serviceLines: serviceLineBindings,
+          otpHash,
+          attempts: 0,
+          resendAvailableAt,
+          expiresAt,
+          status: "pending",
+          redemptionState: "pending",
+          dispatchJobId,
+          dispatchSeq: initialSeq,
+          dispatchStatus: "pending",
+        });
+      } catch (createErr) {
+        // If concurrent creation or unique index collision
+        if (createErr.code === 11000) {
+          throw new AppError(
+            "A subscription redemption is currently in progress or awaiting reconciliation for this appointment. Please wait.",
+            409
+          );
+        }
+        throw createErr;
+      }
+
+      // Dispatch SMS via BullMQ queue with idempotent jobId.
+      // We NEVER delete createdChallenge on ambiguous queue error!
+      // If Redis actually accepted the job before timeout, the SMS will arrive and the OTP in createdChallenge IS VALID.
+      // If queue dispatch fails, we mark dispatchStatus: "failed" and reset resendAvailableAt to now so the client can
+      // retry immediately rather than being locked out for 60 seconds.
+      try {
+        await smsQueue.add(
+          "sendOtpSMS",
+          {
+            phone: customer.phone,
+            otp: rawOtp,
+            challengeId: createdChallenge._id.toString(),
+            appointmentId: appointment._id.toString(),
+            dispatchSeq: initialSeq,
+          },
+          {
+            jobId: dispatchJobId,
+          }
+        );
+
+        await SubscriptionConsumptionChallenge.updateOne(
+          { _id: createdChallenge._id, dispatchJobId },
+          { $set: { dispatchStatus: "queued" } }
+        ).catch(() => {});
+      } catch (queueErr) {
+        logger.error(`Failed or ambiguous enqueue of consumption OTP SMS on initial creation [${dispatchJobId}]: ${queueErr.message}`);
+
+        // Update challenge to mark dispatch failure and reset resendAvailableAt to allow immediate client retry,
+        // without destroying the challenge document or its valid otpHash!
+        await SubscriptionConsumptionChallenge.updateOne(
+          {
+            _id: createdChallenge._id,
+            status: "pending",
+            redemptionState: "pending",
+            dispatchJobId,
+          },
+          {
+            $set: {
+              dispatchStatus: "failed",
+              resendAvailableAt: new Date(),
+            },
+          }
+        ).catch((updateErr) => {
+          logger.error(`Failed to update challenge dispatchStatus after queue failure: ${updateErr.message}`);
+        });
+
+        throw new AppError(
+          "Failed to dispatch OTP SMS. Please try again in a few moments.",
+          500
+        );
+      }
     }
 
     logger.info(`[SECURITY] CONSUMPTION_OTP_SENT for appointment ${appointment._id}`);
@@ -1934,17 +2174,21 @@ export class AppointmentService {
       );
     }
 
-    // Load active challenge bound specifically to this appointment
+    // Load active or most recent challenge bound specifically to this appointment
     const challenge = await SubscriptionConsumptionChallenge.findOne({
       appointmentId: appointment._id,
       organizationId,
-    });
+    }).sort({ createdAt: -1 });
 
     if (!challenge) {
       throw new AppError(
         "No OTP challenge found. Please request an OTP first.",
         400
       );
+    }
+
+    if (challenge.status === "exhausted" || challenge.attempts >= 5) {
+      throw new AppError("Too many incorrect OTP attempts. Please request a new OTP.", 429);
     }
 
     // 1. Mandatory customer verification: challenge customer must exist and match appointment customer
@@ -2070,11 +2314,14 @@ export class AppointmentService {
     }
 
     // Atomically claim the challenge by setting status: 'in_redemption'
-    // This provides a strict concurrency guard in standalone mode where multi-document transactions cannot serialize
+    // Requires status: 'pending', redemptionState: 'pending', and unexpired (expiresAt > now)
+    // This provides a strict concurrency guard ensuring neither concurrent completion nor expiry transition can interleave
     const lockedChallenge = await SubscriptionConsumptionChallenge.findOneAndUpdate(
       {
         _id: challenge._id,
         status: "pending",
+        redemptionState: "pending",
+        expiresAt: { $gt: now },
       },
       {
         $set: { status: "in_redemption" },
@@ -2083,7 +2330,7 @@ export class AppointmentService {
     );
 
     if (!lockedChallenge) {
-      throw new AppError("Another completion request is currently being processed for this appointment. Please retry.", 409);
+      throw new AppError("Another completion request is currently being processed or this challenge has expired. Please retry.", 409);
     }
 
     // OTP matches! Execute atomic transaction with mandatory ACID guarantee
@@ -2429,7 +2676,7 @@ export class AppointmentService {
         appointment: finalAppointment,
         usages: createdUsageRecords,
       };
-    }, { requireTransaction: false });
+    }, { requireTransaction: true });
 
     // Enqueue service completion notification strictly AFTER transaction commit
     try {
@@ -2571,11 +2818,11 @@ export class AppointmentService {
     const uniqueIds = [...new Set(registeredInputs.map((item) => item.serviceId))];
     const dbServices = uniqueIds.length > 0
       ? await Service.find({
-          _id: { $in: uniqueIds },
-          organizationId,
-          isDeleted: false,
-          status: "active",
-        })
+        _id: { $in: uniqueIds },
+        organizationId,
+        isDeleted: false,
+        status: "active",
+      })
       : [];
 
     if (dbServices.length !== uniqueIds.length) {
@@ -2593,8 +2840,8 @@ export class AppointmentService {
       if (item.serviceType === "custom") {
         const existingLine = item._id
           ? existingServices.find(
-              (es) => es._id && es._id.toString() === item._id.toString(),
-            )
+            (es) => es._id && es._id.toString() === item._id.toString(),
+          )
           : null;
 
         const resolvedPrice =

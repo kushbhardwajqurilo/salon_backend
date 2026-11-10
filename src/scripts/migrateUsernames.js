@@ -1,17 +1,16 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import { connectDB } from "../database/db.js";
 import { User } from "../models/users/user.model.js";
 import { normalizeUsername } from "../utils/userIdentity.js";
 
 dotenv.config();
 
 const ensureUsername = async () => {
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
-  if (!mongoUri) {
-    throw new Error("MONGO_URI or MONGODB_URI must be set");
+  const isAlreadyConnected = mongoose.connection.readyState === 1;
+  if (!isAlreadyConnected) {
+    await connectDB();
   }
-
-  await mongoose.connect(mongoUri);
 
   const users = await User.find({
     $or: [{ username: { $in: [null, "", undefined] } }, { username: { $exists: false } }],

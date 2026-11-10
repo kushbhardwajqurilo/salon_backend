@@ -14,6 +14,7 @@ import { AuditLog } from "../../../src/models/audit/auditLog.model.js";
 import jwt from "jsonwebtoken";
 import { env } from "../../../src/config/env.js";
 import { redis } from "../../../src/utils/redis.js";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 
 jest.spyOn(redis, "get").mockResolvedValue(null);
 jest.spyOn(redis, "setex").mockResolvedValue("OK");
@@ -27,13 +28,7 @@ describe("SubscriptionPlan Module Integration Tests", () => {
   let serviceA1, serviceA2, categoryA;
 
   beforeAll(async () => {
-    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
-    if (testUri.includes("?")) {
-      const parts = testUri.split("?");
-      testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_plan_test") + "?" + parts[1];
-    } else {
-      testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_plan_test");
-    }
+    const testUri = getIsolatedTestMongoUri("plan_test");
     await mongoose.connect(testUri);
   });
 

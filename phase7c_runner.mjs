@@ -10,8 +10,21 @@ import { User } from './src/models/users/user.model.js';
 import { Role } from './src/models/roles/role.model.js';
 import { Permission } from './src/models/permissions/permission.model.js';
 import { AuditLog } from './src/models/audit/auditLog.model.js';
+import { getIsolatedTestMongoUri, validateTestDatabaseUri } from './src/tests/testSetup.js';
 
-const MONGODB_URI = 'mongodb://127.0.0.1:27018/saloon_erp_test?replicaSet=rs0&retryWrites=false';
+/**
+ * HISTORICAL VERIFICATION RUNNER - DISABLED BY ATLAS-ONLY ARCHITECTURE POLICY
+ * This standalone script was used for historical Phase 7C leave feature verification.
+ * Under the Atlas-only mandate, standalone runners must not execute without an explicitly validated Atlas TEST_MONGO_URI.
+ */
+if (!process.env.TEST_MONGO_URI) {
+  console.warn("DISABLED: phase7c_runner.mjs requires explicit TEST_MONGO_URI in .env.test. Execution halted.");
+  process.exit(0);
+}
+
+// Derive strictly validated and isolated test database URI to prevent wiping application/dev databases
+const MONGODB_URI = getIsolatedTestMongoUri('phase7c_runner_test');
+validateTestDatabaseUri(MONGODB_URI);
 
 const leaveService = new LeaveService();
 const leaveRepo = new LeaveRepository();

@@ -22,6 +22,7 @@ import { AuditLog } from "../../../src/models/audit/auditLog.model.js";
 import jwt from "jsonwebtoken";
 import { env } from "../../../src/config/env.js";
 import { redis } from "../../../src/utils/redis.js";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 
 jest.spyOn(redis, "get").mockResolvedValue(null);
 jest.spyOn(redis, "setex").mockResolvedValue("OK");
@@ -45,13 +46,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
 
   beforeAll(async () => {
     process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK = "true";
-    let testUri = process.env.TEST_MONGO_URI || process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_sub_billing_test";
-    if (!process.env.TEST_MONGO_URI && testUri.includes("?")) {
-      const parts = testUri.split("?");
-      testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_sub_billing_test") + "?" + parts[1];
-    } else if (!process.env.TEST_MONGO_URI) {
-      testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_sub_billing_test");
-    }
+    const testUri = getIsolatedTestMongoUri("sub_billing_test");
     await mongoose.connect(testUri);
   });
 

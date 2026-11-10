@@ -17,6 +17,7 @@ import { subscriptionService } from "../../services/subscriptions/subscription.s
 import { AppointmentService } from "../../services/appointments/appointment.service.js";
 import { isTransactionSupported } from "../../utils/transaction.js";
 import { redis } from "../../utils/redis.js";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 
 const appointmentService = new AppointmentService();
 
@@ -35,7 +36,7 @@ describe("Subscription Recovery Gaps — Failure Injection & Durable Crash Recov
 
   beforeAll(async () => {
     process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK = "true";
-    const testUri = process.env.TEST_MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_recovery_gaps_test";
+    const testUri = getIsolatedTestMongoUri("recovery_gaps_test");
     await mongoose.connect(testUri);
   });
 

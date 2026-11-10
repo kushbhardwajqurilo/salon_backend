@@ -6,7 +6,7 @@
   "scripts": {
     "start": "nodemon index.mjs",
     "test": "node --experimental-vm-modules --import ./src/tests/testSetup.js node_modules/jest/bin/jest.js --runInBand",
-    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch=\"**/permissionsSync.manual.js\" --runInBand",
+    "test:integration": "node --experimental-vm-modules --import ./src/tests/testSetup.js node_modules/jest/bin/jest.js --testMatch=\"**/permissionsSync.manual.js\" --runInBand",
     "seed": "node src/seed/seed.js",
     "seed:services": "node src/seed/serviceSeed.js",
     "seed:customers": "node src/seed/customerSeed.js",
@@ -53,6 +53,7 @@
   },
   "devDependencies": {
     "jest": "^29.7.0",
+    "mongodb-connection-string-url": "^7.0.1",
     "supertest": "^7.2.2"
   }
 }

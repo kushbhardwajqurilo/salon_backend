@@ -3,16 +3,11 @@ import mongoose from "mongoose";
 import "../../../src/config/env.js";
 import { runInTransaction, isTransactionSupported } from "../../../src/utils/transaction.js";
 import { AppError } from "../../../src/utils/errors.js";
+import { getIsolatedTestMongoUri } from "../testSetup.js";
 
 describe("Production Transaction Safety & Verification Suite", () => {
   beforeAll(async () => {
-    let testUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/saloon_erp_test";
-    if (testUri.includes("?")) {
-      const parts = testUri.split("?");
-      testUri = parts[0].replace(/\/([^\/]+)$/, "/saloon_erp_tx_safety_test") + "?" + parts[1];
-    } else {
-      testUri = testUri.replace(/\/([^\/]+)$/, "/saloon_erp_tx_safety_test");
-    }
+    const testUri = getIsolatedTestMongoUri("tx_safety_test");
     await mongoose.connect(testUri);
   });
 
