@@ -1104,6 +1104,19 @@ describe("Appointment Module Comprehensive Test Suite", () => {
   });
 
   describe("POST /api/v1/appointments/:id/reminder/trigger - Manual Reminder Dispatch & Authorization", () => {
+    let emailSpy, smsSpy;
+
+    beforeEach(async () => {
+      const { EmailService } = await import("../../../src/services/notifications/email.service.js");
+      const { SmsService } = await import("../../../src/services/notifications/sms.service.js");
+      emailSpy = jest.spyOn(EmailService.prototype, "sendMail").mockResolvedValue({ success: true, messageId: "mock-email-id" });
+      smsSpy = jest.spyOn(SmsService.prototype, "sendSms").mockResolvedValue({ success: true });
+    });
+
+    afterEach(() => {
+      if (emailSpy) emailSpy.mockRestore();
+      if (smsSpy) smsSpy.mockRestore();
+    });
     it("dispatches manual reminder for scheduled appointment with valid branchId", async () => {
       const createRes = await request(app)
         .post("/api/v1/appointments")
