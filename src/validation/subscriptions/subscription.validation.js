@@ -54,7 +54,20 @@ export const createSubscriptionSchema = z.object({
     ),
 });
 
+export const updateSubscriptionMemberBranchSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+    memberCustomerId: objectIdSchema,
+  }),
+  body: z.object({
+    permittedBranchIds: z.array(objectIdSchema).optional().default([]),
+  }),
+});
+
 export const updateSubscriptionSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+  }).optional(),
   body: z.object({
     permittedBranchIds: z.array(objectIdSchema).optional(),
     endDate: z

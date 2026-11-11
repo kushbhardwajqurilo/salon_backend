@@ -1930,8 +1930,8 @@ export class AppointmentService {
       }
     }
 
-    // Generate 6-digit OTP and SHA-256 hash
-    const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate 6-digit OTP and SHA-256 hash using cryptographically secure random integer
+    const rawOtp = crypto.randomInt(100000, 1000000).toString();
     const otpHash = crypto.createHash("sha256").update(rawOtp).digest("hex");
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
     const resendAvailableAt = new Date(Date.now() + 60 * 1000); // 60s cooldown
@@ -2188,6 +2188,12 @@ export class AppointmentService {
     }
 
     if (challenge.status === "exhausted" || challenge.attempts >= 5) {
+      if (challenge.status !== "exhausted") {
+        await SubscriptionConsumptionChallenge.updateOne(
+          { _id: challenge._id },
+          { $set: { status: "exhausted" } }
+        );
+      }
       throw new AppError("Too many incorrect OTP attempts. Please request a new OTP.", 429);
     }
 
@@ -2278,6 +2284,12 @@ export class AppointmentService {
     }
 
     if (challenge.status === "exhausted" || challenge.attempts >= 5) {
+      if (challenge.status !== "exhausted") {
+        await SubscriptionConsumptionChallenge.updateOne(
+          { _id: challenge._id },
+          { $set: { status: "exhausted" } }
+        );
+      }
       throw new AppError("Too many incorrect OTP attempts. Please request a new OTP.", 429);
     }
 
@@ -2301,25 +2313,57 @@ export class AppointmentService {
       throw new AppError("Too many incorrect OTP attempts. Please request a new OTP.", 429);
     }
 
-    // Verify OTP hash
+    // Verify OTP hash with constant-time comparison
     const inputHash = crypto.createHash("sha256").update(otp.toString().trim()).digest("hex");
-    if (inputHash !== challenge.otpHash) {
-      challenge.attempts = (challenge.attempts || 0) + 1;
-      if (challenge.attempts >= 5) {
-        challenge.status = "exhausted";
+    const inputHashBuf = Buffer.from(inputHash, "utf8");
+    const targetHashBuf = Buffer.from(challenge.otpHash || "", "utf8");
+    const isOtpMatch =
+      inputHashBuf.length === targetHashBuf.length &&
+      crypto.timingSafeEqual(inputHashBuf, targetHashBuf);
+
+    if (!isOtpMatch) {
+      // Atomic increment of attempts and atomic exhaustion transition in a single operation
+      // using an update pipeline to guarantee zero race window between 5th attempt increment and exhausted status
+      const updatedChallenge = await SubscriptionConsumptionChallenge.findOneAndUpdate(
+        {
+          _id: challenge._id,
+          status: "pending",
+          attempts: { $lt: 5 },
+        },
+        [
+          {
+            $set: {
+              attempts: { $add: ["$attempts", 1] },
+              status: {
+                $cond: {
+                  if: { $gte: [{ $add: ["$attempts", 1] }, 5] },
+                  then: "exhausted",
+                  else: "$status",
+                },
+              },
+            },
+          },
+        ],
+        { returnDocument: "after", updatePipeline: true }
+      );
+
+      if (!updatedChallenge) {
+        throw new AppError("Too many incorrect OTP attempts. Please request a new OTP.", 429);
       }
-      await challenge.save();
-      const remaining = Math.max(0, 5 - challenge.attempts);
+
+      const remaining = Math.max(0, 5 - updatedChallenge.attempts);
       throw new AppError(`Invalid OTP. ${remaining} attempt(s) remaining.`, 400);
     }
 
     // Atomically claim the challenge by setting status: 'in_redemption'
-    // Requires status: 'pending', redemptionState: 'pending', and unexpired (expiresAt > now)
-    // This provides a strict concurrency guard ensuring neither concurrent completion nor expiry transition can interleave
+    // Requires status: 'pending', redemptionState: 'pending', attempts < 5, and unexpired (expiresAt > now)
+    // This provides a strict concurrency guard ensuring neither concurrent completion, expiry transition,
+    // nor an interleaved 5th-attempt exhaustion can claim the challenge
     const lockedChallenge = await SubscriptionConsumptionChallenge.findOneAndUpdate(
       {
         _id: challenge._id,
         status: "pending",
+        attempts: { $lt: 5 },
         redemptionState: "pending",
         expiresAt: { $gt: now },
       },

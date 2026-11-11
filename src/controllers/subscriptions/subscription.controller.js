@@ -68,6 +68,19 @@ export const updateSubscription = asyncHandler(async (req, res) => {
   return sendResponse(res, 200, "Subscription updated successfully", result);
 });
 
+export const updateSubscriptionMemberBranchAccess = asyncHandler(async (req, res) => {
+  const { id, memberCustomerId } = req.params;
+  const { permittedBranchIds } = req.body;
+  const result = await subscriptionService.updateMemberBranchAccess(
+    id,
+    memberCustomerId,
+    permittedBranchIds,
+    req.organizationId,
+    req.user?.id || req.user?._id
+  );
+  return sendResponse(res, 200, "Subscription member branch access updated successfully", result);
+});
+
 export const cancelSubscription = asyncHandler(async (req, res) => {
   const reason = req.body.reason || "";
   const result = await subscriptionService.cancelSubscription(

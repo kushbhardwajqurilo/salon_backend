@@ -178,6 +178,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
       "subscriptions.view",
       "subscriptions.sell",
       "subscriptions.redeem",
+      "subscriptions.configure",
       "billing.checkout",
       "billing.view",
     ];
@@ -5462,6 +5463,947 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
             delete process.env.ALLOW_STANDALONE_TRANSACTION_FALLBACK;
           }
         }
+      });
+    });
+
+    describe("8. RBAC & Route Authorization Regression Suite", () => {
+      let subRedeemOnlyToken;
+      let apptStatusOnlyToken;
+      let authorizedToken;
+      let rbacAppointment;
+      let rbacSubscription;
+
+      beforeEach(async () => {
+        // Create dedicated roles and users for fine-grained authorization testing
+        const apptStatusRole = await Role.create({
+          name: "Appt Status Only Role",
+          description: "Role with appointments.update_status only",
+          organizationId: orgA._id,
+          permissions: (
+            await Permission.find({
+              name: { $in: ["appointments.view", "appointments.update_status"] },
+            })
+          ).map((p) => p._id),
+          isSystemRole: false,
+        });
+
+        const subRedeemRole = await Role.create({
+          name: "Sub Redeem Only Role",
+          description: "Role with subscriptions.redeem only",
+          organizationId: orgA._id,
+          permissions: (
+            await Permission.find({
+              name: { $in: ["appointments.view", "subscriptions.redeem"] },
+            })
+          ).map((p) => p._id),
+          isSystemRole: false,
+        });
+
+        const bothRole = await Role.create({
+          name: "Both Status And Redeem Role",
+          description: "Role with both appointments.update_status and subscriptions.redeem",
+          organizationId: orgA._id,
+          permissions: (
+            await Permission.find({
+              name: {
+                $in: [
+                  "appointments.view",
+                  "appointments.update_status",
+                  "subscriptions.redeem",
+                ],
+              },
+            })
+          ).map((p) => p._id),
+          isSystemRole: false,
+        });
+
+        const apptStatusUser = await User.create({
+          name: "Status Only Staff",
+          email: `status_${Date.now()}@hairco.com`,
+          phone: "+919999999981",
+          password: "password123",
+          organizationId: orgA._id,
+          role: apptStatusRole._id,
+          hasOrgWideAccess: true,
+          branchAccess: [
+            { branchId: branchA1._id, branchName: "Downtown Branch", isActive: true },
+          ],
+          status: "active",
+        });
+
+        const subRedeemUser = await User.create({
+          name: "Redeem Only Staff",
+          email: `redeem_${Date.now()}@hairco.com`,
+          phone: "+919999999982",
+          password: "password123",
+          organizationId: orgA._id,
+          role: subRedeemRole._id,
+          hasOrgWideAccess: true,
+          branchAccess: [
+            { branchId: branchA1._id, branchName: "Downtown Branch", isActive: true },
+          ],
+          status: "active",
+        });
+
+        const bothUser = await User.create({
+          name: "Both Staff",
+          email: `both_${Date.now()}@hairco.com`,
+          phone: "+919999999983",
+          password: "password123",
+          organizationId: orgA._id,
+          role: bothRole._id,
+          hasOrgWideAccess: true,
+          branchAccess: [
+            { branchId: branchA1._id, branchName: "Downtown Branch", isActive: true },
+          ],
+          status: "active",
+        });
+
+        apptStatusOnlyToken = jwt.sign(
+          {
+            id: apptStatusUser._id.toString(),
+            userId: apptStatusUser._id.toString(),
+            organizationId: orgA._id.toString(),
+            role: "staff",
+            hasOrgWideAccess: true,
+          },
+          env.JWT_SECRET,
+          { expiresIn: "1h" }
+        );
+
+        subRedeemOnlyToken = jwt.sign(
+          {
+            id: subRedeemUser._id.toString(),
+            userId: subRedeemUser._id.toString(),
+            organizationId: orgA._id.toString(),
+            role: "staff",
+            hasOrgWideAccess: true,
+          },
+          env.JWT_SECRET,
+          { expiresIn: "1h" }
+        );
+
+        authorizedToken = jwt.sign(
+          {
+            id: bothUser._id.toString(),
+            userId: bothUser._id.toString(),
+            organizationId: orgA._id.toString(),
+            role: "staff",
+            hasOrgWideAccess: true,
+          },
+          env.JWT_SECRET,
+          { expiresIn: "1h" }
+        );
+
+        // Create standard subscription with member allocation
+        rbacSubscription = await Subscription.create({
+          organizationId: orgA._id,
+          customerId: customerA._id,
+          subscriptionCode: `SUB-RBAC-${Date.now()}`,
+          price: 1000,
+          status: "active",
+          startDate: new Date("2026-01-01"),
+          endDate: new Date("2026-12-31"),
+          permittedBranchIds: [branchA1._id],
+          entitlements: [
+            {
+              serviceId: serviceA1._id,
+              serviceName: "Classic Haircut",
+              totalQuantity: 5,
+              usedQuantity: 0,
+              remainingQuantity: 5,
+            },
+          ],
+          members: [
+            {
+              customerId: customerA._id,
+              relationship: "self",
+              entitlements: [
+                {
+                  serviceId: serviceA1._id,
+                  serviceName: "Classic Haircut",
+                  totalQuantity: 5,
+                  usedQuantity: 0,
+                  remainingQuantity: 5,
+                },
+              ],
+            },
+          ],
+        });
+
+        rbacAppointment = await Appointment.create({
+          organizationId: orgA._id,
+          branchId: branchA1._id,
+          appointmentCode: `APT-RBAC-${Date.now()}`,
+          customerId: customerA._id,
+          staffId: staffMember._id,
+          appointmentDate: "2026-05-15",
+          startTime: "10:00",
+          endTime: "10:30",
+          startAt: new Date("2026-05-15T10:00:00Z"),
+          endAt: new Date("2026-05-15T10:30:00Z"),
+          bookingType: "advance",
+          status: "in_progress",
+          totalDuration: 30,
+          services: [
+            {
+              serviceType: "registered",
+              serviceId: serviceA1._id,
+              name: "Classic Haircut",
+              duration: 30,
+              price: 500,
+              appliedSubscriptionId: rbacSubscription._id,
+              isRedeemedViaSubscription: false,
+            },
+          ],
+          pricing: { subtotal: 500, discount: 0, total: 500 },
+        });
+      });
+
+      it("1. user without subscriptions.redeem cannot request an OTP (HTTP 403)", async () => {
+        const res = await request(app)
+          .post(`/api/v1/appointments/${rbacAppointment._id}/request-consumption-otp`)
+          .set("Authorization", `Bearer ${apptStatusOnlyToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+          });
+
+        expect(res.status).toBe(403);
+
+        // Verify no challenge was created
+        const challenge = await SubscriptionConsumptionChallenge.findOne({
+          appointmentId: rbacAppointment._id,
+        });
+        expect(challenge).toBeNull();
+      });
+
+      it("2. user without appointments.update_status cannot complete a subscription appointment (HTTP 403)", async () => {
+        // Issue challenge as authorized / owner
+        const otpReq = await request(app)
+          .post(`/api/v1/appointments/${rbacAppointment._id}/request-consumption-otp`)
+          .set("Authorization", `Bearer ${authorizedToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+          });
+        expect(otpReq.status).toBe(200);
+
+        const challenge = await SubscriptionConsumptionChallenge.findOne({
+          appointmentId: rbacAppointment._id,
+        });
+        expect(challenge).not.toBeNull();
+
+        // Attempt completion with user missing appointments.update_status
+        const res = await request(app)
+          .post(`/api/v1/appointments/${rbacAppointment._id}/complete-with-subscription`)
+          .set("Authorization", `Bearer ${subRedeemOnlyToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+            otp: "123456",
+          });
+
+        expect(res.status).toBe(403);
+      });
+
+      it("3. user without subscriptions.redeem cannot complete a subscription appointment (HTTP 403)", async () => {
+        // Issue challenge as authorized / owner
+        const otpReq = await request(app)
+          .post(`/api/v1/appointments/${rbacAppointment._id}/request-consumption-otp`)
+          .set("Authorization", `Bearer ${authorizedToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+          });
+        expect(otpReq.status).toBe(200);
+
+        // Attempt completion with user missing subscriptions.redeem
+        const res = await request(app)
+          .post(`/api/v1/appointments/${rbacAppointment._id}/complete-with-subscription`)
+          .set("Authorization", `Bearer ${apptStatusOnlyToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+            otp: "123456",
+          });
+
+        expect(res.status).toBe(403);
+      });
+
+      it("4. denied requests do not consume entitlements, create usage records, or complete appointments", async () => {
+        // Issue challenge using authorized token
+        await request(app)
+          .post(`/api/v1/appointments/${rbacAppointment._id}/request-consumption-otp`)
+          .set("Authorization", `Bearer ${authorizedToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+          });
+
+        // Attempt completion without appointments.update_status
+        const res1 = await request(app)
+          .post(`/api/v1/appointments/${rbacAppointment._id}/complete-with-subscription`)
+          .set("Authorization", `Bearer ${subRedeemOnlyToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+            otp: "123456",
+          });
+        expect(res1.status).toBe(403);
+
+        // Attempt completion without subscriptions.redeem
+        const res2 = await request(app)
+          .post(`/api/v1/appointments/${rbacAppointment._id}/complete-with-subscription`)
+          .set("Authorization", `Bearer ${apptStatusOnlyToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+            otp: "123456",
+          });
+        expect(res2.status).toBe(403);
+
+        // Verify appointment remained in_progress
+        const appointmentAfter = await Appointment.findById(rbacAppointment._id);
+        expect(appointmentAfter.status).toBe("in_progress");
+        expect(appointmentAfter.services[0].isRedeemedViaSubscription).toBe(false);
+
+        // Verify subscription entitlements untouched
+        const subAfter = await Subscription.findById(rbacSubscription._id);
+        expect(subAfter.entitlements[0].remainingQuantity).toBe(5);
+        expect(subAfter.entitlements[0].usedQuantity).toBe(0);
+        expect(subAfter.members[0].entitlements[0].remainingQuantity).toBe(5);
+        expect(subAfter.members[0].entitlements[0].usedQuantity).toBe(0);
+
+        // Verify zero usages created
+        const usages = await SubscriptionUsage.find({ appointmentId: rbacAppointment._id });
+        expect(usages).toHaveLength(0);
+      });
+
+      it("5. authorized users retain the existing successful flow", async () => {
+        const rawOtp = "123456";
+        const otpHash = crypto.createHash("sha256").update(rawOtp).digest("hex");
+
+        // Seed valid challenge directly
+        await SubscriptionConsumptionChallenge.create({
+          organizationId: orgA._id,
+          branchId: branchA1._id,
+          appointmentId: rbacAppointment._id,
+          subscriptionIds: [rbacSubscription._id],
+          customerId: customerA._id,
+          serviceIds: [serviceA1._id],
+          serviceLines: [
+            {
+              appointmentServiceId: rbacAppointment.services[0]._id,
+              serviceId: serviceA1._id,
+              appliedSubscriptionId: rbacSubscription._id,
+              customerId: customerA._id,
+            },
+          ],
+          otpHash,
+          attempts: 0,
+          resendAvailableAt: new Date(Date.now() + 60000),
+          expiresAt: new Date(Date.now() + 300000),
+          status: "pending",
+        });
+
+        // Complete with authorized token possessing both permissions
+        const completeRes = await request(app)
+          .post(`/api/v1/appointments/${rbacAppointment._id}/complete-with-subscription`)
+          .set("Authorization", `Bearer ${authorizedToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+            otp: rawOtp,
+          });
+
+        expect(completeRes.status).toBe(200);
+        expect(completeRes.body.status).toBe("success");
+
+        // Verify appointment completed
+        const completedApt = await Appointment.findById(rbacAppointment._id);
+        expect(completedApt.status).toBe("completed");
+        expect(completedApt.services[0].isRedeemedViaSubscription).toBe(true);
+
+        // Verify subscription entitlement decremented
+        const updatedSub = await Subscription.findById(rbacSubscription._id);
+        expect(updatedSub.entitlements[0].remainingQuantity).toBe(4);
+        expect(updatedSub.entitlements[0].usedQuantity).toBe(1);
+        expect(updatedSub.members[0].entitlements[0].remainingQuantity).toBe(4);
+        expect(updatedSub.members[0].entitlements[0].usedQuantity).toBe(1);
+
+        // Verify usage record created
+        const usage = await SubscriptionUsage.findOne({ appointmentId: rbacAppointment._id });
+        expect(usage).not.toBeNull();
+        expect(usage.subscriptionId.toString()).toBe(rbacSubscription._id.toString());
+      });
+    });
+
+    describe("9. Fifth-Attempt OTP Concurrency & Exhaustion Race Hardening", () => {
+      let raceSub, raceApt;
+      const rawCorrectOtp = "778899";
+      let otpHash;
+
+      beforeEach(async () => {
+        otpHash = crypto.createHash("sha256").update(rawCorrectOtp).digest("hex");
+
+        raceSub = await Subscription.create({
+          organizationId: orgA._id,
+          customerId: customerA._id,
+          subscriptionCode: `SUB-RACE-${Date.now()}`,
+          price: 1000,
+          status: "active",
+          startDate: new Date("2026-01-01"),
+          endDate: new Date("2026-12-31"),
+          permittedBranchIds: [branchA1._id],
+          entitlements: [
+            {
+              serviceId: serviceA1._id,
+              serviceName: "Classic Haircut",
+              totalQuantity: 10,
+              usedQuantity: 0,
+              remainingQuantity: 10,
+            },
+          ],
+          members: [
+            {
+              customerId: customerA._id,
+              relationship: "self",
+              entitlements: [
+                {
+                  serviceId: serviceA1._id,
+                  serviceName: "Classic Haircut",
+                  totalQuantity: 10,
+                  usedQuantity: 0,
+                  remainingQuantity: 10,
+                },
+              ],
+            },
+          ],
+        });
+
+        raceApt = await Appointment.create({
+          organizationId: orgA._id,
+          branchId: branchA1._id,
+          appointmentCode: `APT-RACE-${Date.now()}`,
+          customerId: customerA._id,
+          staffId: staffMember._id,
+          appointmentDate: "2026-05-20",
+          startTime: "15:00",
+          endTime: "15:30",
+          startAt: new Date("2026-05-20T15:00:00Z"),
+          endAt: new Date("2026-05-20T15:30:00Z"),
+          bookingType: "advance",
+          status: "in_progress",
+          totalDuration: 30,
+          services: [
+            {
+              serviceType: "registered",
+              serviceId: serviceA1._id,
+              name: "Classic Haircut",
+              duration: 30,
+              price: 500,
+              appliedSubscriptionId: raceSub._id,
+              isRedeemedViaSubscription: false,
+            },
+          ],
+          pricing: { subtotal: 500, discount: 0, total: 500 },
+        });
+      });
+
+      it("1. proves the 5th incorrect attempt atomically transitions challenge to exhausted", async () => {
+        const challenge = await SubscriptionConsumptionChallenge.create({
+          organizationId: orgA._id,
+          branchId: branchA1._id,
+          appointmentId: raceApt._id,
+          subscriptionIds: [raceSub._id],
+          customerId: customerA._id,
+          serviceIds: [serviceA1._id],
+          serviceLines: [
+            {
+              appointmentServiceId: raceApt.services[0]._id,
+              serviceId: serviceA1._id,
+              appliedSubscriptionId: raceSub._id,
+              customerId: customerA._id,
+            },
+          ],
+          otpHash,
+          attempts: 4, // 4 prior failed attempts
+          resendAvailableAt: new Date(Date.now() + 60000),
+          expiresAt: new Date(Date.now() + 300000),
+          status: "pending",
+        });
+
+        const res = await request(app)
+          .post(`/api/v1/appointments/${raceApt._id}/complete-with-subscription`)
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+            otp: "000000", // 5th invalid attempt
+          });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toContain("Invalid OTP. 0 attempt(s) remaining.");
+
+        // Must be atomically exhausted in DB
+        const ch = await SubscriptionConsumptionChallenge.findById(challenge._id);
+        expect(ch.attempts).toBe(5);
+        expect(ch.status).toBe("exhausted");
+      });
+
+      it("2. proves a valid OTP cannot claim an exhausted challenge (even if status was pending before checking attempts)", async () => {
+        // Create challenge with attempts: 5, but status: "pending" to test attempts: { $lt: 5 } CAS boundary
+        await SubscriptionConsumptionChallenge.create({
+          organizationId: orgA._id,
+          branchId: branchA1._id,
+          appointmentId: raceApt._id,
+          subscriptionIds: [raceSub._id],
+          customerId: customerA._id,
+          serviceIds: [serviceA1._id],
+          serviceLines: [
+            {
+              appointmentServiceId: raceApt.services[0]._id,
+              serviceId: serviceA1._id,
+              appliedSubscriptionId: raceSub._id,
+              customerId: customerA._id,
+            },
+          ],
+          otpHash,
+          attempts: 5,
+          resendAvailableAt: new Date(Date.now() + 60000),
+          expiresAt: new Date(Date.now() + 300000),
+          status: "pending",
+        });
+
+        const res = await request(app)
+          .post(`/api/v1/appointments/${raceApt._id}/complete-with-subscription`)
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+            otp: rawCorrectOtp, // Valid OTP submitted
+          });
+
+        expect(res.status).toBe(429);
+        expect(res.body.message).toContain("Too many incorrect OTP attempts");
+
+        // Verify challenge never transitioned to in_redemption or verified
+        const ch = await SubscriptionConsumptionChallenge.findOne({ appointmentId: raceApt._id });
+        expect(ch.status).toBe("exhausted");
+        expect(ch.redemptionState).toBe("pending");
+
+        // Verify appointment was NOT completed
+        const aptAfter = await Appointment.findById(raceApt._id);
+        expect(aptAfter.status).toBe("in_progress");
+      });
+
+      it("3. concurrent 5th-invalid attempt and valid OTP request cannot allow redemption if 5th failure wins", async () => {
+        await SubscriptionConsumptionChallenge.create({
+          organizationId: orgA._id,
+          branchId: branchA1._id,
+          appointmentId: raceApt._id,
+          subscriptionIds: [raceSub._id],
+          customerId: customerA._id,
+          serviceIds: [serviceA1._id],
+          serviceLines: [
+            {
+              appointmentServiceId: raceApt.services[0]._id,
+              serviceId: serviceA1._id,
+              appliedSubscriptionId: raceSub._id,
+              customerId: customerA._id,
+            },
+          ],
+          otpHash,
+          attempts: 4, // Exactly 1 attempt left before exhaustion
+          resendAvailableAt: new Date(Date.now() + 60000),
+          expiresAt: new Date(Date.now() + 300000),
+          status: "pending",
+        });
+
+        // Fire both concurrently
+        const [resInvalid, resValid] = await Promise.all([
+          request(app)
+            .post(`/api/v1/appointments/${raceApt._id}/complete-with-subscription`)
+            .set("Authorization", `Bearer ${ownerToken}`)
+            .send({ branchId: branchA1._id.toString(), otp: "000000" }),
+          request(app)
+            .post(`/api/v1/appointments/${raceApt._id}/complete-with-subscription`)
+            .set("Authorization", `Bearer ${ownerToken}`)
+            .send({ branchId: branchA1._id.toString(), otp: rawCorrectOtp }),
+        ]);
+
+        // One of two strict, deterministic invariant outcomes must hold:
+        // Scenario A: Valid OTP won CAS claim first: resValid is 200, resInvalid gets 409 or 400
+        // Scenario B: Invalid OTP won atomic 5th increment first: resInvalid is 400 (0 remaining),
+        //             and resValid is rejected (409 or 429), NEVER 200.
+        if (resValid.status === 200) {
+          const apt = await Appointment.findById(raceApt._id);
+          expect(apt.status).toBe("completed");
+        } else {
+          // If valid didn't win, it must NEVER redeem or decrement entitlements
+          expect([409, 429]).toContain(resValid.status);
+          const ch = await SubscriptionConsumptionChallenge.findOne({ appointmentId: raceApt._id });
+          expect(ch.status).toBe("exhausted");
+          expect(ch.attempts).toBe(5);
+
+          const sub = await Subscription.findById(raceSub._id);
+          expect(sub.entitlements[0].remainingQuantity).toBe(10);
+        }
+      });
+
+      it("4. concurrent valid OTP requests allow exactly one redemption and reject duplicate", async () => {
+        await SubscriptionConsumptionChallenge.create({
+          organizationId: orgA._id,
+          branchId: branchA1._id,
+          appointmentId: raceApt._id,
+          subscriptionIds: [raceSub._id],
+          customerId: customerA._id,
+          serviceIds: [serviceA1._id],
+          serviceLines: [
+            {
+              appointmentServiceId: raceApt.services[0]._id,
+              serviceId: serviceA1._id,
+              appliedSubscriptionId: raceSub._id,
+              customerId: customerA._id,
+            },
+          ],
+          otpHash,
+          attempts: 0,
+          resendAvailableAt: new Date(Date.now() + 60000),
+          expiresAt: new Date(Date.now() + 300000),
+          status: "pending",
+        });
+
+        // Send two concurrent requests with identical valid OTP
+        const [res1, res2] = await Promise.all([
+          request(app)
+            .post(`/api/v1/appointments/${raceApt._id}/complete-with-subscription`)
+            .set("Authorization", `Bearer ${ownerToken}`)
+            .send({ branchId: branchA1._id.toString(), otp: rawCorrectOtp }),
+          request(app)
+            .post(`/api/v1/appointments/${raceApt._id}/complete-with-subscription`)
+            .set("Authorization", `Bearer ${ownerToken}`)
+            .send({ branchId: branchA1._id.toString(), otp: rawCorrectOtp }),
+        ]);
+
+        const statuses = [res1.status, res2.status];
+        // Exactly one 200, exactly one 409 (or 400 if appointment already completed)
+        expect(statuses).toContain(200);
+        expect(statuses.some((s) => s === 400 || s === 409)).toBe(true);
+
+        // Entitlement decremented exactly once: 10 -> 9
+        const subAfter = await Subscription.findById(raceSub._id);
+        expect(subAfter.entitlements[0].remainingQuantity).toBe(9);
+        expect(subAfter.entitlements[0].usedQuantity).toBe(1);
+
+        // Exactly one usage record created
+        const usages = await SubscriptionUsage.find({ appointmentId: raceApt._id });
+        expect(usages).toHaveLength(1);
+      });
+
+      it("5. failed or rolled-back redemption does not create duplicate usage or corrupt entitlement balances", async () => {
+        await SubscriptionConsumptionChallenge.create({
+          organizationId: orgA._id,
+          branchId: branchA1._id,
+          appointmentId: raceApt._id,
+          subscriptionIds: [raceSub._id],
+          customerId: customerA._id,
+          serviceIds: [serviceA1._id],
+          serviceLines: [
+            {
+              appointmentServiceId: raceApt.services[0]._id,
+              serviceId: serviceA1._id,
+              appliedSubscriptionId: raceSub._id,
+              customerId: customerA._id,
+            },
+          ],
+          otpHash,
+          attempts: 0,
+          resendAvailableAt: new Date(Date.now() + 60000),
+          expiresAt: new Date(Date.now() + 300000),
+          status: "pending",
+        });
+
+        // Submit wrong OTP repeatedly
+        const resBad = await request(app)
+          .post(`/api/v1/appointments/${raceApt._id}/complete-with-subscription`)
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({ branchId: branchA1._id.toString(), otp: "999999" });
+
+        expect(resBad.status).toBe(400);
+
+        // Balances remain pristine
+        const subAfter = await Subscription.findById(raceSub._id);
+        expect(subAfter.entitlements[0].remainingQuantity).toBe(10);
+        expect(subAfter.entitlements[0].usedQuantity).toBe(0);
+        expect(subAfter.members[0].entitlements[0].remainingQuantity).toBe(10);
+
+        const usages = await SubscriptionUsage.find({ appointmentId: raceApt._id });
+        expect(usages).toHaveLength(0);
+
+        const aptAfter = await Appointment.findById(raceApt._id);
+        expect(aptAfter.status).toBe("in_progress");
+        expect(aptAfter.services[0].isRedeemedViaSubscription).toBe(false);
+      });
+    });
+
+    describe("10. Beneficiary Subscription Branch Access & Redemption Integration Lifecycle", () => {
+      let branchA3;
+
+      beforeEach(async () => {
+        branchA3 = await Branch.create({
+          organizationId: orgA._id,
+          name: "Eastside Branch",
+          code: "ES-03",
+          timezone: "Asia/Kolkata",
+          isActive: true,
+        });
+
+        // Grant ownerUser access to branchA3 as well
+        await User.updateOne(
+          { _id: ownerUser._id },
+          {
+            $push: {
+              branchAccess: { branchId: branchA3._id, branchName: "Eastside Branch", isActive: true },
+            },
+          }
+        );
+      });
+
+      it("executes complete lifecycle: creation with inherited/custom branches, updating access, parent branch modification, rejection at unauthorized branches, and verified OTP redemption", async () => {
+        // Step 1: Create subscription via POST /api/v1/subscriptions
+        // Root permits [branchA1, branchA2]
+        // Member A (Alice): permittedBranchIds: [] (inherits root [branchA1, branchA2])
+        // Member B (Bob): permittedBranchIds: [branchA1] (custom access restricted strictly to branchA1)
+        const createSubRes = await request(app)
+          .post("/api/v1/subscriptions")
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .set("x-branch-id", branchA1._id.toString())
+          .send({
+            payerCustomerId: customerA._id.toString(),
+            price: 5000,
+            startDate: getFutureDateStr(-1),
+            endDate: getFutureDateStr(60),
+            branchId: branchA1._id.toString(),
+            billImmediately: true,
+            permittedBranchIds: [branchA1._id.toString(), branchA2._id.toString()],
+            members: [
+              {
+                customerId: customerA._id.toString(),
+                relationship: "primary",
+                permittedBranchIds: [], // Inherited
+                entitlements: [
+                  { serviceId: serviceA1._id.toString(), quantity: 3 },
+                ],
+              },
+              {
+                customerId: customerB._id.toString(),
+                relationship: "beneficiary",
+                permittedBranchIds: [branchA1._id.toString()], // Custom restricted to branchA1
+                entitlements: [
+                  { serviceId: serviceA2._id.toString(), quantity: 2 },
+                ],
+              },
+            ],
+          });
+
+        expect(createSubRes.status).toBe(201);
+        const subId = createSubRes.body.data._id;
+
+        // Activate subscription directly to simulate paid invoice
+        await Subscription.updateOne({ _id: subId }, { $set: { status: "active" } });
+
+        // Step 2: Verify booking rejection for Member B at Branch A2 (since B is custom restricted to A1 only)
+        const rejectBobAtA2Res = await request(app)
+          .post("/api/v1/appointments")
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({
+            branchId: branchA2._id.toString(),
+            customerId: customerB._id.toString(),
+            staffId: staffMember._id.toString(),
+            appointmentDate: getFutureDateStr(5),
+            startTime: "11:00",
+            bookingType: "advance",
+            services: [
+              {
+                serviceId: serviceA2._id.toString(),
+                appliedSubscriptionId: subId,
+              },
+            ],
+          });
+
+        expect(rejectBobAtA2Res.status).toBe(403);
+        expect(rejectBobAtA2Res.body.message).toMatch(/not valid at this branch/i);
+
+        // Verify booking success for Member A at Branch A2 (since A inherits [A1, A2])
+        const bookAliceAtA2Res = await request(app)
+          .post("/api/v1/appointments")
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({
+            branchId: branchA2._id.toString(),
+            customerId: customerA._id.toString(),
+            staffId: staffMember._id.toString(),
+            appointmentDate: getFutureDateStr(5),
+            startTime: "11:00",
+            bookingType: "advance",
+            services: [
+              {
+                serviceId: serviceA1._id.toString(),
+                appliedSubscriptionId: subId,
+              },
+            ],
+          });
+
+        expect(bookAliceAtA2Res.status).toBe(201);
+
+        // Step 3: Update Bob's branch access to also permit Branch A2 via PUT /subscriptions/:id/members/:memberCustomerId/branches
+        const updateBobBranchRes = await request(app)
+          .put(`/api/v1/subscriptions/${subId}/members/${customerB._id}/branches`)
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({
+            permittedBranchIds: [branchA1._id.toString(), branchA2._id.toString()],
+          });
+
+        expect(updateBobBranchRes.status).toBe(200);
+
+        // Verify Bob can now book at Branch A2
+        const bookBobAtA2Res = await request(app)
+          .post("/api/v1/appointments")
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({
+            branchId: branchA2._id.toString(),
+            customerId: customerB._id.toString(),
+            staffId: staffMember._id.toString(),
+            appointmentDate: getFutureDateStr(6),
+            startTime: "12:00",
+            bookingType: "advance",
+            services: [
+              {
+                serviceId: serviceA2._id.toString(),
+                appliedSubscriptionId: subId,
+              },
+            ],
+          });
+
+        expect(bookBobAtA2Res.status).toBe(201);
+        const bobAppointmentId = bookBobAtA2Res.body.data._id;
+
+        // Step 4: Parent subscription branch narrowing
+        // Update root subscription permitted branches to only [branchA1] (excluding branchA2)
+        const updateRootSubRes = await request(app)
+          .put(`/api/v1/subscriptions/${subId}`)
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({
+            permittedBranchIds: [branchA1._id.toString()],
+          });
+
+        expect(updateRootSubRes.status).toBe(200);
+
+        // Verify that Alice (who inherits root) is now blocked at Branch A2 because parent no longer permits A2
+        const rejectAliceAtA2Now = await request(app)
+          .post("/api/v1/appointments")
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({
+            branchId: branchA2._id.toString(),
+            customerId: customerA._id.toString(),
+            staffId: staffMember._id.toString(),
+            appointmentDate: getFutureDateStr(7),
+            startTime: "14:00",
+            bookingType: "advance",
+            services: [
+              {
+                serviceId: serviceA1._id.toString(),
+                appliedSubscriptionId: subId,
+              },
+            ],
+          });
+
+        expect(rejectAliceAtA2Now.status).toBe(403);
+        expect(rejectAliceAtA2Now.body.message).toMatch(/not valid at this branch/i);
+
+        // Step 5: OTP Redemption at authorized branch (Branch A1)
+        // Book Bob at Branch A1 (which is permitted by both root and Bob)
+        const bookBobAtA1Res = await request(app)
+          .post("/api/v1/appointments")
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+            customerId: customerB._id.toString(),
+            staffId: staffMember._id.toString(),
+            appointmentDate: getFutureDateStr(8),
+            startTime: "15:00",
+            bookingType: "advance",
+            services: [
+              {
+                serviceId: serviceA2._id.toString(),
+                appliedSubscriptionId: subId,
+              },
+            ],
+          });
+
+        expect(bookBobAtA1Res.status).toBe(201);
+        const bobA1ApptId = bookBobAtA1Res.body.data._id;
+
+        // Transition appointment to in_progress
+        await Appointment.updateOne({ _id: bobA1ApptId }, { $set: { status: "in_progress" } });
+
+        // Request OTP for redemption
+        const otpReqRes = await request(app)
+          .post(`/api/v1/appointments/${bobA1ApptId}/request-consumption-otp`)
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({ branchId: branchA1._id.toString() });
+
+        expect(otpReqRes.status).toBe(200);
+
+        // Extract challenge and retrieve OTP from mock or challenge record
+        const challenge = await SubscriptionConsumptionChallenge.findOne({
+          appointmentId: bobA1ApptId,
+          status: "pending",
+        });
+        expect(challenge).not.toBeNull();
+
+        // Complete appointment with subscription redemption
+        const completeRes = await request(app)
+          .post(`/api/v1/appointments/${bobA1ApptId}/complete-with-subscription`)
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({
+            branchId: branchA1._id.toString(),
+            otp: "123456", // Test setup mocks or overrides OTP verification
+          });
+
+        // If mock OTP was generated, find challenge and complete using direct hash or test OTP
+        if (completeRes.status !== 200) {
+          // Provide valid OTP hash update if randomInt was generated
+          const testRawOtp = "654321";
+          const newHash = crypto.createHash("sha256").update(testRawOtp).digest("hex");
+          await SubscriptionConsumptionChallenge.updateOne(
+            { _id: challenge._id },
+            { $set: { otpHash: newHash, attempts: 0 } }
+          );
+
+          const retryComplete = await request(app)
+            .post(`/api/v1/appointments/${bobA1ApptId}/complete-with-subscription`)
+            .set("Authorization", `Bearer ${ownerToken}`)
+            .send({
+              branchId: branchA1._id.toString(),
+              otp: testRawOtp,
+            });
+
+          expect(retryComplete.status).toBe(200);
+          expect(retryComplete.body.data.status).toBe("completed");
+        } else {
+          expect(completeRes.body.data.status).toBe("completed");
+        }
+
+        // Step 6: Verify Entitlements deducted strictly from Bob's allocation and NOT Alice's allocation
+        const subFinal = await Subscription.findById(subId);
+        const memberAFinal = subFinal.members.find((m) => m.customerId.toString() === customerA._id.toString());
+        const memberBFinal = subFinal.members.find((m) => m.customerId.toString() === customerB._id.toString());
+
+        // Alice (Member A) remains untouched: 3 remaining, 0 used
+        expect(memberAFinal.entitlements[0].remainingQuantity).toBe(3);
+        expect(memberAFinal.entitlements[0].usedQuantity).toBe(0);
+
+        // Bob (Member B) decremented: 1 remaining, 1 used (from initial 2)
+        expect(memberBFinal.entitlements[0].remainingQuantity).toBe(1);
+        expect(memberBFinal.entitlements[0].usedQuantity).toBe(1);
+
+        // Verify SubscriptionUsage audit record exists for Bob's redemption
+        const usage = await SubscriptionUsage.findOne({ appointmentId: bobA1ApptId });
+        expect(usage).not.toBeNull();
+        expect(usage.customerId.toString()).toBe(customerB._id.toString());
+        expect(usage.serviceId.toString()).toBe(serviceA2._id.toString());
+        expect(usage.branchId.toString()).toBe(branchA1._id.toString());
       });
     });
   });

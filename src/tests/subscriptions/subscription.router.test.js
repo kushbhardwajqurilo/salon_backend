@@ -451,4 +451,424 @@ describe("Subscription Module Integration Tests", () => {
       expect(usageRes.body.data[0].appointmentId._id || usageRes.body.data[0].appointmentId).toBeDefined();
     });
   });
+
+  describe("PUT /api/v1/subscriptions/:id/members/:memberCustomerId/branches - Member Branch Access Updates", () => {
+    let customerMemberB;
+    let branchA3;
+    let multiSub;
+
+    beforeEach(async () => {
+      customerMemberB = await Customer.create({
+        name: "Member Bob",
+        phone: "+919876543222",
+        organizationId: orgA._id,
+        homeBranchId: branchA1._id,
+        status: "active",
+      });
+
+      branchA3 = await Branch.create({
+        organizationId: orgA._id,
+        name: "Suburban Branch",
+        code: "SUB-03",
+        timezone: "Asia/Kolkata",
+        isActive: true,
+      });
+
+      multiSub = await Subscription.create({
+        organizationId: orgA._id,
+        customerId: customerA._id,
+        payerCustomerId: customerA._id,
+        subscriptionCode: `SUB-MULTI-${Date.now()}`,
+        price: 5000,
+        status: "active",
+        startDate: new Date("2026-01-01"),
+        endDate: new Date("2026-12-31"),
+        permittedBranchIds: [branchA1._id, branchA2._id], // Root restricts to A1 and A2
+        members: [
+          {
+            customerId: customerA._id,
+            status: "active",
+            permittedBranchIds: [branchA1._id],
+            entitlements: [
+              {
+                serviceId: serviceA1._id,
+                serviceName: "Signature Haircut",
+                totalQuantity: 5,
+                usedQuantity: 1,
+                remainingQuantity: 4,
+              },
+            ],
+            notes: "Member A notes",
+          },
+          {
+            customerId: customerMemberB._id,
+            status: "active",
+            permittedBranchIds: [], // Inherited initially
+            entitlements: [
+              {
+                serviceId: serviceA2._id,
+                serviceName: "Beard Trim",
+                totalQuantity: 3,
+                usedQuantity: 0,
+                remainingQuantity: 3,
+              },
+            ],
+            notes: "Member B notes",
+          },
+        ],
+        entitlements: [
+          {
+            serviceId: serviceA1._id,
+            serviceName: "Signature Haircut",
+            totalQuantity: 5,
+            usedQuantity: 1,
+            remainingQuantity: 4,
+          },
+        ],
+      });
+    });
+
+    it("1. updates one beneficiary's branch access without modifying other beneficiaries or entitlement balances", async () => {
+      const res = await request(app)
+        .put(`/api/v1/subscriptions/${multiSub._id}/members/${customerMemberB._id}/branches`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          permittedBranchIds: [branchA2._id.toString()],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const updated = await Subscription.findById(multiSub._id);
+      // Member B updated
+      const memberB = updated.members.find((m) => m.customerId.toString() === customerMemberB._id.toString());
+      expect(memberB.permittedBranchIds).toHaveLength(1);
+      expect(memberB.permittedBranchIds[0].toString()).toBe(branchA2._id.toString());
+      expect(memberB.entitlements[0].remainingQuantity).toBe(3); // Untouched
+      expect(memberB.entitlements[0].usedQuantity).toBe(0); // Untouched
+      expect(memberB.notes).toBe("Member B notes"); // Untouched
+
+      // Member A untouched
+      const memberA = updated.members.find((m) => m.customerId.toString() === customerA._id.toString());
+      expect(memberA.permittedBranchIds).toHaveLength(1);
+      expect(memberA.permittedBranchIds[0].toString()).toBe(branchA1._id.toString());
+      expect(memberA.entitlements[0].remainingQuantity).toBe(4);
+      expect(memberA.entitlements[0].usedQuantity).toBe(1);
+      expect(memberA.notes).toBe("Member A notes");
+
+      // Root subscription untouched
+      expect(updated.price).toBe(5000);
+      expect(updated.status).toBe("active");
+    });
+
+    it("2. switches between custom branch access and inherited (empty) access", async () => {
+      // Step A: Switch Member A from [branchA1] to [] (inherited)
+      const resEmpty = await request(app)
+        .put(`/api/v1/subscriptions/${multiSub._id}/members/${customerA._id}/branches`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          permittedBranchIds: [],
+        });
+
+      expect(resEmpty.status).toBe(200);
+      let subAfter = await Subscription.findById(multiSub._id);
+      let memberA = subAfter.members.find((m) => m.customerId.toString() === customerA._id.toString());
+      expect(memberA.permittedBranchIds).toHaveLength(0);
+
+      // Step B: Switch Member A back to custom [branchA2]
+      const resCustom = await request(app)
+        .put(`/api/v1/subscriptions/${multiSub._id}/members/${customerA._id}/branches`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          permittedBranchIds: [branchA2._id.toString()],
+        });
+
+      expect(resCustom.status).toBe(200);
+      subAfter = await Subscription.findById(multiSub._id);
+      memberA = subAfter.members.find((m) => m.customerId.toString() === customerA._id.toString());
+      expect(memberA.permittedBranchIds).toHaveLength(1);
+      expect(memberA.permittedBranchIds[0].toString()).toBe(branchA2._id.toString());
+    });
+
+    it("3. rejects member branch outside subscription's permitted branch boundary", async () => {
+      // multiSub root permits branchA1 and branchA2 only. branchA3 is in Org A but excluded from multiSub.
+      const res = await request(app)
+        .put(`/api/v1/subscriptions/${multiSub._id}/members/${customerMemberB._id}/branches`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          permittedBranchIds: [branchA3._id.toString()],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain("not permitted by the subscription's branch restrictions");
+
+      // Verify no changes persisted
+      const subAfter = await Subscription.findById(multiSub._id);
+      const memberB = subAfter.members.find((m) => m.customerId.toString() === customerMemberB._id.toString());
+      expect(memberB.permittedBranchIds).toHaveLength(0);
+    });
+
+    it("4. rejects unauthorized, cross-organization, and inactive branch IDs", async () => {
+      // Case A: Cross-organization branch (branchB1 in Org B)
+      const resCrossOrg = await request(app)
+        .put(`/api/v1/subscriptions/${multiSub._id}/members/${customerMemberB._id}/branches`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          permittedBranchIds: [branchB1._id.toString()],
+        });
+
+      expect(resCrossOrg.status).toBe(400);
+      expect(resCrossOrg.body.message).toContain("invalid or inactive");
+
+      // Case B: Inactive branch in Org A
+      const inactiveBranch = await Branch.create({
+        organizationId: orgA._id,
+        name: "Inactive Branch",
+        code: "INACT-01",
+        timezone: "Asia/Kolkata",
+        isActive: false,
+      });
+
+      const resInactive = await request(app)
+        .put(`/api/v1/subscriptions/${multiSub._id}/members/${customerMemberB._id}/branches`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          permittedBranchIds: [inactiveBranch._id.toString()],
+        });
+
+      expect(resInactive.status).toBe(400);
+      expect(resInactive.body.message).toContain("invalid or inactive");
+    });
+
+    it("5. preserves compatibility with legacy single-customer subscriptions", async () => {
+      const legacySub = await Subscription.create({
+        organizationId: orgA._id,
+        customerId: customerA._id,
+        subscriptionCode: `SUB-LEGACY-${Date.now()}`,
+        price: 1500,
+        status: "active",
+        startDate: new Date("2026-01-01"),
+        endDate: new Date("2026-12-31"),
+        permittedBranchIds: [branchA1._id, branchA2._id],
+        entitlements: [
+          {
+            serviceId: serviceA1._id,
+            serviceName: "Signature Haircut",
+            totalQuantity: 3,
+            usedQuantity: 1,
+            remainingQuantity: 2,
+          },
+        ],
+      });
+
+      const res = await request(app)
+        .put(`/api/v1/subscriptions/${legacySub._id}/members/${customerA._id}/branches`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          permittedBranchIds: [branchA1._id.toString()],
+        });
+
+      expect(res.status).toBe(200);
+
+      const updatedLegacy = await Subscription.findById(legacySub._id);
+      expect(updatedLegacy.members).toHaveLength(1);
+      expect(updatedLegacy.members[0].customerId.toString()).toBe(customerA._id.toString());
+      expect(updatedLegacy.members[0].permittedBranchIds[0].toString()).toBe(branchA1._id.toString());
+      expect(updatedLegacy.members[0].entitlements[0].remainingQuantity).toBe(2);
+    });
+
+    it("6. creates an audit log entry with updated member branch access metadata", async () => {
+      await request(app)
+        .put(`/api/v1/subscriptions/${multiSub._id}/members/${customerMemberB._id}/branches`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          permittedBranchIds: [branchA1._id.toString()],
+        });
+
+      const audit = await AuditLog.findOne({
+        entityId: multiSub._id,
+        description: { $regex: /Beneficiary branch access updated/ },
+      });
+
+      expect(audit).not.toBeNull();
+      expect(audit.metadata.memberCustomerId).toBe(customerMemberB._id.toString());
+      expect(audit.metadata.newPermittedBranchIds).toHaveLength(1);
+    });
+
+    it("7. enforces subscriptions.configure authorization permission", async () => {
+      // Create staff role with only subscriptions.view
+      const staffRole = await Role.create({
+        name: "Staff View Only",
+        description: "View only",
+        organizationId: orgA._id,
+        permissions: (await Permission.find({ name: "subscriptions.view" })).map((p) => p._id),
+      });
+
+      const staff = await User.create({
+        name: "Staff View User",
+        username: `staff_${Date.now()}`,
+        email: `staff_${Date.now()}@test.com`,
+        password: "HashedPassword123!",
+        phone: "+919999999977",
+        organizationId: orgA._id,
+        role: staffRole._id,
+        status: "active",
+        hasOrgWideAccess: true,
+      });
+
+      const viewOnlyToken = jwt.sign(
+        {
+          id: staff._id.toString(),
+          sub: staff._id.toString(),
+          userId: staff._id.toString(),
+          organizationId: orgA._id.toString(),
+          role: "staff",
+          hasOrgWideAccess: true,
+        },
+        env.JWT_SECRET || "test-secret",
+        { expiresIn: "1h" }
+      );
+
+      const resForbidden = await request(app)
+        .put(`/api/v1/subscriptions/${multiSub._id}/members/${customerMemberB._id}/branches`)
+        .set("Authorization", `Bearer ${viewOnlyToken}`)
+        .send({
+          permittedBranchIds: [branchA1._id.toString()],
+        });
+
+      expect(resForbidden.status).toBe(403);
+    });
+
+    it("8. rejects update on cancelled subscription with HTTP 400", async () => {
+      await Subscription.updateOne({ _id: multiSub._id }, { $set: { status: "cancelled" } });
+
+      const res = await request(app)
+        .put(`/api/v1/subscriptions/${multiSub._id}/members/${customerMemberB._id}/branches`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          permittedBranchIds: [branchA1._id.toString()],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/cancelled/i);
+    });
+
+    it("9. rejects update on expired subscription with HTTP 400", async () => {
+      await Subscription.updateOne({ _id: multiSub._id }, { $set: { status: "expired" } });
+
+      const res = await request(app)
+        .put(`/api/v1/subscriptions/${multiSub._id}/members/${customerMemberB._id}/branches`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({
+          permittedBranchIds: [branchA1._id.toString()],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/expired/i);
+    });
+
+    it("10. concurrent root branch narrowing and member branch update: verify final stored member access cannot contain branch excluded by final root boundary", async () => {
+      // Setup subscription with root permitted branches [branchA1, branchA2] and member currently inherited []
+      const concurrentSub = await Subscription.create({
+        organizationId: orgA._id,
+        customerId: customerA._id,
+        payerCustomerId: customerA._id,
+        subscriptionCode: `SUB-CONCUR-${Date.now()}`,
+        price: 5000,
+        status: "active",
+        startDate: new Date("2026-01-01"),
+        endDate: new Date("2026-12-31"),
+        permittedBranchIds: [branchA1._id, branchA2._id],
+        members: [
+          {
+            customerId: customerA._id,
+            status: "active",
+            permittedBranchIds: [branchA1._id],
+            entitlements: [
+              {
+                serviceId: serviceA1._id,
+                serviceName: "Signature Haircut",
+                totalQuantity: 5,
+                usedQuantity: 0,
+                remainingQuantity: 5,
+              },
+            ],
+          },
+          {
+            customerId: customerMemberB._id,
+            status: "active",
+            permittedBranchIds: [], // Inherited initially
+            entitlements: [
+              {
+                serviceId: serviceA2._id,
+                serviceName: "Beard Trim",
+                totalQuantity: 3,
+                usedQuantity: 0,
+                remainingQuantity: 3,
+              },
+            ],
+          },
+        ],
+        entitlements: [
+          {
+            serviceId: serviceA1._id,
+            serviceName: "Signature Haircut",
+            totalQuantity: 5,
+            usedQuantity: 0,
+            remainingQuantity: 5,
+          },
+          {
+            serviceId: serviceA2._id,
+            serviceName: "Beard Trim",
+            totalQuantity: 3,
+            usedQuantity: 0,
+            remainingQuantity: 3,
+          },
+        ],
+      });
+
+      // Fire concurrent requests:
+      // Request 1: Root update narrowing root permitted branches to only [branchA1]
+      // Request 2: Member update trying to grant [branchA2] to member B
+      const [rootRes, memberRes] = await Promise.all([
+        request(app)
+          .put(`/api/v1/subscriptions/${concurrentSub._id}`)
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({
+            permittedBranchIds: [branchA1._id.toString()],
+          }),
+        request(app)
+          .put(`/api/v1/subscriptions/${concurrentSub._id}/members/${customerMemberB._id}/branches`)
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({
+            permittedBranchIds: [branchA2._id.toString()],
+          }),
+      ]);
+
+      const finalSub = await Subscription.findById(concurrentSub._id).lean();
+      const finalMember = finalSub.members.find(
+        (m) => m.customerId.toString() === customerMemberB._id.toString()
+      );
+
+      // Verify boundary invariant:
+      // If root is restricted (permittedBranchIds.length > 0), member's permitted branches MUST be a subset of root
+      if (finalSub.permittedBranchIds && finalSub.permittedBranchIds.length > 0) {
+        const rootSet = new Set(finalSub.permittedBranchIds.map((id) => id.toString()));
+        for (const mbId of finalMember.permittedBranchIds || []) {
+          expect(rootSet.has(mbId.toString())).toBe(true);
+        }
+      }
+
+      // Member update should either have been rejected (400 or 409) if root update won or ran first,
+      // or if both completed, the final stored member access never contains a branch outside final root.
+      // Under our concurrency fix, memberRes cannot commit [branchA2] if root finalized to [branchA1].
+      if (
+        finalSub.permittedBranchIds.map((id) => id.toString()).includes(branchA1._id.toString()) &&
+        !finalSub.permittedBranchIds.map((id) => id.toString()).includes(branchA2._id.toString())
+      ) {
+        // Root excluded branchA2, so member must NOT have branchA2
+        expect(finalMember.permittedBranchIds.map((id) => id.toString())).not.toContain(branchA2._id.toString());
+      }
+    });
+  });
 });

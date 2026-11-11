@@ -51,6 +51,15 @@ router.put(
   subscriptionController.updateSubscription
 );
 
+// 4b. Update Subscription Member Branch Access
+router.put(
+  "/:id/members/:memberCustomerId/branches",
+  requireOrganizationScope,
+  authorize("subscriptions.configure"),
+  validate(subscriptionValidation.updateSubscriptionMemberBranchSchema),
+  subscriptionController.updateSubscriptionMemberBranchAccess
+);
+
 // 5. Cancel Subscription
 router.patch(
   "/:id/cancel",

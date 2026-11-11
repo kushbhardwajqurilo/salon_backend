@@ -748,6 +748,219 @@ export class SubscriptionService {
   }
 
   /**
+   * Update beneficiary-specific permittedBranchIds on an existing subscription
+   */
+  async updateMemberBranchAccess(subscriptionId, memberCustomerId, permittedBranchIds, organizationId, userId) {
+    const subscription = await this.subscriptionRepo.findOne({
+      _id: subscriptionId,
+      organizationId,
+      isDeleted: false,
+    });
+
+    if (!subscription) {
+      throw new AppError("Subscription not found", 404);
+    }
+
+    if (["cancelled", "expired"].includes(subscription.status)) {
+      throw new AppError(
+        `Cannot update member branch access for subscription with status '${subscription.status}'`,
+        400
+      );
+    }
+
+    const memberCustIdStr = memberCustomerId.toString();
+
+    // Ensure member exists on subscription or legacy subscription matches
+    let memberExists = false;
+    let targetMember = null;
+    if (Array.isArray(subscription.members) && subscription.members.length > 0) {
+      targetMember = subscription.members.find(
+        (m) => m.customerId && m.customerId.toString() === memberCustIdStr
+      );
+      if (targetMember) {
+        memberExists = true;
+      }
+    } else if (subscription.customerId && subscription.customerId.toString() === memberCustIdStr) {
+      // Genuine legacy subscription where members array was not populated
+      memberExists = true;
+    }
+
+    if (!memberExists) {
+      throw new AppError("Member not found in subscription", 404);
+    }
+
+    // 1. Validate provided branch IDs
+    const validBranchIds = [];
+    const incomingBranchIds = Array.isArray(permittedBranchIds) ? permittedBranchIds : [];
+
+    for (const bId of incomingBranchIds) {
+      let branch;
+      if (this.branchRepo && typeof this.branchRepo.findById === "function") {
+        branch = await this.branchRepo.findById(bId);
+      } else if (this.branchRepo && typeof this.branchRepo.findOne === "function") {
+        branch = await this.branchRepo.findOne({ _id: bId });
+      } else {
+        const BranchModel = mongoose.model("Branch");
+        branch = await BranchModel.findById(bId);
+      }
+
+      if (
+        !branch ||
+        branch.organizationId.toString() !== organizationId.toString() ||
+        branch.isDeleted ||
+        branch.isActive === false
+      ) {
+        throw new AppError(`Permitted branch ${bId} is invalid or inactive`, 400);
+      }
+      validBranchIds.push(branch._id);
+    }
+
+    // 2. Atomically update the targeted member's permittedBranchIds inside transaction
+    // Re-validates root boundary against the latest committed subscription state to prevent concurrent root-update races
+    const updated = await this.executeTransaction(async (session) => {
+      const SubscriptionModel = this.subscriptionRepo.model || mongoose.model("Subscription");
+
+      // Query latest subscription state inside transaction session
+      const currentSub = await SubscriptionModel.findOne({
+        _id: subscriptionId,
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (!currentSub) {
+        throw new AppError("Subscription not found", 404);
+      }
+
+      if (["cancelled", "expired"].includes(currentSub.status)) {
+        throw new AppError(
+          `Cannot update member branch access for subscription with status '${currentSub.status}'`,
+          400
+        );
+      }
+
+      // Re-verify member exists on current subscription
+      let currentTargetMember = null;
+      if (Array.isArray(currentSub.members) && currentSub.members.length > 0) {
+        currentTargetMember = currentSub.members.find(
+          (m) => m.customerId && m.customerId.toString() === memberCustIdStr
+        );
+      } else if (currentSub.customerId && currentSub.customerId.toString() === memberCustIdStr) {
+        currentTargetMember = { customerId: currentSub.customerId };
+      }
+
+      if (!currentTargetMember) {
+        throw new AppError("Member not found in subscription", 404);
+      }
+
+      // Strict subset validation against latest committed root boundary
+      const latestRootBranches = Array.isArray(currentSub.permittedBranchIds)
+        ? currentSub.permittedBranchIds
+        : [];
+
+      if (latestRootBranches.length > 0) {
+        const rootBranchSet = new Set(latestRootBranches.map((b) => b.toString()));
+        for (const validBranchId of validBranchIds) {
+          if (!rootBranchSet.has(validBranchId.toString())) {
+            throw new AppError(
+              `Member permitted branch ${validBranchId} is not permitted by the subscription's branch restrictions`,
+              400
+            );
+          }
+        }
+      }
+
+      // Atomic conditional update bound to the exact permittedBranchIds boundary verified above
+      let updatedDoc;
+      const boundaryCondition =
+        latestRootBranches.length > 0
+          ? { permittedBranchIds: latestRootBranches }
+          : {
+              $or: [
+                { permittedBranchIds: { $exists: false } },
+                { permittedBranchIds: { $size: 0 } },
+              ],
+            };
+
+      if (Array.isArray(currentSub.members) && currentSub.members.length > 0) {
+        // Targeted positional update on matching member conditioned on unchanged root boundary
+        updatedDoc = await SubscriptionModel.findOneAndUpdate(
+          {
+            _id: currentSub._id,
+            organizationId,
+            isDeleted: false,
+            status: { $nin: ["cancelled", "expired"] },
+            "members.customerId": memberCustomerId,
+            ...boundaryCondition,
+          },
+          {
+            $set: {
+              "members.$.permittedBranchIds": validBranchIds,
+            },
+            ...(userId ? { $set: { updatedBy: userId, "members.$.permittedBranchIds": validBranchIds } } : {}),
+          },
+          { returnDocument: "after", session }
+        );
+      } else {
+        // Legacy single-customer subscription: upgrade/initialize members array with member
+        const legacyMember = {
+          customerId: currentSub.customerId,
+          status: currentSub.status || "active",
+          permittedBranchIds: validBranchIds,
+          entitlements: currentSub.entitlements || [],
+          notes: currentSub.notes || "",
+        };
+        updatedDoc = await SubscriptionModel.findOneAndUpdate(
+          {
+            _id: currentSub._id,
+            organizationId,
+            isDeleted: false,
+            status: { $nin: ["cancelled", "expired"] },
+            ...boundaryCondition,
+          },
+          {
+            $set: {
+              members: [legacyMember],
+              ...(userId ? { updatedBy: userId } : {}),
+            },
+          },
+          { returnDocument: "after", session }
+        );
+      }
+
+      if (!updatedDoc) {
+        throw new AppError(
+          "Subscription branch boundaries were modified concurrently. Please retry.",
+          409
+        );
+      }
+
+      if (this.auditRepo && typeof this.auditRepo.create === "function") {
+        await this.auditRepo.create(
+          {
+            branchId: null,
+            action: AUDIT_ACTIONS.SUBSCRIPTION_UPDATED,
+            entityType: "Subscription",
+            entityId: currentSub._id,
+            description: `Beneficiary branch access updated for member ${memberCustIdStr} on subscription ${currentSub.subscriptionCode}`,
+            metadata: {
+              memberCustomerId: memberCustIdStr,
+              previousPermittedBranchIds: currentTargetMember?.permittedBranchIds || [],
+              newPermittedBranchIds: validBranchIds,
+            },
+          },
+          organizationId,
+          userId,
+          session
+        );
+      }
+
+      return updatedDoc;
+    });
+
+    return updated;
+  }
+
+  /**
    * Cancel subscription (with consumed-entitlement check and optional invoice/refund handling)
    */
   async cancelSubscription(id, organizationId, userId, reason = "", options = {}) {
