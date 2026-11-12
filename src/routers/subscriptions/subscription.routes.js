@@ -60,13 +60,40 @@ router.put(
   subscriptionController.updateSubscriptionMemberBranchAccess
 );
 
-// 5. Cancel Subscription
+// 5. Cancel Subscription (Rule A & Rule B with usage reversal and rebilling)
 router.patch(
   "/:id/cancel",
   requireOrganizationScope,
   authorize("subscriptions.configure"),
   validate(subscriptionValidation.cancelSubscriptionSchema),
   subscriptionController.cancelSubscription
+);
+
+// 5a. Canonical Cancellation Impact Preview (Read-Only)
+router.get(
+  "/:id/cancel/preview",
+  requireOrganizationScope,
+  authorize("subscriptions.view"),
+  validate(subscriptionValidation.cancelPreviewSchema),
+  subscriptionController.previewCancellationImpact
+);
+
+// 5a-3. Cancellation Operation Progress and Status
+router.get(
+  "/:id/cancel/operations/:operationId",
+  requireOrganizationScope,
+  authorize("subscriptions.configure"),
+  validate(subscriptionValidation.cancelOperationStatusSchema),
+  subscriptionController.getCancellationOperationStatus
+);
+
+// 5a-4. Retry / Reconcile Stalled or Failed Cancellation Operation
+router.post(
+  "/:id/cancel/operations/:operationId/retry",
+  requireOrganizationScope,
+  authorize("subscriptions.configure"),
+  validate(subscriptionValidation.cancelOperationStatusSchema),
+  subscriptionController.retryCancellationOperation
 );
 
 // 5b. Renew Subscription

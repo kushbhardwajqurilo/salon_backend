@@ -80,9 +80,34 @@ export const updateSubscriptionSchema = z.object({
 });
 
 export const cancelSubscriptionSchema = z.object({
+  headers: z
+    .object({
+      "idempotency-key": z.string().trim().max(255).optional(),
+      "x-idempotency-key": z.string().trim().max(255).optional(),
+    })
+    .passthrough()
+    .optional(),
+  params: z.object({
+    id: objectIdSchema,
+  }),
   body: z.object({
-    reason: z.string().trim().max(500).optional().default(""),
+    reason: z.string().trim().max(1000).optional().default(""),
     refund: z.boolean().optional().default(false),
+    idempotencyKey: z.string().trim().max(255).optional(),
+    forceAsync: z.boolean().optional().default(false),
+  }),
+});
+
+export const cancelPreviewSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+  }),
+});
+
+export const cancelOperationStatusSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+    operationId: z.string().trim().min(1),
   }),
 });
 

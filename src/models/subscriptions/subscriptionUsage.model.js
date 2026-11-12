@@ -79,6 +79,33 @@ const subscriptionUsageSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    // Production-Grade Reversal Tracking
+    isReversed: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    reversedAt: {
+      type: Date,
+      default: null,
+    },
+    reversedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    reversalReason: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: null,
+    },
+    reversalOperationId: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
   },
   {
     timestamps: true,
@@ -87,6 +114,7 @@ const subscriptionUsageSchema = new mongoose.Schema(
 
 // Compound indexes for fast historical timeline queries
 subscriptionUsageSchema.index({ organizationId: 1, subscriptionId: 1, createdAt: -1 });
+subscriptionUsageSchema.index({ organizationId: 1, subscriptionId: 1, isReversed: 1 });
 subscriptionUsageSchema.index({ organizationId: 1, customerId: 1, createdAt: -1 });
 subscriptionUsageSchema.index({ organizationId: 1, branchId: 1, createdAt: -1 });
 

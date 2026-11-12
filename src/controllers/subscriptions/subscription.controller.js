@@ -83,14 +83,68 @@ export const updateSubscriptionMemberBranchAccess = asyncHandler(async (req, res
 
 export const cancelSubscription = asyncHandler(async (req, res) => {
   const reason = req.body.reason || "";
+  const headerKey = req.headers["idempotency-key"] || req.headers["x-idempotency-key"];
+  const bodyKey = req.body.idempotencyKey;
+
+  // Conflict check if both header and body keys are provided but do not match
+  if (headerKey && bodyKey && String(headerKey).trim() !== String(bodyKey).trim()) {
+    return res.status(400).json({
+      success: false,
+      message: "Conflicting idempotency keys provided in header and body",
+    });
+  }
+
+  const idempotencyKey = (headerKey ? String(headerKey).trim() : null) || (bodyKey ? String(bodyKey).trim() : null);
+  const forceAsync = Boolean(req.body.forceAsync);
   const result = await subscriptionService.cancelSubscription(
     req.params.id,
     req.organizationId,
     req.user?.id || req.user?._id,
     reason,
-    { refund: req.body.refund }
+    {
+      refund: req.body.refund,
+      idempotencyKey,
+      forceAsync,
+    }
   );
-  return sendResponse(res, 200, "Subscription cancelled successfully", result);
+
+  const statusCode = result.status === "processing" ? 202 : 200;
+  const message =
+    result.status === "processing"
+      ? "Subscription cancellation accepted for background processing"
+      : "Subscription cancelled successfully";
+
+  return sendResponse(res, statusCode, message, result);
+});
+
+export const previewCancellationImpact = asyncHandler(async (req, res) => {
+  const result = await subscriptionService.previewCancellationImpact(
+    req.params.id,
+    req.organizationId,
+    req.user?.id || req.user?._id
+  );
+  return sendResponse(res, 200, "Subscription cancellation impact preview generated successfully", result);
+});
+
+export const getCancellationOperationStatus = asyncHandler(async (req, res) => {
+  const { id, operationId } = req.params;
+  const result = await subscriptionService.getCancellationOperationStatus(
+    id,
+    operationId,
+    req.organizationId
+  );
+  return sendResponse(res, 200, "Cancellation operation status retrieved successfully", result);
+});
+
+export const retryCancellationOperation = asyncHandler(async (req, res) => {
+  const { id, operationId } = req.params;
+  const result = await subscriptionService.retryCancellationOperation(
+    id,
+    operationId,
+    req.organizationId,
+    req.user?.id || req.user?._id
+  );
+  return sendResponse(res, 200, "Cancellation operation retry triggered successfully", result);
 });
 
 export const renewSubscription = asyncHandler(async (req, res) => {

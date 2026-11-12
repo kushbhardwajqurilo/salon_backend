@@ -17,6 +17,10 @@ import {
   startSubscriptionReconciliationWorker,
   stopSubscriptionReconciliationWorker,
 } from "./src/workers/subscriptionReconciliation.worker.js";
+import {
+  startSubscriptionCancellationWorker,
+  stopSubscriptionCancellationWorker,
+} from "./src/workers/subscriptionCancellation.worker.js";
 import mongoose from "mongoose";
 
 let server;
@@ -34,6 +38,9 @@ const serverStart = async () => {
 
     // 3b. Start Subscription Redemption Reconciliation Worker
     startSubscriptionReconciliationWorker();
+
+    // 3c. Start Subscription Cancellation BullMQ Worker
+    startSubscriptionCancellationWorker();
 
     // 4. Start Express Web Server
     server = app.listen(env.PORT, () => {
@@ -55,6 +62,7 @@ const gracefulShutdown = (signal) => {
     server.close(async () => {
       logger.info("🛑 Express server stopped.");
       try {
+        await stopSubscriptionCancellationWorker();
         await stopSubscriptionReconciliationWorker();
         await stopNotificationWorkers();
         await disconnectRedis();

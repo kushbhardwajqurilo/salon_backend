@@ -152,6 +152,16 @@ const subscriptionSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    lastPaymentAttemptAt: {
+      type: Date,
+      default: null,
+    },
+    cancellationStatus: {
+      type: String,
+      enum: ["none", "in_progress", "completed", "failed"],
+      default: "none",
+      index: true,
+    },
     // Durable operation ledger for idempotent atomic decrements and restorations
     appliedOperations: {
       type: [String],

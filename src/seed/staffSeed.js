@@ -188,18 +188,9 @@ export const seedStaffWithServices = async () => {
         }
       }
 
-      // 3. Find matching categories for this staff's target skills
-      const categories = await ServiceCategory.find({
-        organizationId: org._id,
-        name: { $in: profile.targetCategories },
-        isDeleted: false,
-      });
-      const categoryIds = categories.map((c) => c._id);
-
-      // Find services under these categories
+      // 3. Assign all active services (capabilities) to staff
       const services = await Service.find({
         organizationId: org._id,
-        categoryId: { $in: categoryIds },
         isDeleted: false,
         status: "active",
       });
@@ -230,7 +221,7 @@ export const seedStaffWithServices = async () => {
       }
 
       console.log(
-        `  -> Assigned ${services.length} services across categories: [${profile.targetCategories.join(", ")}]`
+        `  -> Assigned all ${services.length} active service capabilities (${staffAssignedCount} newly added/reactivated)`
       );
     }
 

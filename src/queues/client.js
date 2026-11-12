@@ -57,3 +57,7 @@ export const notificationQueue = {
 export const reportsQueue = {
   add: (name, data, opts) => createQueue("reports").add(name, data, opts),
 };
+
+export const subscriptionCancellationQueue = {
+  add: (name, data, opts) => createQueue("subscription-cancellation").add(name, data, opts),
+};

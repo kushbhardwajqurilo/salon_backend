@@ -1982,6 +1982,37 @@ export class BillingService {
         throw new AppError(`Cannot record payment on invoice with status '${invoice.status}'. Must be 'finalized'.`, 400);
       }
 
+      // If this is a subscription invoice, establish a shared transactional write boundary on Subscription.
+      // Contending with cancellation ensures that if cancellation has claimed the subscription,
+      // payment fails atomically; and if payment wins, cancellation's atomic claim or eligibility re-check will fail.
+      if (invoice.invoiceType === "subscription" || invoice.subscriptionId) {
+        const subId = invoice.subscriptionId;
+        if (subId) {
+          const SubscriptionModel = mongoose.model("Subscription");
+          const lockedSub = await SubscriptionModel.findOneAndUpdate(
+            {
+              _id: subId,
+              organizationId,
+              status: { $in: ["active", "pending_payment", "exhausted"] },
+              isDeleted: false,
+            },
+            {
+              $set: {
+                lastPaymentAttemptAt: new Date(),
+              },
+            },
+            { session, new: true }
+          );
+
+          if (!lockedSub || lockedSub.status === "cancelled") {
+            throw new AppError(
+              "Cannot record payment for a cancelled or concurrently modified subscription invoice",
+              400
+            );
+          }
+        }
+      }
+
       if (paymentAmount > invoice.amountDue) {
         throw new AppError(`Payment amount (₹${paymentAmount}) exceeds outstanding balance (₹${invoice.amountDue})`, 400);
       }
