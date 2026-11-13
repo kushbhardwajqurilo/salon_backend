@@ -77,7 +77,27 @@ const allowOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowOrigins.includes(origin)) {
+    // Allow non-browser requests (e.g. curl, server-to-server) where origin is undefined
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // In development/test mode, allow localhost, 127.0.0.1, LAN private IPs, and devtunnels
+    if (process.env.NODE_ENV !== "production") {
+      const isLocalhost =
+        origin.startsWith("http://localhost:") ||
+        origin.startsWith("http://127.0.0.1:") ||
+        origin.startsWith("http://192.168.") ||
+        origin.startsWith("http://10.") ||
+        origin.startsWith("http://172.16.") ||
+        origin.endsWith(".devtunnels.ms");
+
+      if (isLocalhost || allowOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+    }
+
+    if (allowOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.warn(`Cors Blocked: ${origin}`);
