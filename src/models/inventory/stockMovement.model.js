@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 export const MOVEMENT_TYPES = [
   "purchase_in",
   "pos_sale",
-  "salon_consumption",
+  "service_consumption",
   "adjustment",
   "transfer_out",
   "transfer_in",

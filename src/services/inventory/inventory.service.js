@@ -4,6 +4,7 @@ import { productRepository } from "../../repositories/inventory/product.reposito
 import { stockBalanceRepository } from "../../repositories/inventory/stockBalance.repository.js";
 import { stockMovementRepository } from "../../repositories/inventory/stockMovement.repository.js";
 import { validateQuantityForUnit } from "../../validation/inventory/inventory.validation.js";
+import { assertCanManageBranches } from "../../utils/branchAuthorization.js";
 import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 import { StockBalance } from "../../models/inventory/stockBalance.model.js";
 
@@ -222,7 +223,7 @@ export class InventoryService {
           productId,
           quantityDelta: -quantity,
           balanceAfter: this.roundQuantity(balance.onHand),
-          movementType: "salon_consumption",
+          movementType: "service_consumption",
           reference: {
             entityType: appointmentId ? "Appointment" : serviceId ? "Service" : "ManualConsumption",
             entityId: appointmentId || serviceId || null,
@@ -382,11 +383,16 @@ export class InventoryService {
   }
 
   // 5. INTER-BRANCH TRANSFER (ATOMIC SOURCE & DESTINATION)
-  async recordTransfer(payload, organizationId, userId) {
+  async recordTransfer(payload, organizationId, userId, user = null) {
     const { fromBranchId, toBranchId, productId, quantity, notes, idempotencyKey } = payload;
 
     if (fromBranchId.toString() === toBranchId.toString()) {
       throw new AppError("Source and destination branch cannot be the same", 400);
+    }
+
+    // Enforce branch authorization for both source and destination branches
+    if (user) {
+      await assertCanManageBranches(user, [fromBranchId, toBranchId], organizationId);
     }
 
     if (idempotencyKey) {

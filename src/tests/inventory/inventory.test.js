@@ -443,7 +443,7 @@ describe("Inventory MVP Foundation Suite", () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.balance.onHand).toBe(474.5);
-      expect(res.body.data.movement.movementType).toBe("salon_consumption");
+      expect(res.body.data.movement.movementType).toBe("service_consumption");
       expect(res.body.data.movement.quantityDelta).toBe(-25.5);
       expect(res.body.data.movement.balanceAfter).toBe(474.5);
     });

@@ -126,7 +126,8 @@ export const recordTransfer = async (req, res, next) => {
     const result = await inventoryService.recordTransfer(
       payload,
       req.user.organizationId,
-      req.user.id
+      req.user.id,
+      req.user
     );
     return sendResponse(res, 200, "Stock transfer recorded successfully", result);
   } catch (error) {
