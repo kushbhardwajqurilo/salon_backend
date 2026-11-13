@@ -60,6 +60,12 @@ export const AUDIT_ACTIONS = {
   PAYMENT_VOIDED: "PAYMENT_VOIDED",
   LOYALTY_PROGRAM_UPDATED: "LOYALTY_PROGRAM_UPDATED",
   LOYALTY_POINTS_ADJUSTED: "LOYALTY_POINTS_ADJUSTED",
+  INVENTORY_PRODUCT_CREATED: "INVENTORY_PRODUCT_CREATED",
+  INVENTORY_PRODUCT_UPDATED: "INVENTORY_PRODUCT_UPDATED",
+  INVENTORY_CONSUMED: "INVENTORY_CONSUMED",
+  INVENTORY_ADJUSTED: "INVENTORY_ADJUSTED",
+  INVENTORY_TRANSFERRED: "INVENTORY_TRANSFERRED",
+  INVENTORY_STOCKTAKE: "INVENTORY_STOCKTAKE",
 };
 
 const auditLogSchema = new mongoose.Schema(
@@ -110,4 +116,4 @@ const auditLogSchema = new mongoose.Schema(
 auditLogSchema.index({ organizationId: 1, entityType: 1, entityId: 1, createdAt: -1 });
 auditLogSchema.index({ organizationId: 1, branchId: 1, createdAt: -1 });
 
-export const AuditLog = mongoose.model("AuditLog", auditLogSchema);
+export const AuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", auditLogSchema);

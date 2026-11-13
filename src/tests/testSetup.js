@@ -62,6 +62,7 @@ export const REGISTERED_SUITE_SUFFIXES = Object.freeze([
   "sub_test",
   "plan_test",
   "phase7c_runner_test",
+  "inventory_test",
 ]);
 
 /**
