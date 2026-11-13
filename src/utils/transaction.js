@@ -3,11 +3,11 @@ import { AppError } from "./errors.js";
 
 /**
  * Checks if the current MongoDB connection supports multi-document transactions.
- * Transactions require a ReplicaSet or Sharded topology.
+ * Transactions require a ReplicaSet, Sharded, or LoadBalanced topology.
  */
 export const isTransactionSupported = () => {
   const topologyType = mongoose.connection.client?.topology?.description?.type;
-  return ["ReplicaSetWithPrimary", "ReplicaSetNoPrimary", "Sharded"].includes(topologyType);
+  return ["ReplicaSetWithPrimary", "ReplicaSetNoPrimary", "Sharded", "LoadBalanced"].includes(topologyType);
 };
 
 /**

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { runInTransaction } from "../../utils/transaction.js";
 import { UserRepository } from "../../repositories/users/user.repository.js";
 import { SessionRepository } from "../../repositories/auth/session.repository.js";
 import { AppError } from "../../utils/errors.js";
@@ -10,25 +11,7 @@ export class UserService {
   }
 
   async runTransaction(operation) {
-    let session = null;
-    const isSingle = mongoose.connection.client?.topology?.description?.type === "Single";
-    if (mongoose.connection.db && typeof mongoose.connection.startSession === "function" && !isSingle) {
-      try {
-        session = await mongoose.connection.startSession();
-        session.startTransaction();
-        const result = await operation(session);
-        await session.commitTransaction();
-        session.endSession();
-        return result;
-      } catch (error) {
-        if (session) {
-          await session.abortTransaction();
-          session.endSession();
-        }
-        throw error;
-      }
-    }
-    return operation(null);
+    return await runInTransaction(operation, { requireTransaction: true });
   }
 
   async updateUserStatus(id, status, organizationId, actorId) {

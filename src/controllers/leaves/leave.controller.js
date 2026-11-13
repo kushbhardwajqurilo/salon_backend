@@ -33,6 +33,16 @@ export const getLeaveById = asyncHandler(async (req, res) => {
   return sendResponse(res, 200, "Leave retrieved successfully", leave);
 });
 
+export const getLeaveConflicts = asyncHandler(async (req, res) => {
+  const result = await leaveService.getLeaveConflicts(
+    req.params.id,
+    req.organizationId,
+    req.branchId,
+    req.user.id
+  );
+  return sendResponse(res, 200, "Leave conflicts retrieved successfully", result);
+});
+
 export const updateLeave = asyncHandler(async (req, res) => {
   const leave = await leaveService.updateLeave(
     req.params.id,

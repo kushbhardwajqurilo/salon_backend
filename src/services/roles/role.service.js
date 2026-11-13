@@ -2,11 +2,47 @@ import { RoleRepository } from "../../repositories/roles/role.repository.js";
 import { PermissionRepository } from "../../repositories/permissions/permission.repository.js";
 import { User } from "../../models/users/user.model.js";
 import { AppError } from "../../utils/errors.js";
+import { redis } from "../../utils/redis.js";
+import { logger } from "../../utils/logger.js";
+
+/**
+ * Invalidate Redis permissions cache for a given role and organization.
+ * Ensures tenant-scoped keys and global system keys are accurately deleted post-commit.
+ *
+ * @param {string|null} organizationId
+ * @param {string} roleName
+ */
+export const invalidateRoleCache = async (organizationId, roleName) => {
+  if (!roleName) return;
+  const normalizedRole = roleName.toLowerCase().trim();
+  const orgScope = organizationId ? organizationId.toString() : "global";
+  const cacheKey = `rbac:org:${orgScope}:role:${normalizedRole}:permissions`;
+
+  try {
+    await redis.del(cacheKey);
+    // If invalidating without org or in global scope, ensure the global key is purged
+    if (!organizationId || orgScope === "global") {
+      await redis.del(`rbac:org:global:role:${normalizedRole}:permissions`);
+    }
+    // Also clean up any legacy un-scoped cache key to prevent stale reads during migration
+    await redis.del(`rbac:role:${normalizedRole}:permissions`);
+  } catch (err) {
+    logger.warn(`Failed to invalidate Redis cache for key '${cacheKey}': ${err.message}`);
+  }
+};
 
 export class RoleService {
   constructor() {
     this.roleRepo = new RoleRepository();
     this.permissionRepo = new PermissionRepository();
+  }
+
+  static async invalidateRoleCache(organizationId, roleName) {
+    return invalidateRoleCache(organizationId, roleName);
+  }
+
+  async invalidateRoleCache(organizationId, roleName) {
+    return invalidateRoleCache(organizationId, roleName);
   }
 
   async createRole(data, organizationId = null, userId = null) {
@@ -21,7 +57,9 @@ export class RoleService {
       organizationId: organizationId || null,
       isSystem: false,
     };
-    return this.roleRepo.create(payload, userId);
+    const created = await this.roleRepo.create(payload, userId);
+    await invalidateRoleCache(organizationId, roleName);
+    return created;
   }
 
   async getRoleById(roleId, organizationId = null) {
@@ -51,7 +89,12 @@ export class RoleService {
     if (userId) {
       role.updatedBy = userId;
     }
+    // Database write
     await role.save();
+
+    // Post-commit cache invalidation: only invalidate after database write succeeds
+    await invalidateRoleCache(role.organizationId || organizationId, role.name);
+
     return this.roleRepo.findRoleByIdAndOrg(role._id, organizationId);
   }
 
@@ -77,7 +120,12 @@ export class RoleService {
       throw new AppError("Cannot delete role. Active users are currently assigned to this role.", 400);
     }
 
+    // Database deletion
     await this.roleRepo.model.deleteOne({ _id: roleId });
+
+    // Post-commit cache invalidation: only invalidate after database write succeeds
+    await invalidateRoleCache(role.organizationId || organizationId, role.name);
+
     return role;
   }
 }

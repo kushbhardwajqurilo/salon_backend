@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { runInTransaction } from "../../utils/transaction.js";
 import { StaffRepository } from "../../repositories/staff/staff.repository.js";
 import { StaffBranchRepository } from "../../repositories/staff/staffBranch.repository.js";
 import { StaffServiceRepository } from "../../repositories/staff/staffService.repository.js";
@@ -20,38 +21,7 @@ export class StaffService {
   }
 
   async runTransaction(operation) {
-    let session = null;
-    if (
-      mongoose.connection.db &&
-      typeof mongoose.connection.startSession === "function"
-    ) {
-      try {
-        session = await mongoose.connection.startSession();
-        session.startTransaction();
-        const result = await operation(session);
-        await session.commitTransaction();
-        session.endSession();
-        return result;
-      } catch (err) {
-        if (session) {
-          try {
-            await session.abortTransaction();
-            session.endSession();
-          } catch (_) { }
-        }
-        const isSessionErr =
-          err.message?.includes("Transaction numbers") ||
-          err.message?.includes("does not support retryable writes") ||
-          err.message?.includes("replica set") ||
-          err.message?.includes("IllegalOperation");
-        if (!isSessionErr) {
-          throw err;
-        }
-        // Fallback to running without transaction
-        return operation(null);
-      }
-    }
-    return operation(null);
+    return await runInTransaction(operation, { requireTransaction: true });
   }
 
   async createStaff(data, organizationId, actorId) {

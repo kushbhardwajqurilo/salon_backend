@@ -1,8 +1,7 @@
 import { PermissionService } from "../../services/permissions/permission.service.js";
-import { RoleService } from "../../services/roles/role.service.js";
+import { RoleService, invalidateRoleCache } from "../../services/roles/role.service.js";
 import { sendResponse } from "../../utils/response.js";
 import { asyncHandler } from "../../utils/errors.js";
-import { redis } from "../../utils/redis.js";
 
 const permissionService = new PermissionService();
 const roleService = new RoleService();
@@ -44,9 +43,8 @@ export const assignPermissionsToRole = asyncHandler(async (req, res) => {
 
   const role = await roleService.assignPermissionsToRole(roleId, permissions, req.organizationId, req.user?.id);
 
-  // Invalidate Redis permissions cache for this role
-  const cacheKey = `rbac:role:${role.name}:permissions`;
-  await redis.del(cacheKey);
+  // Invalidate Redis permissions cache for this role using org-scoped helper
+  await invalidateRoleCache(req.organizationId || role.organizationId, role.name);
 
   return sendResponse(res, 200, `Permissions successfully assigned to role '${role.name}'`, role);
 });
@@ -55,10 +53,9 @@ export const deleteRole = asyncHandler(async (req, res) => {
   const { roleId } = req.params;
   const role = await roleService.deleteRole(roleId, req.organizationId);
 
-  // Invalidate Redis permissions cache for this role
+  // Invalidate Redis permissions cache for this role using org-scoped helper
   if (role) {
-    const cacheKey = `rbac:role:${role.name}:permissions`;
-    await redis.del(cacheKey);
+    await invalidateRoleCache(req.organizationId || role.organizationId, role.name);
   }
 
   return sendResponse(res, 200, "Role deleted successfully", null);

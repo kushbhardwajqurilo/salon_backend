@@ -41,7 +41,7 @@ router.get(
 router.put(
   "/:id",
   requireOrganizationScope,
-  authorize("customers.edit"),
+  authorize("customers.update"),
   validate(customerValidation.updateCustomerSchema),
   customerController.updateCustomer
 );
@@ -67,7 +67,7 @@ router.get(
 router.post(
   "/:id/notes",
   requireBranchScope,
-  authorize("customers.edit"),
+  authorize("customers.update"),
   validate(customerValidation.addNoteSchema),
   customerController.addNote
 );
@@ -84,7 +84,7 @@ router.get(
 router.put(
   "/:id/reactivate",
   requireOrganizationScope,
-  authorize("customers.edit"),
+  authorize("customers.update"),
   validate(customerValidation.customerStatusUpdateSchema),
   customerController.reactivateCustomer
 );

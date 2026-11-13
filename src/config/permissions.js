@@ -576,3 +576,14 @@ export const CANONICAL_PERMISSIONS = [
     description: "Retrieve system audit logs and action histories."
   }
 ];
+
+/**
+ * Canonical bidirectional permission aliases.
+ * Permanent mapping to guarantee zero downtime and full backward compatibility
+ * between legacy "customers.edit" and canonical "customers.update".
+ */
+export const PERMISSION_ALIASES = Object.freeze({
+  "customers.update": ["customers.update", "customers.edit"],
+  "customers.edit": ["customers.edit", "customers.update"],
+});
+

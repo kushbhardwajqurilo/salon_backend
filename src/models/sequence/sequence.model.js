@@ -18,6 +18,4 @@ const sequenceSchema = new mongoose.Schema(
   }
 );
 
-sequenceSchema.index({ key: 1 }, { unique: true });
-
 export const Sequence = mongoose.model("Sequence", sequenceSchema);

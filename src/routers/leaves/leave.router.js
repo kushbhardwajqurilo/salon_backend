@@ -53,6 +53,15 @@ router.get(
 );
 
 router.get(
+  "/:id/conflicts",
+  authenticate,
+  requireBranchScope,
+  authorize("employees.leaves.view"),
+  validate(leaveIdParamsSchema),
+  leaveController.getLeaveConflicts
+);
+
+router.get(
   "/:id",
   authenticate,
   requireBranchScope,

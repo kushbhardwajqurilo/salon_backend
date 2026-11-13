@@ -90,6 +90,52 @@ const leaveSchema = new mongoose.Schema(
             maxlength: 1000,
             default: null,
         },
+        // Soft delete fields
+        isDeleted: {
+            type: Boolean,
+            default: false,
+            index: true,
+        },
+        deletedAt: {
+            type: Date,
+            default: null,
+        },
+        deletedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+        },
+        // Partial-day leave extensions
+        isPartialDay: {
+            type: Boolean,
+            default: false,
+            required: true,
+        },
+        dayPart: {
+            type: String,
+            enum: ["first_half", "second_half", "custom"],
+            default: null,
+        },
+        startTime: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        endTime: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        startAt: {
+            type: Date,
+            default: null,
+            index: true,
+        },
+        endAt: {
+            type: Date,
+            default: null,
+            index: true,
+        },
     },
     {
         timestamps: true,
@@ -100,6 +146,7 @@ const leaveSchema = new mongoose.Schema(
 leaveSchema.index({ organizationId: 1, branchId: 1, createdAt: -1 });
 leaveSchema.index({ organizationId: 1, staffId: 1, startDate: 1, endDate: 1 });
 leaveSchema.index({ organizationId: 1, branchId: 1, status: 1, createdAt: -1 });
+leaveSchema.index({ organizationId: 1, staffId: 1, status: 1, startAt: 1, endAt: 1 });
 leaveSchema.index(
     { organizationId: 1, leaveCode: 1 },
     { unique: true, partialFilterExpression: { isDeleted: false } }

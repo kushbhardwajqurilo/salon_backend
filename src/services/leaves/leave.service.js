@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { runInTransaction } from "../../utils/transaction.js";
 import { LeaveRepository } from "../../repositories/leaves/leave.repository.js";
 import { StaffRepository } from "../../repositories/staff/staff.repository.js";
 import { StaffBranchRepository } from "../../repositories/staff/staffBranch.repository.js";
@@ -6,6 +7,9 @@ import { UserRepository } from "../../repositories/users/user.repository.js";
 import { RoleRepository } from "../../repositories/roles/role.repository.js";
 import { AuditLogService } from "../audit/auditLog.service.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
+import { Branch } from "../../models/branches/branch.model.js";
+import { Appointment } from "../../models/appointments/appointment.model.js";
+import { parseLocalToUTC } from "../appointments/appointment.service.js";
 import { AppError } from "../../utils/errors.js";
 import {
   enumerateDates,
@@ -18,7 +22,16 @@ const MANAGE_PERMISSION = "employees.leaves.manage";
 const ACTIVE_STAFF_STATUS = "active";
 const LEAVE_CODE_PREFIX = "LV-";
 const LEAVE_CODE_RETRY_LIMIT = 3;
-const MUTABLE_FIELDS = new Set(["leaveType", "startDate", "endDate", "reason"]);
+const MUTABLE_FIELDS = new Set([
+  "leaveType",
+  "startDate",
+  "endDate",
+  "reason",
+  "isPartialDay",
+  "dayPart",
+  "startTime",
+  "endTime",
+]);
 const IMMUTABLE_FIELDS = [
   "status",
   "staffId",
@@ -105,37 +118,51 @@ export class LeaveService {
   }
 
   async runTransaction(operation) {
-    let session = null;
-    if (
-      mongoose.connection.db &&
-      typeof mongoose.connection.startSession === "function"
-    ) {
-      try {
-        session = await mongoose.connection.startSession();
-        session.startTransaction();
-        const result = await operation(session);
-        await session.commitTransaction();
-        session.endSession();
-        return result;
-      } catch (err) {
-        if (session) {
-          try {
-            await session.abortTransaction();
-            session.endSession();
-          } catch (_) { }
-        }
-        const isSessionErr =
-          err.message?.includes("Transaction numbers") ||
-          err.message?.includes("does not support retryable writes") ||
-          err.message?.includes("replica set") ||
-          err.message?.includes("IllegalOperation");
-        if (!isSessionErr) {
-          throw err;
-        }
-        return operation(null);
+    return await runInTransaction(operation, { requireTransaction: true });
+  }
+
+  calculateLeaveInstants(data, branchTimezone = "Asia/Kolkata") {
+    const tz = branchTimezone || "Asia/Kolkata";
+    const startDateStr = typeof data.startDate === "string" ? data.startDate : toDateOnlyStr(data.startDate);
+    const endDateStr = typeof data.endDate === "string" ? data.endDate : toDateOnlyStr(data.endDate);
+
+    if (data.isPartialDay) {
+      let startTimeStr = data.startTime;
+      let endTimeStr = data.endTime;
+
+      if (data.dayPart === "first_half") {
+        startTimeStr = startTimeStr || "09:00";
+        endTimeStr = endTimeStr || "14:00";
+      } else if (data.dayPart === "second_half") {
+        startTimeStr = startTimeStr || "14:00";
+        endTimeStr = endTimeStr || "19:00";
       }
+
+      const startAt = parseLocalToUTC(startDateStr, startTimeStr, tz);
+      const endAt = parseLocalToUTC(endDateStr, endTimeStr, tz);
+
+      return {
+        isPartialDay: true,
+        dayPart: data.dayPart || "custom",
+        startTime: startTimeStr,
+        endTime: endTimeStr,
+        startAt,
+        endAt,
+      };
     }
-    return operation(null);
+
+    // Full-day leave: 00:00 local of startDate to 24:00 local of endDate
+    const startAt = parseLocalToUTC(startDateStr, "00:00", tz);
+    const endAt = new Date(parseLocalToUTC(endDateStr, "00:00", tz).getTime() + 24 * 60 * 60 * 1000);
+
+    return {
+      isPartialDay: false,
+      dayPart: null,
+      startTime: null,
+      endTime: null,
+      startAt,
+      endAt,
+    };
   }
 
   async createLeave(data, organizationId, branchId, actorId) {
@@ -188,6 +215,11 @@ export class LeaveService {
             );
           }
 
+          const branch = await Branch.findOne({ _id: branchId, organizationId }).session(session);
+          const branchTz = branch?.timezone || "Asia/Kolkata";
+          const { isPartialDay, dayPart, startTime, endTime, startAt, endAt } =
+            this.calculateLeaveInstants(data, branchTz);
+
           const leaveCode = await this.generateLeaveCode(
             organizationId,
             session,
@@ -205,6 +237,12 @@ export class LeaveService {
               status: "pending",
               submittedBy: actorId,
               submittedFor,
+              isPartialDay,
+              dayPart,
+              startTime,
+              endTime,
+              startAt,
+              endAt,
             },
             organizationId,
             actorId,
@@ -225,6 +263,10 @@ export class LeaveService {
                 endDate: toDateOnlyStr(endDate),
                 leaveType: data.leaveType,
                 submittedFor,
+                isPartialDay,
+                dayPart,
+                startTime,
+                endTime,
               },
               branchId,
               actorId,
@@ -354,6 +396,10 @@ export class LeaveService {
           startDate: data.startDate ?? toDateOnlyStr(leave.startDate),
           endDate: data.endDate ?? toDateOnlyStr(leave.endDate),
           reason: data.reason ?? leave.reason,
+          isPartialDay: data.isPartialDay !== undefined ? data.isPartialDay : Boolean(leave.isPartialDay),
+          dayPart: data.dayPart !== undefined ? data.dayPart : leave.dayPart,
+          startTime: data.startTime !== undefined ? data.startTime : leave.startTime,
+          endTime: data.endTime !== undefined ? data.endTime : leave.endTime,
         };
         const { startDate, endDate, dates } = this.buildDateRange(
           merged.startDate,
@@ -375,6 +421,11 @@ export class LeaveService {
           );
         }
 
+        const branch = await Branch.findOne({ _id: leave.branchId, organizationId }).session(session);
+        const branchTz = branch?.timezone || "Asia/Kolkata";
+        const { isPartialDay, dayPart, startTime, endTime, startAt, endAt } =
+          this.calculateLeaveInstants(merged, branchTz);
+
         const updatedFields = [];
         for (const field of MUTABLE_FIELDS) {
           if (field in data) {
@@ -390,6 +441,12 @@ export class LeaveService {
             endDate,
             dates,
             reason: merged.reason,
+            isPartialDay,
+            dayPart,
+            startTime,
+            endTime,
+            startAt,
+            endAt,
           },
           organizationId,
           actorId,
@@ -430,6 +487,63 @@ export class LeaveService {
     }
   }
 
+  async getLeaveConflicts(id, organizationId, branchId, actorId) {
+    const leave = await this.leaveRepo.findById(id, organizationId);
+    if (!leave) {
+      throw new AppError("Leave not found", 404);
+    }
+
+    this.assertLeaveBranchVisibility(leave, branchId);
+
+    let startAt = leave.startAt;
+    let endAt = leave.endAt;
+
+    if (!startAt || !endAt) {
+      const branch = await Branch.findOne({ _id: leave.branchId, organizationId });
+      const instants = this.calculateLeaveInstants(leave, branch?.timezone);
+      startAt = instants.startAt;
+      endAt = instants.endAt;
+    }
+
+    const staffId = leave.staffId?._id || leave.staffId;
+    const conflictFilter = {
+      organizationId,
+      staffId,
+      isDeleted: false,
+      status: { $in: ["scheduled", "in_progress"] },
+    };
+
+    if (leave.isPartialDay && startAt && endAt) {
+      conflictFilter.startAt = { $lt: endAt };
+      conflictFilter.endAt = { $gt: startAt };
+    } else {
+      conflictFilter.appointmentDate = { $in: leave.dates };
+    }
+
+    const conflictingAppointments = await Appointment.find(conflictFilter)
+      .populate("customerId", "name")
+      .sort({ startAt: 1 })
+      .lean()
+      .exec();
+
+    const conflicts = conflictingAppointments.map((apt) => ({
+      id: apt._id.toString(),
+      appointmentCode: apt.appointmentCode,
+      customerName: apt.customerId?.name || "Walk-in Customer",
+      serviceNames: (apt.services || []).map((s) => s.name),
+      startTime: apt.startTime,
+      endTime: apt.endTime,
+      appointmentDate: apt.appointmentDate,
+      startAt: apt.startAt,
+      endAt: apt.endAt,
+    }));
+
+    return {
+      count: conflicts.length,
+      conflicts,
+    };
+  }
+
   async approveLeave(id, reviewNote, organizationId, actorId) {
     try {
       return await this.runTransaction(async (session) => {
@@ -460,6 +574,59 @@ export class LeaveService {
           throw new AppError(
             "You cannot approve/reject your own leave request",
             403,
+          );
+        }
+
+        // Determine startAt / endAt for conflict check
+        let startAt = leave.startAt;
+        let endAt = leave.endAt;
+        if (!startAt || !endAt) {
+          const branch = await Branch.findOne({ _id: leave.branchId, organizationId }).session(session);
+          const instants = this.calculateLeaveInstants(leave, branch?.timezone);
+          startAt = instants.startAt;
+          endAt = instants.endAt;
+        }
+
+        // Atomic Invariant Check: Query conflicts atomically inside transaction session
+        const staffId = leave.staffId?._id || leave.staffId;
+        const conflictFilter = {
+          organizationId,
+          staffId,
+          isDeleted: false,
+          status: { $in: ["scheduled", "in_progress"] },
+        };
+
+        if (leave.isPartialDay && startAt && endAt) {
+          conflictFilter.startAt = { $lt: endAt };
+          conflictFilter.endAt = { $gt: startAt };
+        } else {
+          conflictFilter.appointmentDate = { $in: leave.dates };
+        }
+
+        const conflictingAppointments = await Appointment.find(conflictFilter)
+          .populate("customerId", "name")
+          .session(session)
+          .lean()
+          .exec();
+
+        if (conflictingAppointments.length > 0) {
+          const formattedConflicts = conflictingAppointments.map((apt) => ({
+            id: apt._id.toString(),
+            appointmentCode: apt.appointmentCode,
+            customerName: apt.customerId?.name || "Walk-in Customer",
+            serviceNames: (apt.services || []).map((s) => s.name),
+            startTime: apt.startTime,
+            endTime: apt.endTime,
+            appointmentDate: apt.appointmentDate,
+          }));
+
+          throw new AppError(
+            "Cannot approve leave: conflicting appointments exist",
+            409,
+            {
+              count: formattedConflicts.length,
+              conflicts: formattedConflicts,
+            }
           );
         }
 
@@ -892,6 +1059,12 @@ export class LeaveService {
       cancelledBy: normalizeId(leave.cancelledBy?.name),
       cancelledAt: normalizeDateTime(leave.cancelledAt),
       cancelReason: leave.cancelReason ?? null,
+      isPartialDay: Boolean(leave.isPartialDay),
+      dayPart: leave.dayPart || null,
+      startTime: leave.startTime || null,
+      endTime: leave.endTime || null,
+      startAt: normalizeDateTime(leave.startAt),
+      endAt: normalizeDateTime(leave.endAt),
       createdAt: normalizeDateTime(leave.createdAt),
       updatedAt: normalizeDateTime(leave.updatedAt),
     };

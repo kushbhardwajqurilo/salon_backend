@@ -469,15 +469,39 @@ export class AppointmentService {
       );
     }
 
-    // 2. Leave check (only approved leaves block appointment booking)
-    const leaveExists = await Leave.findOne({
+    // 2. Leave check (only approved leaves block appointment booking. Partial-day leaves block only their applicable interval)
+    const conflictingLeave = await Leave.findOne({
       organizationId,
       staffId,
-      dates: dateStr,
       status: "approved",
+      isDeleted: false,
+      $or: [
+        // Case A: Partial-day leave with interval overlap
+        {
+          isPartialDay: true,
+          startAt: { $lt: endAt },
+          endAt: { $gt: startAt },
+        },
+        // Case B: Full-day leave covering dateStr
+        {
+          isPartialDay: false,
+          dates: dateStr,
+        },
+        // Case C: Legacy leaves where isPartialDay is not set
+        {
+          isPartialDay: { $exists: false },
+          dates: dateStr,
+        },
+      ],
     });
 
-    if (leaveExists) {
+    if (conflictingLeave) {
+      if (conflictingLeave.isPartialDay) {
+        throw new AppError(
+          `Staff member is on partial-day leave (${conflictingLeave.startTime || ""} - ${conflictingLeave.endTime || ""}) during this time slot`,
+          400,
+        );
+      }
       throw new AppError(`Staff member is on leave on date ${dateStr}`, 400);
     }
   }
@@ -1395,7 +1419,7 @@ export class AppointmentService {
   /**
    * RESCHEDULE APPOINTMENT DATE/TIME (SAME BRANCH ONLY)
    */
-  async rescheduleAppointment(id, data, organizationId) {
+  async rescheduleAppointment(id, data, organizationId, userId = null) {
     const { branchId, date, appointmentDate, startTime } = data;
 
     const targetDate = date || appointmentDate;
@@ -1491,6 +1515,37 @@ export class AppointmentService {
         await this.scheduleReminders(updated);
       }
 
+      // Audit log for appointment rescheduling
+      if (userId) {
+        try {
+          await AuditLog.create({
+            organizationId,
+            branchId,
+            actorId: userId,
+            action: AUDIT_ACTIONS.APPOINTMENT_RESCHEDULED || "APPOINTMENT_RESCHEDULED",
+            entityType: "Appointment",
+            entityId: appointment._id,
+            description: `Appointment ${appointment.appointmentCode} rescheduled from ${appointment.appointmentDate} ${appointment.startTime} to ${formattedStart.dateStr} ${formattedStart.timeStr}`,
+            metadata: {
+              appointmentCode: appointment.appointmentCode,
+              previousAppointmentDate: appointment.appointmentDate,
+              previousStartTime: appointment.startTime,
+              previousEndTime: appointment.endTime,
+              previousStartAt: appointment.startAt,
+              previousEndAt: appointment.endAt,
+              newAppointmentDate: formattedStart.dateStr,
+              newStartTime: formattedStart.timeStr,
+              newEndTime: formattedEnd.timeStr,
+              newStartAt: startAt,
+              newEndAt: endAt,
+              staffId: appointment.staffId || null,
+            },
+          });
+        } catch (auditErr) {
+          logger.warn(`Failed to create audit log for reschedule: ${auditErr.message}`);
+        }
+      }
+
       return updated;
     } catch (err) {
       if (err.code === 11000 && err.keyPattern?.slotMinutes) {
@@ -1506,7 +1561,7 @@ export class AppointmentService {
   /**
    * ASSIGN OR REASSIGN STAFF
    */
-  async assignStaff(id, data, organizationId) {
+  async assignStaff(id, data, organizationId, userId = null) {
     const { branchId, staffId } = data;
 
     const appointment = await appointmentRepo.findById(id, organizationId);
@@ -1598,6 +1653,42 @@ export class AppointmentService {
         },
         organizationId,
       );
+
+      // Audit log for staff assignment / reassignment
+      if (userId) {
+        const prevStaff = appointment.staffId ? appointment.staffId.toString() : null;
+        const nextStaff = staffId ? staffId.toString() : null;
+        let description;
+        if (!prevStaff && nextStaff) {
+          description = `Staff assigned to appointment ${appointment.appointmentCode}`;
+        } else if (prevStaff && !nextStaff) {
+          description = `Staff unassigned from appointment ${appointment.appointmentCode}`;
+        } else {
+          description = `Staff reassigned for appointment ${appointment.appointmentCode}`;
+        }
+
+        try {
+          await AuditLog.create({
+            organizationId,
+            branchId,
+            actorId: userId,
+            action: AUDIT_ACTIONS.APPOINTMENT_STAFF_REASSIGNED || "APPOINTMENT_STAFF_REASSIGNED",
+            entityType: "Appointment",
+            entityId: appointment._id,
+            description,
+            metadata: {
+              appointmentCode: appointment.appointmentCode,
+              previousStaffId: appointment.staffId || null,
+              newStaffId: staffId || null,
+              appointmentDate: updatedAppointmentDate,
+              startTime: updatedStartTime,
+              endTime: updatedEndTime,
+            },
+          });
+        } catch (auditErr) {
+          logger.warn(`Failed to create audit log for assignStaff: ${auditErr.message}`);
+        }
+      }
 
       // Return fully populated appointment (including staff)
       return await appointmentRepo.findById(id, organizationId);

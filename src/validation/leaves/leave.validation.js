@@ -3,6 +3,7 @@ import { isValidDateOnly, enumerateDates, MAX_LEAVE_DAYS } from "../../utils/dat
 
 const objectIdRegex = /^[0-9a-fA-F]{24}$/;
 const objectIdSchema = z.string().regex(objectIdRegex, "Invalid ObjectId format");
+const timeStringSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Invalid time format (HH:mm)");
 
 /**
  * YYYY-MM-DD date-only string.
@@ -16,27 +17,78 @@ const dateOnlySchema = z
     });
 
 /**
- * Cross-field date-range validation: startDate <= endDate and range <= MAX_LEAVE_DAYS.
- * Applied to the body object after individual field validation.
+ * Cross-field leave interval validation:
+ * For partial-day leaves: single calendar day (startDate === endDate), required dayPart, custom times, and startTime < endTime.
+ * For full-day leaves: startDate <= endDate and range <= MAX_LEAVE_DAYS.
  */
-const validateDateRange = (body, ctx) => {
-    if (!body.startDate || !body.endDate) return;
-    try {
-        const dates = enumerateDates(body.startDate, body.endDate);
-        if (dates.length > MAX_LEAVE_DAYS) {
+const validateLeaveInterval = (body, ctx) => {
+    if (body.isPartialDay) {
+        // Rule 1: Partial-day leave must start and end on the same calendar date if both are provided
+        if (body.startDate && body.endDate && body.startDate !== body.endDate) {
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
                 path: ["endDate"],
-                message: `Leave range exceeds MAX_LEAVE_DAYS (${MAX_LEAVE_DAYS} calendar days)`,
+                message: "Partial-day leave must start and end on the same calendar date",
             });
         }
-    } catch (err) {
-        // enumerateDates throws if endDate < startDate
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["endDate"],
-            message: "endDate must be greater than or equal to startDate",
-        });
+
+        // Rule 2: dayPart is required when isPartialDay is true
+        if (!body.dayPart) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["dayPart"],
+                message: "dayPart is required when isPartialDay is true",
+            });
+        }
+
+        // Rule 3: Custom partial-day leave requires both startTime and endTime
+        if (body.dayPart === "custom") {
+            if (!body.startTime) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["startTime"],
+                    message: "startTime is required for custom partial-day leave",
+                });
+            }
+            if (!body.endTime) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["endTime"],
+                    message: "endTime is required for custom partial-day leave",
+                });
+            }
+        }
+
+        // Rule 4: If both startTime and endTime are provided, startTime must be strictly less than endTime
+        if (body.startTime && body.endTime) {
+            if (body.startTime >= body.endTime) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["endTime"],
+                    message: "endTime must be greater than startTime",
+                });
+            }
+        }
+    } else {
+        // Full-day leave range validation
+        if (!body.startDate || !body.endDate) return;
+        try {
+            const dates = enumerateDates(body.startDate, body.endDate);
+            if (dates.length > MAX_LEAVE_DAYS) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["endDate"],
+                    message: `Leave range exceeds MAX_LEAVE_DAYS (${MAX_LEAVE_DAYS} calendar days)`,
+                });
+            }
+        } catch (err) {
+            // enumerateDates throws if endDate < startDate
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["endDate"],
+                message: "endDate must be greater than or equal to startDate",
+            });
+        }
     }
 };
 
@@ -48,9 +100,13 @@ export const createLeaveSchema = z.object({
             startDate: dateOnlySchema,
             endDate: dateOnlySchema,
             reason: z.string().min(1, "Reason is required").trim().max(1000),
+            isPartialDay: z.boolean().default(false),
+            dayPart: z.enum(["first_half", "second_half", "custom"]).optional(),
+            startTime: timeStringSchema.optional(),
+            endTime: timeStringSchema.optional(),
         })
         .strict() // strips organizationId/branchId/leaveCode/status/dates/submittedBy/submittedFor/reviewedBy/reviewedAt/reviewNote/cancelledBy/cancelledAt/cancelReason
-        .superRefine(validateDateRange),
+        .superRefine(validateLeaveInterval),
 });
 
 export const updateLeaveSchema = z.object({
@@ -60,9 +116,13 @@ export const updateLeaveSchema = z.object({
             startDate: dateOnlySchema.optional(),
             endDate: dateOnlySchema.optional(),
             reason: z.string().min(1, "Reason is required").trim().max(1000).optional(),
+            isPartialDay: z.boolean().optional(),
+            dayPart: z.enum(["first_half", "second_half", "custom"]).optional(),
+            startTime: timeStringSchema.optional(),
+            endTime: timeStringSchema.optional(),
         })
         .strict() // no status, no staffId, no server-owned fields
-        .superRefine(validateDateRange),
+        .superRefine(validateLeaveInterval),
 });
 
 const allowedSortFields = ["leaveCode", "startDate", "endDate", "status", "createdAt", "updatedAt"];

@@ -257,7 +257,7 @@ export class BillingService {
   /**
    * Transaction execution helper for financial operations (payment recording, voiding)
    */
-  async executeTransaction(callback, { requireTransaction = false } = {}) {
+  async executeTransaction(callback, { requireTransaction = true } = {}) {
     return await runInTransaction(callback, { requireTransaction });
   }
 

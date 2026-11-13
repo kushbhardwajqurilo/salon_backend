@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import crypto from "node:crypto";
 import { UserRepository } from "../../repositories/users/user.repository.js";
+import { RoleRepository } from "../../repositories/roles/role.repository.js";
 import { UserService } from "../../services/users/user.service.js";
 import { Role } from "../../models/roles/role.model.js";
 import { Branch } from "../../models/branches/branch.model.js";
@@ -15,6 +16,7 @@ import { assertCanManageBranches } from "../../utils/branchAuthorization.js";
 import { validateUserUpdate } from "../../utils/userValidation.js";
 
 const userRepo = new UserRepository();
+const roleRepo = new RoleRepository();
 const userService = new UserService();
 
 export const listUsers = asyncHandler(async (req, res) => {
@@ -125,8 +127,8 @@ export const createUser = asyncHandler(async (req, res) => {
     }));
   }
 
-  // 3. Role existence verification
-  const role = await Role.findById(roleId).populate("permissions");
+  // 3. Role existence & tenant ownership verification
+  const role = await roleRepo.findRoleByIdAndOrg(roleId, organizationId);
   if (!role) {
     throw new AppError("Role not found", 404);
   }
@@ -136,10 +138,13 @@ export const createUser = asyncHandler(async (req, res) => {
     req.user.role?.toLowerCase() === "owner" || req.user.hasOrgWideAccess;
 
   if (!isOwner) {
-    const adminRoleObj = await mongoose
-      .model("Role")
-      .findOne({ name: req.user.role.toLowerCase() })
-      .populate("permissions");
+    const adminRoleObj = await roleRepo.findByNameInOrg(
+      req.user.role.toLowerCase(),
+      organizationId,
+    );
+    if (adminRoleObj && adminRoleObj.populate) {
+      await adminRoleObj.populate("permissions");
+    }
     const adminPermissions = adminRoleObj
       ? adminRoleObj.permissions.map((p) => p.name)
       : [];
@@ -250,9 +255,9 @@ export const updateUser = asyncHandler(async (req, res) => {
     updateData.email = normalizedEmail;
   }
 
-  // Role update with validation and delegation guard
+  // Role update with tenant-scoped validation and delegation guard
   if (roleId !== undefined) {
-    const role = await Role.findById(roleId).populate("permissions");
+    const role = await roleRepo.findRoleByIdAndOrg(roleId, organizationId);
     if (!role) {
       throw new AppError("Role not found", 404);
     }
@@ -261,10 +266,13 @@ export const updateUser = asyncHandler(async (req, res) => {
       req.user.role?.toLowerCase() === "owner" || req.user.hasOrgWideAccess;
 
     if (!isOwner) {
-      const adminRoleObj = await mongoose
-        .model("Role")
-        .findOne({ name: req.user.role.toLowerCase() })
-        .populate("permissions");
+      const adminRoleObj = await roleRepo.findByNameInOrg(
+        req.user.role.toLowerCase(),
+        organizationId,
+      );
+      if (adminRoleObj && adminRoleObj.populate) {
+        await adminRoleObj.populate("permissions");
+      }
       const adminPermissions = adminRoleObj
         ? adminRoleObj.permissions.map((p) => p.name)
         : [];

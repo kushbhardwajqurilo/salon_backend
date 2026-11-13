@@ -30,7 +30,4 @@ const permissionSchema = new mongoose.Schema(
   }
 );
 
-permissionSchema.index({ name: 1 }, { unique: true });
-
 export const Permission = mongoose.model("Permission", permissionSchema);
-

@@ -133,6 +133,7 @@ export const rescheduleAppointment = asyncHandler(async (req, res) => {
     req.params.id,
     req.body,
     req.organizationId,
+    req.user?.id,
   );
   return sendResponse(
     res,
@@ -147,6 +148,7 @@ export const assignStaff = asyncHandler(async (req, res) => {
     req.params.id,
     req.body,
     req.organizationId,
+    req.user?.id,
   );
   return sendResponse(res, 200, "Staff assigned successfully", appointment);
 });

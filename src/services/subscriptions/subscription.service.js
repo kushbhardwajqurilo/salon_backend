@@ -34,7 +34,7 @@ export class SubscriptionService {
    * Defers to runInTransaction which enforces ACID when transactions are supported,
    * or permits standalone fallback when explicitly enabled in test/standalone environments.
    */
-  async executeTransaction(callback, { requireTransaction = false } = {}) {
+  async executeTransaction(callback, { requireTransaction = true } = {}) {
     return await runInTransaction(callback, { requireTransaction });
   }
 
