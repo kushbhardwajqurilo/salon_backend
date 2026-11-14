@@ -7,6 +7,7 @@ import { validateQuantityForUnit } from "../../validation/inventory/inventory.va
 import { assertCanManageBranches } from "../../utils/branchAuthorization.js";
 import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 import { StockBalance } from "../../models/inventory/stockBalance.model.js";
+import { stockReservationRepository } from "../../repositories/inventory/stockReservation.repository.js";
 
 export class InventoryService {
   /**
@@ -91,7 +92,15 @@ export class InventoryService {
   async listProducts(filter, pagination) {
     const query = { organizationId: filter.organizationId };
     if (filter.category) query.category = filter.category;
-    if (filter.usageType) query.usageType = filter.usageType;
+    if (filter.usageType) {
+      if (filter.usageType === "retail_sale") {
+        query.usageType = { $in: ["retail_sale", "both"] };
+      } else if (filter.usageType === "salon_consumption") {
+        query.usageType = { $in: ["salon_consumption", "both"] };
+      } else {
+        query.usageType = filter.usageType;
+      }
+    }
     if (filter.status) query.status = filter.status;
     if (filter.search) {
       query.$or = [
@@ -559,6 +568,232 @@ export class InventoryService {
         totalPages: Math.ceil(total / limit)
       }
     };
+  }
+
+  // 7. STOCK RESERVATIONS FOR POS CHECKOUT
+  /**
+   * Atomically reserve stock for invoice draft product lines without deducting on-hand stock.
+   * Prevents overselling by incrementing `allocated` when (onHand - allocated) >= requested quantity.
+   */
+  async reserveStockForInvoice({ invoiceId, branchId, organizationId, items, session, reservationTtlMinutes = 30 }) {
+    const expiresAt = new Date(Date.now() + reservationTtlMinutes * 60 * 1000);
+    const reservations = [];
+
+    // First release any prior active reservations for this invoice (e.g. cart modification)
+    await this.releaseReservationsForInvoice(invoiceId, organizationId, session);
+
+    for (const item of items) {
+      const { productId, quantity } = item;
+      if (!quantity || quantity <= 0) continue;
+
+      const product = await productRepository.findById(productId, organizationId, session);
+      if (!product) {
+        throw new AppError(`Product not found: ${productId}`, 404);
+      }
+      if (product.status !== "active") {
+        throw new AppError(`Cannot sell inactive product '${product.name}'`, 400);
+      }
+      if (!["retail_sale", "both"].includes(product.usageType)) {
+        throw new AppError(`Product '${product.name}' is not designated for retail sale`, 400);
+      }
+
+      // Check unit precision
+      const validation = validateQuantityForUnit(quantity, product.stockUnit);
+      if (!validation.valid) {
+        throw new AppError(validation.message, 400);
+      }
+
+      // Atomically allocate stock
+      const updatedBalance = await StockBalance.findOneAndUpdate(
+        {
+          organizationId,
+          branchId,
+          productId,
+          $expr: {
+            $gte: [{ $subtract: ["$onHand", "$allocated"] }, quantity],
+          },
+        },
+        {
+          $inc: { allocated: quantity },
+          $set: { lastMovementAt: new Date() },
+        },
+        { session, returnDocument: "after" }
+      );
+
+      if (!updatedBalance) {
+        const currentBalance = await StockBalance.findOne({
+          organizationId,
+          branchId,
+          productId,
+        }).session(session);
+
+        const onHand = currentBalance?.onHand || 0;
+        const allocated = currentBalance?.allocated || 0;
+        const available = Math.max(0, this.roundQuantity(onHand - allocated));
+        throw new AppError(
+          `Insufficient available stock for '${product.name}' (${product.sku}). Required: ${quantity} ${product.stockUnit}, Available: ${available} ${product.stockUnit}`,
+          400
+        );
+      }
+
+      const reservation = await stockReservationRepository.create(
+        {
+          organizationId,
+          branchId,
+          invoiceId,
+          productId,
+          quantity,
+          status: "active",
+          expiresAt,
+          notes: `POS Cart Reservation for Invoice ${invoiceId}`,
+        },
+        session
+      );
+      reservations.push(reservation);
+    }
+
+    return reservations;
+  }
+
+  /**
+   * Release active reservations for an invoice (e.g. cart cleared, draft cancelled, or abandoned)
+   */
+  async releaseReservationsForInvoice(invoiceId, organizationId, session = null) {
+    const activeReservations = await stockReservationRepository.findActiveByInvoice(
+      invoiceId,
+      organizationId,
+      session
+    );
+
+    for (const res of activeReservations) {
+      await StockBalance.findOneAndUpdate(
+        {
+          organizationId,
+          branchId: res.branchId,
+          productId: res.productId,
+        },
+        {
+          $inc: { allocated: -res.quantity },
+          $set: { lastMovementAt: new Date() },
+        },
+        { session }
+      );
+    }
+
+    if (activeReservations.length > 0) {
+      await stockReservationRepository.updateStatusByInvoice(
+        invoiceId,
+        organizationId,
+        "released",
+        session
+      );
+    }
+  }
+
+  /**
+   * Atomically commit reservations into permanent `pos_sale` stock movements upon invoice payment.
+   * Decrements both onHand and allocated atomically.
+   */
+  async commitReservationsForInvoice({ invoice, actorId, session }) {
+    const activeReservations = await stockReservationRepository.findActiveByInvoice(
+      invoice._id,
+      invoice.organizationId,
+      session
+    );
+
+    const movements = [];
+
+    for (const res of activeReservations) {
+      const product = await productRepository.findById(res.productId, invoice.organizationId, session);
+
+      // Decrement both onHand and allocated
+      const updatedBalance = await StockBalance.findOneAndUpdate(
+        {
+          organizationId: invoice.organizationId,
+          branchId: res.branchId,
+          productId: res.productId,
+        },
+        {
+          $inc: {
+            onHand: -res.quantity,
+            allocated: -res.quantity,
+          },
+          $set: { lastMovementAt: new Date() },
+        },
+        { session, returnDocument: "after" }
+      );
+
+      const movement = await stockMovementRepository.create(
+        {
+          organizationId: invoice.organizationId,
+          branchId: res.branchId,
+          productId: res.productId,
+          quantityDelta: -res.quantity,
+          balanceAfter: this.roundQuantity(updatedBalance.onHand),
+          movementType: "pos_sale",
+          reference: {
+            entityType: "Invoice",
+            entityId: invoice._id,
+            identifier: invoice.invoiceNumber,
+          },
+          actorId,
+          notes: `POS Retail Sale: Invoice #${invoice.invoiceNumber} (${product ? product.name : "Product"})`,
+          idempotencyKey: `pos_sale_${invoice._id}_${res.productId}`,
+        },
+        session
+      );
+      movements.push(movement);
+    }
+
+    if (activeReservations.length > 0) {
+      await stockReservationRepository.updateStatusByInvoice(
+        invoice._id,
+        invoice.organizationId,
+        "consumed",
+        session
+      );
+    }
+
+    return movements;
+  }
+
+  /**
+   * Transactional worker to clean up expired stock reservations.
+   * Decrements allocated quantity exactly once per expired reservation.
+   * Concurrency-safe against race conditions with simultaneous payment commitments.
+   */
+  async cleanupExpiredReservations(batchSize = 100) {
+    const expiredList = await stockReservationRepository.findExpiredActiveReservations(batchSize);
+    let expiredCount = 0;
+
+    for (const item of expiredList) {
+      await runInTransaction(async (session) => {
+        // Double-check and transition reservation status to expired atomically within the session
+        const expiredDoc = await stockReservationRepository.atomicallyExpireReservation(item._id, session);
+        if (!expiredDoc) {
+          // Already consumed, released, or expired by another worker/request
+          return;
+        }
+
+        // Decrement allocated quantity exactly once
+        await StockBalance.findOneAndUpdate(
+          {
+            organizationId: expiredDoc.organizationId,
+            branchId: expiredDoc.branchId,
+            productId: expiredDoc.productId,
+          },
+          {
+            $inc: { allocated: -expiredDoc.quantity },
+            $set: { lastMovementAt: new Date() },
+          },
+          { session }
+        );
+
+        expiredCount++;
+      });
+    }
+
+    return { processedCount: expiredCount };
   }
 }
 
