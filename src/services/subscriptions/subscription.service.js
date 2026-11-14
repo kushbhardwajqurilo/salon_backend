@@ -555,6 +555,7 @@ export class SubscriptionService {
         { path: "members.customerId", select: "name phone email" },
         { path: "permittedBranchIds", select: "name" },
         { path: "invoiceId", select: "invoiceNumber paymentStatus amountPaid amountDue status" },
+        { path: "planId", select: "_id name description suggestedPrice validityMonths entitlements" },
       ],
       sort: { createdAt: -1 },
     };
@@ -621,7 +622,7 @@ export class SubscriptionService {
         { path: "members.entitlements.serviceId", select: "name duration price" },
         { path: "permittedBranchIds", select: "name isActive" },
         { path: "entitlements.serviceId", select: "name duration price" },
-        { path: "planId", select: "_id name" },
+        { path: "planId", select: "_id name description suggestedPrice validityMonths" },
         { path: "invoiceId", select: "invoiceNumber paymentStatus amountPaid amountDue status" },
       ],
     );
