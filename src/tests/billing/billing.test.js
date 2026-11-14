@@ -126,6 +126,7 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
     const ownerRoleA = await Role.create({
       name: `owner_a_${Date.now()}_${Math.random()}`,
       description: "Owner Role",
+      organizationId: orgAId,
       permissions: permsDocs.map((p) => p._id),
     });
 
@@ -164,6 +165,14 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
     });
     branchUserTokenA = jwt.sign({ id: branchUserA._id, role: "staff" }, env.JWT_SECRET, { expiresIn: "1h" });
 
+    // Owner role in Org B
+    const ownerRoleB = await Role.create({
+      name: `owner_b_${Date.now()}_${Math.random()}`,
+      description: "Owner Role B",
+      organizationId: orgBId,
+      permissions: permsDocs.map((p) => p._id),
+    });
+
     // Owner in Org B
     ownerUserB = await User.create({
       name: `Owner B ${uniqueSuffix}`,
@@ -171,7 +180,7 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
       email: `owner_b_${uniqueSuffix}@test.com`,
       phone: `+9199977${uniqueSuffix.slice(-5)}`,
       password: "Password@123",
-      role: ownerRoleA._id,
+      role: ownerRoleB._id,
       organizationId: orgBId,
       status: "active",
       hasOrgWideAccess: true,
@@ -587,7 +596,7 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
   it("8. duplicate active invoice creation for same appointment is prevented", async () => {
     const apt = await createTestAppointment();
 
-    // First invoice
+    // First invoice - created and finalized
     const res1 = await request(app)
       .post("/api/v1/billing/invoices")
       .set("Authorization", `Bearer ${ownerTokenA}`)
@@ -595,7 +604,13 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
       .send({ appointmentId: apt._id.toString() });
     expect(res1.status).toBe(201);
 
-    // Second invoice attempt
+    await request(app)
+      .post(`/api/v1/billing/invoices/${res1.body.data._id}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send();
+
+    // Second invoice attempt against active finalized appointment invoice is rejected
     const res2 = await request(app)
       .post("/api/v1/billing/invoices")
       .set("Authorization", `Bearer ${ownerTokenA}`)

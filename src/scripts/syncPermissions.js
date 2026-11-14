@@ -102,6 +102,10 @@ export const syncPermissionsLogic = async () => {
     "subscriptions.configure",
     "subscriptions.sell",
     "subscriptions.redeem",
+    // Memberships (all)
+    "memberships.view",
+    "memberships.configure",
+    "memberships.sell",
     // Employees (all)
     "employees.view",
     "employees.create",

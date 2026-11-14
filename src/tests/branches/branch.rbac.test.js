@@ -16,10 +16,12 @@ jest.unstable_mockModule("../../middleware/auth.js", () => ({
 jest.unstable_mockModule("../../repositories/roles/role.repository.js", () => {
   return {
     RoleRepository: class MockRoleRepository {
-      async findOne(query) {
+      async findByNameInOrg(name, organizationId) {
         if (global.__TEST_USER_PERMISSIONS__) {
           return {
-            name: query.name,
+            name,
+            organizationId,
+            isSystem: false,
             permissions: global.__TEST_USER_PERMISSIONS__.map((p) => ({ name: p })),
           };
         }

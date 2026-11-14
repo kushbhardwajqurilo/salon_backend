@@ -188,9 +188,10 @@ export class SubscriptionService {
     const resolvedMembers = [];
 
     // Initial status determined by price and billing intent
-    const { billImmediately, branchId: invoiceBranchId = null } = data;
-    const shouldBill = Number(price) > 0 ? true : Boolean(billImmediately);
-    const initialStatus = shouldBill && Number(price) > 0 ? "pending_payment" : "active";
+    // When selling a subscription directly, billing immediately is optional so that it can be staged in sales workspace
+    const { billImmediately = false, branchId: invoiceBranchId = null } = data;
+    const shouldBill = Boolean(billImmediately);
+    const initialStatus = Number(price) > 0 ? "pending_payment" : "active";
 
     for (const mem of rawMembers) {
       const mCustIdStr = mem.customerId ? mem.customerId.toString() : null;
@@ -334,7 +335,7 @@ export class SubscriptionService {
           );
         }
 
-        invoice = await billingService.createInvoiceForSubscriptionSale(
+        invoice = await billingService.createUnifiedInvoice(
           {
             subscriptionId: newSub._id,
             branchId: effectiveBranchId,
@@ -477,12 +478,26 @@ export class SubscriptionService {
       status,
       branchId,
       search,
+      isInvoiced,
     } = query;
 
     const conditions = [
       { organizationId },
       { isDeleted: false },
     ];
+
+    if (isInvoiced === "false" || isInvoiced === false) {
+      conditions.push({
+        $or: [
+          { invoiceId: null },
+          { invoiceId: { $exists: false } },
+        ],
+      });
+    } else if (isInvoiced === "true" || isInvoiced === true) {
+      conditions.push({
+        invoiceId: { $ne: null, $exists: true },
+      });
+    }
 
     if (customerId) {
       conditions.push({

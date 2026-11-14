@@ -2,20 +2,13 @@ import { asyncHandler } from "../../utils/errors.js";
 import { billingService } from "../../services/billing/billing.service.js";
 
 export const createInvoice = asyncHandler(async (req, res) => {
-  let invoice;
-  if (req.body.subscriptionId) {
-    invoice = await billingService.createInvoiceForSubscriptionSale(
-      req.body,
-      req.user.organizationId,
-      req.user.id || req.user._id
-    );
-  } else {
-    invoice = await billingService.createInvoiceFromAppointment(
-      req.body,
-      req.user.organizationId,
-      req.user.id || req.user._id
-    );
-  }
+  // All entry points converge into one authoritative unified checkout pipeline
+  const invoice = await billingService.createUnifiedInvoice(
+    req.body,
+    req.user.organizationId,
+    req.user.id || req.user._id
+  );
+
   res.status(201).json({
     success: true,
     message: "Draft invoice created successfully",
@@ -268,12 +261,13 @@ export const getInvoicePdf = asyncHandler(async (req, res) => {
 });
 
 export const getCheckoutQueue = asyncHandler(async (req, res) => {
-  const { date, branchId } = req.query;
+  const { date, branchId, customerId } = req.query;
   const effectiveBranchId = branchId || req.branchId;
 
   const result = await billingService.getCheckoutQueue({
     organizationId: req.user.organizationId,
     branchId: effectiveBranchId,
+    customerId,
     date,
   });
 
@@ -282,5 +276,30 @@ export const getCheckoutQueue = asyncHandler(async (req, res) => {
     message: "Checkout queue retrieved successfully",
     data: result.data,
     meta: result.meta,
+  });
+});
+
+export const returnInvoiceItems = asyncHandler(async (req, res) => {
+  const branchId = req.branchId || req.body?.branchId;
+  const result = await billingService.processInvoiceReturn(
+    req.params.id,
+    req.body,
+    req.user.organizationId,
+    branchId,
+    req.user.id || req.user._id
+  );
+  res.status(200).json({
+    success: true,
+    message: "Invoice items returned and processed successfully",
+    data: result,
+  });
+});
+
+export const listMembershipPlans = asyncHandler(async (req, res) => {
+  const plans = await billingService.listMembershipPlans(req.user.organizationId, req.query);
+  res.status(200).json({
+    success: true,
+    message: "Membership plans retrieved successfully",
+    data: plans,
   });
 });

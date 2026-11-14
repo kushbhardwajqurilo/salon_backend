@@ -16,6 +16,7 @@ import {
   voidPaymentSchema,
   listInvoicesQuerySchema,
   getCheckoutQueueQuerySchema,
+  returnInvoiceItemsSchema,
 } from "../../validation/billing/billing.validation.js";
 import {
   createInvoice,
@@ -26,6 +27,7 @@ import {
   getInvoiceDiscountHistory,
   finalizeInvoice,
   cancelInvoice,
+  returnInvoiceItems,
   recordPayment,
   voidPayment,
   getInvoiceById,
@@ -33,6 +35,7 @@ import {
   getPaymentsByInvoiceId,
   getInvoicePdf,
   getCheckoutQueue,
+  listMembershipPlans,
 } from "../../controllers/billing/billing.controller.js";
 
 const router = express.Router();
@@ -85,6 +88,13 @@ router.get(
   validate(getCheckoutQueueQuerySchema),
   requirePermission(["billing.view", "billing.checkout"]),
   getCheckoutQueue
+);
+
+// Membership Plans for Checkout & Upsell
+router.get(
+  "/membership-plans",
+  requirePermission(["billing.view", "billing.checkout", "memberships.view"]),
+  listMembershipPlans
 );
 
 // Invoices
@@ -172,6 +182,14 @@ router.post(
   validate(cancelInvoiceSchema),
   requirePermission("billing.void"),
   cancelInvoice
+);
+
+router.post(
+  "/invoices/:id/returns",
+  validateMutationBranch,
+  validate(returnInvoiceItemsSchema),
+  requirePermission("payments.refund"),
+  returnInvoiceItems
 );
 
 // Payments

@@ -5,27 +5,70 @@ const objectIdSchema = z.string().refine((val) => objectIdRegex.test(val), {
   message: "Invalid ObjectId format",
 });
 
+const invoiceProductLineInputSchema = z.object({
+  productId: objectIdSchema,
+  quantity: z.coerce.number().positive("Quantity must be greater than zero"),
+});
+
+const invoiceMembershipLineInputSchema = z.object({
+  membershipPlanId: objectIdSchema,
+  quantity: z.coerce.number().int().positive().default(1),
+});
+
+const invoiceSubscriptionLineInputSchema = z.object({
+  planId: objectIdSchema,
+  price: z.coerce.number().min(0, "Price must be non-negative").optional(),
+});
+
+const invoiceCustomServiceLineInputSchema = z.object({
+  serviceId: objectIdSchema,
+  quantity: z.coerce.number().int().positive().default(1),
+  unitPrice: z.coerce.number().min(0).optional(),
+  appliedSubscriptionId: objectIdSchema.optional().nullable(),
+});
+
 export const createInvoiceSchema = z.object({
   body: z
     .object({
       branchId: objectIdSchema,
+      customerId: objectIdSchema.optional(),
       appointmentId: objectIdSchema.optional(),
       subscriptionId: objectIdSchema.optional(),
+      // Unified cart collections
+      productLines: z.array(invoiceProductLineInputSchema).optional().default([]),
+      membershipLines: z.array(invoiceMembershipLineInputSchema).optional().default([]),
+      subscriptionLines: z.array(invoiceSubscriptionLineInputSchema).optional().default([]),
+      serviceLines: z.array(invoiceCustomServiceLineInputSchema).optional().default([]),
+      // Single plan convenience inputs for backward compatibility
+      membershipPlanId: objectIdSchema.optional(),
       discount: z.coerce.number().min(0, "Discount must be non-negative").optional(),
       discountTotal: z.coerce.number().min(0, "Discount must be non-negative").optional(),
       redeemLoyaltyPoints: z.coerce.number().int().min(0, "redeemLoyaltyPoints must be non-negative").optional(),
       notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional().default(""),
     })
-    .refine((data) => data.appointmentId || data.subscriptionId, {
-      message: "Either appointmentId or subscriptionId must be provided to create an invoice",
-      path: ["appointmentId"],
-    }),
+    .refine(
+      (data) =>
+        data.appointmentId ||
+        data.subscriptionId ||
+        data.membershipPlanId ||
+        (data.membershipLines && data.membershipLines.length > 0) ||
+        (data.subscriptionLines && data.subscriptionLines.length > 0) ||
+        (data.customerId && (
+          (data.productLines && data.productLines.length > 0) ||
+          (data.serviceLines && data.serviceLines.length > 0)
+        )),
+      {
+        message: "An invoice must contain at least one valid line (appointment, subscription, membership, product, or service)",
+        path: ["appointmentId"],
+      }
+    ),
 });
 
 export const createSubscriptionInvoiceSchema = z.object({
   body: z.object({
     branchId: objectIdSchema,
     subscriptionId: objectIdSchema,
+    productLines: z.array(invoiceProductLineInputSchema).optional().default([]),
     discount: z.coerce.number().min(0, "Discount must be non-negative").optional(),
     redeemLoyaltyPoints: z.coerce.number().int().min(0, "redeemLoyaltyPoints must be non-negative").optional(),
     notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional().default(""),
@@ -33,14 +76,35 @@ export const createSubscriptionInvoiceSchema = z.object({
 });
 
 export const updateDraftInvoiceSchema = z.object({
-  body: z
-    .object({
-      branchId: objectIdSchema.optional(),
-      discountTotal: z.coerce.number().min(0, "Discount must be non-negative").optional(),
-      redeemLoyaltyPoints: z.coerce.number().int().min(0, "redeemLoyaltyPoints must be non-negative").optional(),
-      notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional(),
-    })
-    .strict("Only discountTotal, redeemLoyaltyPoints, and notes may be modified on a draft invoice"),
+  body: z.object({
+    branchId: objectIdSchema.optional(),
+    productLines: z.array(invoiceProductLineInputSchema).optional(),
+    membershipLines: z.array(invoiceMembershipLineInputSchema).optional(),
+    subscriptionLines: z.array(invoiceSubscriptionLineInputSchema).optional(),
+    serviceLines: z.array(invoiceCustomServiceLineInputSchema).optional(),
+    discountTotal: z.coerce.number().min(0, "Discount must be non-negative").optional(),
+    redeemLoyaltyPoints: z.coerce.number().int().min(0, "redeemLoyaltyPoints must be non-negative").optional(),
+    notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional(),
+  }).strict(),
+});
+
+export const returnInvoiceItemsSchema = z.object({
+  body: z.object({
+    branchId: objectIdSchema.optional(),
+    items: z
+      .array(
+        z.object({
+          lineId: objectIdSchema,
+          quantity: z.coerce.number().positive("Return quantity must be greater than zero"),
+          condition: z.enum(["unopened", "damaged", "defective"]).default("unopened"),
+          acceptPhysicalRestock: z.boolean().default(true),
+          restockReason: z.string().trim().max(500).optional(),
+        })
+      )
+      .min(1, "At least one item must be returned"),
+    refundPaymentMethod: z.enum(["cash", "card", "upi", "other"]).default("cash"),
+    reason: z.string().trim().min(3, "Return reason must be at least 3 characters").max(500),
+  }),
 });
 
 export const finalizeInvoiceSchema = z.object({
@@ -200,6 +264,7 @@ export const listInvoicesQuerySchema = z.object({
 export const getCheckoutQueueQuerySchema = z.object({
   query: z.object({
     branchId: objectIdSchema.optional(),
+    customerId: objectIdSchema.optional(),
     date: z
       .string()
       .regex(dateOnlyRegex, "Invalid date format (YYYY-MM-DD)")

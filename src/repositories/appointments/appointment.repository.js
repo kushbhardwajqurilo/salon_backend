@@ -14,7 +14,8 @@ export class AppointmentRepository {
     })
       .populate("branchId", "name")
       .populate("customerId", "name phone email")
-      .populate("staffId", "name");
+      .populate("staffId", "name")
+      .populate("services.appliedSubscriptionId", "subscriptionCode status");
   }
 
   async findOne(filter, organizationId) {
@@ -25,7 +26,8 @@ export class AppointmentRepository {
     })
       .populate("branchId", "name")
       .populate("customerId", "name phone email")
-      .populate("staffId", "name");
+      .populate("staffId", "name")
+      .populate("services.appliedSubscriptionId", "subscriptionCode status");
   }
 
   async find(filter = {}, pagination = {}, organizationId, branchId = null) {
@@ -47,6 +49,7 @@ export class AppointmentRepository {
         .populate("branchId", "name")
         .populate("customerId", "name phone email")
         .populate("staffId", "name")
+        .populate("services.appliedSubscriptionId", "subscriptionCode status")
         .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 })
         .skip(skip)
         .limit(limit),

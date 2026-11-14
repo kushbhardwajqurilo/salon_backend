@@ -8,7 +8,13 @@ const paymentSchema = new mongoose.Schema(
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer", required: true, index: true },
     paymentNumber: { type: String, required: true, trim: true }, // PAY-YYYYMMDD-XXXX
 
-    amount: { type: Number, required: true, min: 0.01 },
+    amount: { type: Number, required: true },
+    type: {
+      type: String,
+      enum: ["payment", "refund"],
+      default: "payment",
+      index: true,
+    },
     method: {
       type: String,
       enum: ["cash", "card", "upi", "other"],

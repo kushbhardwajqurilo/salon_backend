@@ -24,6 +24,11 @@ const appointmentServiceSnapshotSchema = new mongoose.Schema(
       ref: "Subscription",
       default: null,
     },
+    subscriptionCode: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     isRedeemedViaSubscription: { type: Boolean, default: false },
     subscriptionUsageId: {
       type: mongoose.Schema.Types.ObjectId,

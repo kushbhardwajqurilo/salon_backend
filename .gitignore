@@ -1,6 +1,10 @@
 /node_modules
 .env
 .env.test
+!.env.attendance-e2e.example
+.env.attendance-e2e
+.attendance-e2e-fixtures.json
+.attendance-e2e-owner.json
 /backend_branch_prompt.md
 /tmp-mongo-rs
 /data

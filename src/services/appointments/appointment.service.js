@@ -3752,11 +3752,11 @@ export class AppointmentService {
       });
       await newSubscription.save({ session });
 
-      // 7. Create standalone subscription invoice if billImmediately is true
+      // 7. Route invoice creation through unified checkout if billImmediately is true
       let invoice = null;
       if (billImmediately) {
         const { billingService } = await import("../billing/billing.service.js");
-        invoice = await billingService.createInvoiceForSubscriptionSale(
+        invoice = await billingService.createUnifiedInvoice(
           {
             subscriptionId: newSubscription._id,
             branchId: appointment.branchId,

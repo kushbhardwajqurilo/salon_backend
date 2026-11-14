@@ -110,7 +110,7 @@ const invoiceLineSchema = new mongoose.Schema(
   {
     lineType: {
       type: String,
-      enum: ["service", "subscription"],
+      enum: ["service", "subscription", "product", "membership"],
       default: "service",
       required: true,
     },
@@ -135,12 +135,61 @@ const invoiceLineSchema = new mongoose.Schema(
       ref: "Subscription",
       default: null,
     },
-    appointmentServiceId: {
+    subscriptionPlanId: {
       type: mongoose.Schema.Types.ObjectId,
+      ref: "SubscriptionPlan",
+      default: null,
+    },
+    // Membership purchase fields
+    membershipPlanId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MembershipPlan",
       required: function () {
-        return this.lineType === "service";
+        return this.lineType === "membership";
       },
       default: null,
+    },
+    customerMembershipId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CustomerMembership",
+      default: null,
+    },
+    membershipTierSnapshot: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    appointmentServiceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: false,
+      default: null,
+    },
+    // Product POS fields
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: function () {
+        return this.lineType === "product";
+      },
+      default: null,
+    },
+    sku: {
+      type: String,
+      trim: true,
+      required: function () {
+        return this.lineType === "product";
+      },
+      default: null,
+    },
+    stockUnit: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    costPriceSnapshot: {
+      type: Number,
+      min: 0,
+      default: 0,
     },
     name: { type: String, required: true, trim: true },
     duration: {
@@ -161,6 +210,11 @@ const invoiceLineSchema = new mongoose.Schema(
     subscriptionUsageId: { type: mongoose.Schema.Types.ObjectId, ref: "SubscriptionUsage", default: null },
     subscriptionCoveredAmount: { type: Number, default: 0, min: 0, required: true },
 
+    // Membership benefit application (for service or product lines)
+    isDiscountedByMembership: { type: Boolean, default: false },
+    appliedCustomerMembershipId: { type: mongoose.Schema.Types.ObjectId, ref: "CustomerMembership", default: null },
+    membershipDiscountAmount: { type: Number, default: 0, min: 0 },
+
     // Discount tracking per line
     appliedDiscounts: { type: [activeDiscountItemSchema], default: [] },
     lineDiscountTotal: { type: Number, default: 0, min: 0 },
@@ -168,6 +222,7 @@ const invoiceLineSchema = new mongoose.Schema(
     discountAmount: { type: Number, default: 0, min: 0, required: true },
 
     customerPayable: { type: Number, required: true, min: 0 },
+    returnedQuantity: { type: Number, default: 0, min: 0 },
   },
   { _id: true }
 );
@@ -180,7 +235,7 @@ const invoiceSchema = new mongoose.Schema(
 
     invoiceType: {
       type: String,
-      enum: ["appointment", "subscription", "combined"],
+      enum: ["appointment", "subscription", "retail", "combined", "membership", "unified"],
       default: "appointment",
       required: true,
       index: true,
@@ -207,6 +262,21 @@ const invoiceSchema = new mongoose.Schema(
       index: true,
     },
     subscriptionCode: { type: String, default: null, trim: true },
+
+    // Membership reference (populated for membership sales)
+    membershipPlanId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MembershipPlan",
+      default: null,
+      index: true,
+    },
+    customerMembershipId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CustomerMembership",
+      default: null,
+      index: true,
+    },
+    membershipCode: { type: String, default: null, trim: true },
 
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer", required: true, index: true },
     customerSnapshot: { type: invoiceCustomerSnapshotSchema, required: true },

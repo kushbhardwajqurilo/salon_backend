@@ -177,5 +177,6 @@ export const querySubscriptionSchema = z.object({
     status: z.enum(["active", "pending_payment", "expired", "exhausted", "cancelled"]).optional(),
     branchId: objectIdSchema.optional(),
     search: z.string().trim().optional(),
+    isInvoiced: z.string().optional(),
   }),
 });

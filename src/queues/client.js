@@ -61,3 +61,8 @@ export const reportsQueue = {
 export const subscriptionCancellationQueue = {
   add: (name, data, opts) => createQueue("subscription-cancellation").add(name, data, opts),
 };
+
+export const stockReservationExpiryQueue = {
+  add: (name, data, opts) => createQueue("stock-reservation-expiry").add(name, data, opts),
+  getQueue: () => createQueue("stock-reservation-expiry"),
+};
