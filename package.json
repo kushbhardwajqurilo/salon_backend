@@ -16,7 +16,8 @@
     "users:migrate-usernames": "node src/scripts/migrateUsernames.js",
     "services:migrate-gender": "node src/scripts/migrateServicesGender.js",
     "db:migrate-to-atlas": "node src/scripts/transferToAtlas.js",
-    "staff:assign-all-services": "node src/scripts/assignAllServicesToStaff.js"
+    "staff:assign-all-services": "node src/scripts/assignAllServicesToStaff.js",
+    "db:clean-tests": "node src/scripts/cleanTestDatabases.js"
   },
   "keywords": [],
   "author": "kush bhardwaj",

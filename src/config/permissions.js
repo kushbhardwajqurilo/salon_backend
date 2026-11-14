@@ -312,6 +312,24 @@ export const CANONICAL_PERMISSIONS = [
     description: "Send OTP and record subscription entitlement redemptions."
   },
   {
+    name: "memberships.view",
+    module: "Memberships",
+    action: "View",
+    description: "View customer memberships, tiers, and benefit histories."
+  },
+  {
+    name: "memberships.configure",
+    module: "Memberships",
+    action: "Configure",
+    description: "Create, update, or deactivate membership plan templates and tier discount rules."
+  },
+  {
+    name: "memberships.sell",
+    module: "Memberships",
+    action: "Sell",
+    description: "Purchase or assign memberships during checkout or from customer profile."
+  },
+  {
     name: "coupons.view",
     module: "Coupons",
     action: "View",

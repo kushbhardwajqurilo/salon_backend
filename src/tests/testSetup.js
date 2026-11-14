@@ -63,6 +63,7 @@ export const REGISTERED_SUITE_SUFFIXES = Object.freeze([
   "plan_test",
   "phase7c_runner_test",
   "inventory_test",
+  "attendance_test",
 ]);
 
 /**
@@ -158,6 +159,22 @@ export function validateTestDatabaseUri(uriString) {
   }
 
   const { hosts, dbName, trimmed } = parseMongoUri(uriString);
+  if (process.env.ATTENDANCE_E2E_PERSISTENCE === "1") {
+    const targetDatabase = "saloon_erp_attendance_e2e";
+    const allowedHosts = (process.env.ATTENDANCE_E2E_ALLOWED_MONGO_HOSTS || "")
+      .split(",")
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean);
+    if (
+      dbName !== targetDatabase ||
+      hosts.some((hostEntry) => !allowedHosts.includes(hostEntry.split(":")[0].trim().toLowerCase()))
+    ) {
+      throw new Error(
+        "[FATAL E2E DATABASE GUARD] Persistence tests require the exact isolated Attendance E2E database and allowlisted host."
+      );
+    }
+    return trimmed;
+  }
 
   // 1. Host-level validation: Enforce Atlas-only architecture (*.mongodb.net)
   // Localhost, loopback IPs, and any non-Atlas hostnames are strictly rejected unconditionally
