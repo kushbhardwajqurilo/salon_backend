@@ -86,6 +86,8 @@ const seed = async () => {
       "employees.view", "employees.create", "employees.update", "employees.delete", "employees.assign_branch", "employees.assign_service",
       // Leaves (all)
       "employees.leaves.view", "employees.leaves.manage",
+      // Payroll (Manager operational capabilities)
+      "payroll.view", "payroll.structure.manage", "payroll.calculate", "payroll.adjust", "payroll.export",
       // Services (all)
       "services.view", "services.create", "services.update", "services.delete",
       // Existing defaults

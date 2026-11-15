@@ -116,6 +116,12 @@ export const syncPermissionsLogic = async () => {
     // Leaves (all)
     "employees.leaves.view",
     "employees.leaves.manage",
+    // Payroll (HR/Manager operational capabilities)
+    "payroll.view",
+    "payroll.structure.manage",
+    "payroll.calculate",
+    "payroll.adjust",
+    "payroll.export",
     // Services (all)
     "services.view",
     "services.create",

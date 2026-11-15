@@ -255,13 +255,49 @@ export const CANONICAL_PERMISSIONS = [
     name: "payroll.view",
     module: "Salary / Payroll",
     action: "View",
-    description: "View salary configurations, incentives, and historical payslips."
+    description: "View salary configurations, historical payroll runs, and payslips."
+  },
+  {
+    name: "payroll.structure.manage",
+    module: "Salary / Payroll",
+    action: "Manage Structure",
+    description: "Create and revise employee base salary structures."
   },
   {
     name: "payroll.calculate",
     module: "Salary / Payroll",
     action: "Calculate",
-    description: "Compute wages, process incentives, and approve payout values."
+    description: "Initialize payroll periods and compute wages from attendance/leaves."
+  },
+  {
+    name: "payroll.approve",
+    module: "Salary / Payroll",
+    action: "Approve",
+    description: "Authorize and approve verified draft payroll runs."
+  },
+  {
+    name: "payroll.disburse",
+    module: "Salary / Payroll",
+    action: "Disburse",
+    description: "Record and disburse finalized salary payments."
+  },
+  {
+    name: "payroll.adjust",
+    module: "Salary / Payroll",
+    action: "Adjust",
+    description: "Add authorized adjustment line items to draft payroll records."
+  },
+  {
+    name: "payroll.reverse",
+    module: "Salary / Payroll",
+    action: "Reverse",
+    description: "Execute audited reversals/corrections of paid payroll records."
+  },
+  {
+    name: "payroll.export",
+    module: "Salary / Payroll",
+    action: "Export",
+    description: "Download and export payslip PDFs and payroll reports."
   },
   {
     name: "services.view",
