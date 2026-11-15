@@ -137,6 +137,33 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
   });
 };
 
+export const requireAllPermissions = (requiredPermissions) => {
+  return asyncHandler(async (req, res, next) => {
+    const { role: roleName } = req.user || {};
+    const organizationId = req.user?.organizationId;
+
+    const permissions = await resolveRolePermissions(roleName, organizationId);
+
+    const requiredList = Array.isArray(requiredPermissions)
+      ? requiredPermissions
+      : [requiredPermissions];
+
+    const hasAll = requiredList.every((reqPerm) => {
+      const candidatePermissions = PERMISSION_ALIASES[reqPerm] || [reqPerm];
+      return candidatePermissions.some((perm) => permissions.includes(perm));
+    });
+
+    if (!hasAll) {
+      throw new AppError(
+        "Access denied. You do not have the required permissions.",
+        403,
+      );
+    }
+
+    next();
+  });
+};
+
 export const requirePermission = (requiredPermission) => {
   return asyncHandler(async (req, res, next) => {
     const { role: roleName } = req.user || {};

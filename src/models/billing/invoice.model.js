@@ -9,6 +9,21 @@ const invoiceCustomerSnapshotSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const invoiceCouponSnapshotSchema = new mongoose.Schema(
+  {
+    couponId: { type: mongoose.Schema.Types.ObjectId, ref: "Coupon", required: true },
+    code: { type: String, required: true, trim: true },
+    codeUpper: { type: String, required: true, trim: true, uppercase: true },
+    discountType: { type: String, enum: ["fixed", "percentage"], required: true },
+    discountValue: { type: Number, required: true, min: 0 },
+    calculatedDiscountAmount: { type: Number, required: true, min: 0 },
+    appliedAt: { type: Date, default: Date.now },
+    appliedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    usageLedgerId: { type: mongoose.Schema.Types.ObjectId, ref: "CouponUsage", default: null },
+  },
+  { _id: false }
+);
+
 const appointmentPricingSnapshotSchema = new mongoose.Schema(
   {
     subtotal: { type: Number, required: true, min: 0 },
@@ -290,6 +305,7 @@ const invoiceSchema = new mongoose.Schema(
     discountTotal: { type: Number, required: true, min: 0, default: 0 },
     appliedDiscounts: { type: [activeDiscountItemSchema], default: [] },
     discountHistory: { type: [discountHistorySchema], default: [] },
+    coupon: { type: invoiceCouponSnapshotSchema, default: null },
     loyaltyRedeemedPoints: { type: Number, default: 0, min: 0 },
     loyaltyDiscountAmount: { type: Number, default: 0, min: 0 },
     loyaltyPointsEarned: { type: Number, default: 0, min: 0 },

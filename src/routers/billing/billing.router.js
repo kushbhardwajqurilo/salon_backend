@@ -1,7 +1,7 @@
 import express from "express";
 import { authenticate } from "../../middleware/auth.js";
 import { requireOrganizationScope, requireBranchScope } from "../../middleware/branchScope.js";
-import { requirePermission } from "../../middleware/rbac.js";
+import { requirePermission, requireAllPermissions } from "../../middleware/rbac.js";
 import { validate } from "../../middleware/validate.js";
 import { asyncHandler, AppError } from "../../utils/errors.js";
 import {
@@ -12,6 +12,8 @@ import {
   applyInvoiceDiscountSchema,
   modifyInvoiceDiscountSchema,
   removeInvoiceDiscountSchema,
+  applyCouponSchema,
+  removeCouponSchema,
   recordPaymentSchema,
   voidPaymentSchema,
   listInvoicesQuerySchema,
@@ -25,6 +27,8 @@ import {
   modifyInvoiceDiscount,
   removeInvoiceDiscount,
   getInvoiceDiscountHistory,
+  applyCoupon,
+  removeCoupon,
   finalizeInvoice,
   cancelInvoice,
   returnInvoiceItems,
@@ -166,6 +170,23 @@ router.get(
   requireBranchScope,
   requirePermission("billing.view"),
   getInvoiceDiscountHistory
+);
+
+// Coupons Integration (Invoice-Scoped)
+router.post(
+  "/invoices/:id/coupons",
+  validateMutationBranch,
+  validate(applyCouponSchema),
+  requireAllPermissions(["billing.checkout", "coupons.apply"]),
+  applyCoupon
+);
+
+router.delete(
+  "/invoices/:id/coupons",
+  validateMutationBranch,
+  validate(removeCouponSchema),
+  requireAllPermissions(["billing.checkout", "coupons.apply"]),
+  removeCoupon
 );
 
 router.post(

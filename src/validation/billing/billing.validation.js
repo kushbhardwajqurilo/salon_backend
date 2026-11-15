@@ -272,3 +272,23 @@ export const getCheckoutQueueQuerySchema = z.object({
   }),
 });
 
+export const applyCouponSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+  }),
+  body: z.object({
+    code: z
+      .string()
+      .trim()
+      .min(1, "Coupon code is required")
+      .max(50, "Coupon code cannot exceed 50 characters"),
+  }),
+});
+
+export const removeCouponSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+  }),
+});
+
+

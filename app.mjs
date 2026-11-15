@@ -25,8 +25,10 @@ import subscriptionPlanRouter from "./src/routers/subscriptions/subscriptionPlan
 import billingRouter from "./src/routers/billing/billing.router.js";
 import loyaltyRouter from "./src/routers/loyalty/loyalty.router.js";
 import inventoryRouter from "./src/routers/inventory/inventory.routes.js";
+import procurementRouter from "./src/routers/procurement/procurement.routes.js";
 import attendanceRouter from "./src/routers/attendance/attendance.router.js";
 import payrollRouter from "./src/routers/payroll/payroll.routes.js";
+import couponRouter from "./src/routers/coupons/coupon.routes.js";
 import uploadRouter from "./src/routers/upload.routes.js";
 import {
   apiLimiter,
@@ -149,8 +151,10 @@ app.use("/api/v1/subscription-plans", subscriptionPlanRouter);
 app.use("/api/v1/billing", billingRouter);
 app.use("/api/v1/loyalty", loyaltyRouter);
 app.use("/api/v1/inventory", inventoryRouter);
+app.use("/api/v1/procurement", procurementRouter);
 app.use("/api/v1/attendance", attendanceRouter);
 app.use("/api/v1/payroll", payrollRouter);
+app.use("/api/v1/coupons", couponRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/api/v1/upload", uploadRouter);
 

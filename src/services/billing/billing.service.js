@@ -25,6 +25,9 @@ import { CustomerMembership } from "../../models/memberships/customerMembership.
 import { SubscriptionPlan } from "../../models/subscriptions/subscriptionPlan.model.js";
 import { SubscriptionUsage } from "../../models/subscriptions/subscriptionUsage.model.js";
 import { Service } from "../../models/services/service.model.js";
+import { Coupon } from "../../models/coupons/coupon.model.js";
+import { CouponUsage } from "../../models/coupons/couponUsage.model.js";
+import { CouponCustomerUsage } from "../../models/coupons/couponCustomerUsage.model.js";
 import { logger } from "../../utils/logger.js";
 
 export class BillingService {
@@ -3618,6 +3621,256 @@ export class BillingService {
   /**
    * 3. FINALIZE INVOICE (FREEZE FINANCIAL TOTALS)
    */
+  /**
+   * COUPON INTEGRATION: Apply a coupon to a draft invoice
+   */
+  async applyCouponToInvoice(id, couponCode, organizationId, branchId, userId) {
+    if (!couponCode || typeof couponCode !== "string") {
+      throw new AppError("Coupon code is required", 400);
+    }
+    const normalizedCode = couponCode.trim().toUpperCase();
+
+    const invoice = await Invoice.findOne({
+      _id: id,
+      organizationId,
+      isDeleted: false,
+    });
+
+    if (!invoice) {
+      throw new AppError("Invoice not found", 404);
+    }
+    if (invoice.branchId.toString() !== branchId.toString()) {
+      throw new AppError("Target branchId does not match invoice branch", 400);
+    }
+    if (invoice.status !== "draft") {
+      throw new AppError(
+        "Cannot apply coupon to an invoice with status '" + invoice.status + "'. Only draft invoices may receive coupons.",
+        400
+      );
+    }
+
+    // Anti-stacking: Reject if a coupon is already applied
+    if (invoice.coupon && invoice.coupon.couponId) {
+      throw new AppError(
+        "Invoice already has coupon '" + invoice.coupon.code + "' applied. Remove it before applying another coupon.",
+        400
+      );
+    }
+
+    // Anti-stacking: Reject if any promotional/manual discounts already exist on the invoice
+    const hasInvoiceManualDiscounts =
+      Array.isArray(invoice.appliedDiscounts) && invoice.appliedDiscounts.length > 0;
+    const hasLineManualDiscounts =
+      Array.isArray(invoice.lines) &&
+      invoice.lines.some((l) => Array.isArray(l.appliedDiscounts) && l.appliedDiscounts.length > 0);
+
+    if (hasInvoiceManualDiscounts || hasLineManualDiscounts) {
+      throw new AppError(
+        "Cannot apply coupon to an invoice with existing promotional or manual discounts. Stacking is not permitted.",
+        400
+      );
+    }
+
+    // Lookup coupon within the authenticated organization
+    const coupon = await Coupon.findOne({
+      organizationId,
+      codeUpper: normalizedCode,
+      isDeleted: false,
+    });
+
+    if (!coupon) {
+      throw new AppError("Coupon '" + couponCode.trim() + "' was not found.", 404);
+    }
+
+    if (coupon.status !== "active") {
+      throw new AppError("Coupon '" + coupon.code + "' is currently inactive.", 400);
+    }
+
+    const now = new Date();
+    if (now < coupon.validFrom) {
+      throw new AppError(
+        "Coupon '" + coupon.code + "' is not valid yet (valid from " + coupon.validFrom.toISOString() + ").",
+        400
+      );
+    }
+    if (now > coupon.validUntil) {
+      throw new AppError("Coupon '" + coupon.code + "' has expired.", 400);
+    }
+
+    // Branch exclusion check
+    const excludedBranchIds = (coupon.excludedBranchIds || []).map((b) => b.toString());
+    if (excludedBranchIds.includes(branchId.toString())) {
+      throw new AppError(
+        "Coupon '" + coupon.code + "' is not valid for redemption at this branch location.",
+        400
+      );
+    }
+
+    // Total usage limit check (using activeUsageCount for active capacity)
+    if (coupon.totalUsageLimit !== null && coupon.totalUsageLimit !== undefined) {
+      if ((coupon.activeUsageCount || 0) >= coupon.totalUsageLimit) {
+        throw new AppError(
+          "Coupon '" + coupon.code + "' has reached its total usage limit (" + coupon.totalUsageLimit + ").",
+          409
+        );
+      }
+    }
+
+    // Per-customer limit check
+    if (coupon.perCustomerLimit !== null && coupon.perCustomerLimit !== undefined) {
+      if (!invoice.customerId) {
+        throw new AppError(
+          "A customer record is required to apply coupon '" + coupon.code + "' with a per-customer usage limit.",
+          400
+        );
+      }
+      const custCounter = await CouponCustomerUsage.findOne({
+        organizationId,
+        couponId: coupon._id,
+        customerId: invoice.customerId,
+      });
+      if (custCounter && custCounter.activeUsageCount >= coupon.perCustomerLimit) {
+        throw new AppError(
+          "Customer has reached the maximum allowed usage (" + coupon.perCustomerLimit + ") for coupon '" + coupon.code + "'.",
+          409
+        );
+      }
+    }
+
+    // Synthesize structured coupon item for invoice calculation using recalculateInvoiceFinancials
+    const couponDiscountItem = {
+      discountId: new mongoose.Types.ObjectId(),
+      name: "Coupon (" + coupon.code + ")",
+      discountType: coupon.discountType, // 'percentage' or 'fixed'
+      enteredValue: coupon.discountValue,
+      applicationType: "invoice",
+      isCustom: false,
+      reason: "Promotional coupon: " + coupon.code,
+      code: coupon.code,
+    };
+
+    // Calculate invoice financials with the coupon applied via authoritative calculation engine
+    const financials = this.recalculateInvoiceFinancials(
+      invoice.lines,
+      [couponDiscountItem],
+      invoice.loyaltyDiscountAmount || 0,
+      invoice.amountPaid || 0
+    );
+
+    const discountAmount = financials.invoiceDiscountsTotal || 0;
+
+    // Snapshot coupon on invoice
+    invoice.coupon = {
+      couponId: coupon._id,
+      code: coupon.code,
+      codeUpper: coupon.codeUpper,
+      discountType: coupon.discountType,
+      discountValue: coupon.discountValue,
+      calculatedDiscountAmount: discountAmount,
+      appliedAt: now,
+      appliedBy: userId,
+      usageLedgerId: null,
+    };
+    invoice.grossPayable = financials.grossPayable;
+
+    // Update financial fields
+    invoice.subtotal = financials.subtotal;
+    invoice.subscriptionCoveredAmount = financials.subscriptionCoveredAmount;
+    invoice.eligibleUncoveredAmount = financials.eligibleUncoveredAmount;
+    invoice.lineDiscountTotal = financials.lineDiscountsTotal;
+    invoice.invoiceDiscountTotal = financials.invoiceDiscountsTotal;
+    invoice.discountTotal = financials.discountTotal;
+    invoice.payableAmount = financials.payableAmount;
+    invoice.amountDue = financials.amountDue;
+    invoice.paymentStatus = financials.paymentStatus;
+    invoice.grossPayable = financials.grossPayable;
+
+    // Concurrency guard: Atomically persist only if invoice remains draft and has no coupon applied
+    const updated = await Invoice.findOneAndUpdate(
+      {
+        _id: invoice._id,
+        status: "draft",
+        $or: [{ coupon: null }, { "coupon.couponId": null }],
+      },
+      {
+        $set: {
+          coupon: invoice.coupon,
+          grossPayable: invoice.grossPayable,
+          subtotal: invoice.subtotal,
+          subscriptionCoveredAmount: invoice.subscriptionCoveredAmount,
+          eligibleUncoveredAmount: invoice.eligibleUncoveredAmount,
+          lineDiscountTotal: invoice.lineDiscountTotal,
+          invoiceDiscountTotal: invoice.invoiceDiscountTotal,
+          discountTotal: invoice.discountTotal,
+          payableAmount: invoice.payableAmount,
+          amountDue: invoice.amountDue,
+          paymentStatus: invoice.paymentStatus,
+        },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!updated) {
+      throw new AppError(
+        "Failed to apply coupon due to a concurrent modification. Invoice may already have a coupon applied or is no longer draft.",
+        409
+      );
+    }
+
+    return updated;
+  }
+
+  /**
+   * COUPON INTEGRATION: Remove an applied coupon from a draft invoice
+   */
+  async removeCouponFromInvoice(id, organizationId, branchId, userId) {
+    const invoice = await Invoice.findOne({
+      _id: id,
+      organizationId,
+      isDeleted: false,
+    });
+
+    if (!invoice) {
+      throw new AppError("Invoice not found", 404);
+    }
+    if (invoice.branchId.toString() !== branchId.toString()) {
+      throw new AppError("Target branchId does not match invoice branch", 400);
+    }
+    if (invoice.status !== "draft") {
+      throw new AppError(
+        "Cannot remove coupon from an invoice with status '" + invoice.status + "'. Only draft invoices may be modified.",
+        400
+      );
+    }
+    if (!invoice.coupon || !invoice.coupon.couponId) {
+      throw new AppError("Invoice does not have a coupon applied.", 400);
+    }
+
+    // Remove coupon snapshot
+    invoice.coupon = null;
+
+    // Recalculate invoice without the coupon
+    const financials = this.recalculateInvoiceFinancials(
+      invoice.lines,
+      [],
+      invoice.loyaltyDiscountAmount || 0,
+      invoice.amountPaid || 0
+    );
+
+    invoice.subtotal = financials.subtotal;
+    invoice.subscriptionCoveredAmount = financials.subscriptionCoveredAmount;
+    invoice.eligibleUncoveredAmount = financials.eligibleUncoveredAmount;
+    invoice.lineDiscountTotal = financials.lineDiscountsTotal;
+    invoice.invoiceDiscountTotal = financials.invoiceDiscountsTotal;
+    invoice.discountTotal = financials.discountTotal;
+    invoice.payableAmount = financials.payableAmount;
+    invoice.amountDue = financials.amountDue;
+    invoice.paymentStatus = financials.paymentStatus;
+
+    await invoice.save();
+    return invoice;
+  }
+
   async finalizeInvoice(id, payload, organizationId, branchId, userId) {
     return await this.executeTransaction(async (session) => {
       const invoice = await Invoice.findOne({
@@ -3796,6 +4049,148 @@ export class BillingService {
         }
       }
 
+      // If a coupon was applied to this invoice, atomically commit usage and ledger entry
+      if (invoice.coupon && invoice.coupon.couponId) {
+        const couponId = invoice.coupon.couponId;
+        const now = new Date();
+
+        // Revalidate coupon conditions at finalization
+        const targetCoupon = await Coupon.findOne({
+          _id: couponId,
+          organizationId,
+          isDeleted: false,
+        }).session(session);
+
+        if (!targetCoupon) {
+          throw new AppError("Applied coupon record no longer exists.", 404);
+        }
+        if (targetCoupon.status !== "active") {
+          throw new AppError("Applied coupon '" + targetCoupon.code + "' is no longer active.", 400);
+        }
+        if (now < targetCoupon.validFrom || now > targetCoupon.validUntil) {
+          throw new AppError("Applied coupon '" + targetCoupon.code + "' has expired or is not yet valid.", 400);
+        }
+        const excludedBranchIds = (targetCoupon.excludedBranchIds || []).map((b) => b.toString());
+        if (excludedBranchIds.includes(branchId.toString())) {
+          throw new AppError(
+            "Applied coupon '" + targetCoupon.code + "' is not valid at this branch location.",
+            400
+          );
+        }
+
+        // 1. Atomically increment total usage counts on Coupon document with concurrency guard
+        // usageCount is cumulative historical; activeUsageCount is current active capacity.
+        const couponUpdateQuery = {
+          _id: couponId,
+          organizationId,
+          status: "active",
+          isDeleted: false,
+          validFrom: { $lte: now },
+          validUntil: { $gte: now },
+        };
+
+        if (targetCoupon.totalUsageLimit !== null && targetCoupon.totalUsageLimit !== undefined) {
+          couponUpdateQuery.activeUsageCount = { $lt: targetCoupon.totalUsageLimit };
+        }
+
+        const updatedCoupon = await Coupon.findOneAndUpdate(
+          couponUpdateQuery,
+          {
+            $inc: { usageCount: 1, activeUsageCount: 1 },
+            $set: { updatedBy: userId },
+          },
+          { session, new: true }
+        );
+
+        if (!updatedCoupon) {
+          throw new AppError(
+            "Coupon '" + targetCoupon.code + "' could not be finalized. Total usage limit reached or coupon state changed.",
+            409
+          );
+        }
+
+        // 2. Atomically increment customer usage count if per-customer limit exists
+        if (targetCoupon.perCustomerLimit !== null && targetCoupon.perCustomerLimit !== undefined) {
+          if (!invoice.customerId) {
+            throw new AppError(
+              "A customer record is required to redeem coupon '" + targetCoupon.code + "' with a per-customer usage limit.",
+              400
+            );
+          }
+
+          let custCounter = await CouponCustomerUsage.findOne({
+            organizationId,
+            couponId,
+            customerId: invoice.customerId,
+          }).session(session);
+
+          if (!custCounter) {
+            // Atomic upsert with $setOnInsert: eliminates transaction-aborting E11000 duplicate key exception in MongoDB transactions
+            const upsertedCustCounter = await CouponCustomerUsage.findOneAndUpdate(
+              {
+                organizationId,
+                couponId,
+                customerId: invoice.customerId,
+              },
+              {
+                $inc: { activeUsageCount: 1, historicalUsageCount: 1 },
+                $setOnInsert: {
+                  organizationId,
+                  couponId,
+                  customerId: invoice.customerId,
+                },
+              },
+              {
+                session,
+                upsert: true,
+                returnDocument: "after",
+              }
+            );
+
+            if (upsertedCustCounter.activeUsageCount > targetCoupon.perCustomerLimit) {
+              throw new AppError(
+                "Customer has reached the limit (" + targetCoupon.perCustomerLimit + ") for coupon '" + targetCoupon.code + "'.",
+                409
+              );
+            }
+          } else {
+            const updatedCustCounter = await CouponCustomerUsage.findOneAndUpdate(
+              {
+                _id: custCounter._id,
+                activeUsageCount: { $lt: targetCoupon.perCustomerLimit },
+              },
+              {
+                $inc: { activeUsageCount: 1, historicalUsageCount: 1 },
+              },
+              { session, returnDocument: "after" }
+            );
+
+            if (!updatedCustCounter) {
+              throw new AppError(
+                "Customer has reached the limit (" + targetCoupon.perCustomerLimit + ") for coupon '" + targetCoupon.code + "'.",
+                409
+              );
+            }
+          }
+        }
+
+        // 3. Create durable CouponUsage ledger record (unique compound on organizationId + invoiceId)
+        const usageLedger = new CouponUsage({
+          organizationId,
+          branchId,
+          couponId,
+          invoiceId: invoice._id,
+          customerId: invoice.customerId,
+          discountAmount: invoice.coupon.calculatedDiscountAmount,
+          consumedAt: now,
+          status: "consumed",
+          createdBy: userId,
+        });
+        await usageLedger.save({ session });
+
+        invoice.coupon.usageLedgerId = usageLedger._id;
+      }
+
       await invoice.save({ session });
 
       const auditLog = new AuditLog({
@@ -3873,6 +4268,46 @@ export class BillingService {
       invoice.cancelledAt = new Date();
       invoice.cancelledBy = userId;
       invoice.cancellationReason = reason;
+
+      // If a coupon was consumed on this invoice, atomically reverse active capacity and update ledger
+      if (invoice.coupon && invoice.coupon.couponId) {
+        const usageRecord = await CouponUsage.findOne({
+          organizationId,
+          invoiceId: invoice._id,
+          status: "consumed",
+        }).session(session);
+
+        if (usageRecord) {
+          usageRecord.status = "reversed";
+          usageRecord.reversedAt = new Date();
+          usageRecord.reversalReason = reason || "Invoice cancellation";
+          usageRecord.reversedBy = userId;
+          await usageRecord.save({ session });
+
+          // Atomically decrement activeUsageCount ONLY (keeping historical cumulative usageCount intact)
+          await Coupon.findOneAndUpdate(
+            { _id: invoice.coupon.couponId, organizationId },
+            {
+              $inc: { activeUsageCount: -1 },
+              $set: { updatedBy: userId },
+            },
+            { session }
+          );
+
+          // Atomically decrement customer active usage counter
+          await CouponCustomerUsage.findOneAndUpdate(
+            {
+              organizationId,
+              couponId: invoice.coupon.couponId,
+              customerId: invoice.customerId,
+            },
+            {
+              $inc: { activeUsageCount: -1 },
+            },
+            { session }
+          );
+        }
+      }
 
       await invoice.save({ session });
 

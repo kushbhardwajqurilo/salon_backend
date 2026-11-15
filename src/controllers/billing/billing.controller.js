@@ -303,3 +303,35 @@ export const listMembershipPlans = asyncHandler(async (req, res) => {
     data: plans,
   });
 });
+
+export const applyCoupon = asyncHandler(async (req, res) => {
+  const branchId = req.branchId || req.body?.branchId;
+  const result = await billingService.applyCouponToInvoice(
+    req.params.id,
+    req.body.code,
+    req.user.organizationId,
+    branchId,
+    req.user.id || req.user._id
+  );
+  res.status(200).json({
+    success: true,
+    message: "Coupon applied successfully",
+    data: result,
+  });
+});
+
+export const removeCoupon = asyncHandler(async (req, res) => {
+  const branchId = req.branchId || req.body?.branchId;
+  const result = await billingService.removeCouponFromInvoice(
+    req.params.id,
+    req.user.organizationId,
+    branchId,
+    req.user.id || req.user._id
+  );
+  res.status(200).json({
+    success: true,
+    message: "Coupon removed successfully",
+    data: result,
+  });
+});
+
