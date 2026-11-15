@@ -7,7 +7,8 @@ export const MOVEMENT_TYPES = [
   "adjustment",
   "transfer_out",
   "transfer_in",
-  "stocktake"
+  "stocktake",
+  "domain_allocation"
 ];
 
 const stockMovementSchema = new mongoose.Schema(
@@ -43,6 +44,12 @@ const stockMovementSchema = new mongoose.Schema(
       type: String,
       required: true,
       enum: MOVEMENT_TYPES,
+      index: true
+    },
+    stockDomain: {
+      type: String,
+      enum: ["salon_consumables", "retail_products", "general"],
+      default: "general",
       index: true
     },
     reference: {
