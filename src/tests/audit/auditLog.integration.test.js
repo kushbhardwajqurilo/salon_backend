@@ -94,12 +94,14 @@ describe("Audit Logs Module Integration Test Suite", () => {
     const ownerRoleA = await Role.create({
       name: "owner",
       description: "Owner Role",
+      isSystem: true,
       permissions: [pLogsView._id, pCustView._id],
     });
 
     const staffRoleA = await Role.create({
       name: "stylist",
       description: "Staff without logs.view",
+      organizationId: orgA._id,
       permissions: [pCustView._id],
     });
 
