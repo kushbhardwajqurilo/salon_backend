@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { sourceAttributionSchema } from "../staff/staffAttribution.schema.js";
 
 const invoiceCustomerSnapshotSchema = new mongoose.Schema(
   {
@@ -145,6 +146,15 @@ const invoiceLineSchema = new mongoose.Schema(
       },
       default: null,
     },
+    staffId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Staff",
+      default: null,
+    },
+    attribution: {
+      type: sourceAttributionSchema,
+      default: () => ({}),
+    },
     subscriptionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Subscription",
@@ -228,6 +238,7 @@ const invoiceLineSchema = new mongoose.Schema(
     // Membership benefit application (for service or product lines)
     isDiscountedByMembership: { type: Boolean, default: false },
     appliedCustomerMembershipId: { type: mongoose.Schema.Types.ObjectId, ref: "CustomerMembership", default: null },
+    membershipBenefitSourceLineId: { type: mongoose.Schema.Types.ObjectId, default: null },
     membershipDiscountAmount: { type: Number, default: 0, min: 0 },
 
     // Discount tracking per line

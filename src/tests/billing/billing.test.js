@@ -27,6 +27,9 @@ import { SubscriptionUsage } from "../../../src/models/subscriptions/subscriptio
 import { Invoice } from "../../../src/models/billing/invoice.model.js";
 import { Payment } from "../../../src/models/billing/payment.model.js";
 import { AuditLog } from "../../../src/models/audit/auditLog.model.js";
+import { Staff } from "../../../src/models/staff/staff.model.js";
+import { StaffBranch } from "../../../src/models/staff/staffBranch.model.js";
+import { settlementFulfillmentEventService } from "../../../src/services/incentives/settlementFulfillmentEvent.service.js";
 
 jest.spyOn(redis, "get").mockResolvedValue(null);
 jest.spyOn(redis, "setex").mockResolvedValue("OK");
@@ -320,6 +323,76 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
     // Verify customer snapshot
     expect(invoice.customerSnapshot.name).toBe("Alice Green");
     expect(invoice.customerSnapshot.phone).toBe("+919876543210");
+  });
+
+  it("captures a branch-validated performer on walk-in service lines", async () => {
+    const assignedStaff = await Staff.create({
+      name: "Walk-in Performer",
+      phone: "+919999111222",
+      email: `walkin_performer_${Date.now()}@test.com`,
+      organizationId: orgAId,
+      designation: "Stylist",
+      staffCode: `WALKIN-${Date.now()}`,
+      joiningDate: new Date(),
+      status: "active",
+    });
+    await StaffBranch.create({
+      staffId: assignedStaff._id,
+      branchId: branchA1Id,
+      organizationId: orgAId,
+      isPrimary: true,
+      isActive: true,
+    });
+
+    const createInvoice = (performedByStaffId) =>
+      request(app)
+        .post("/api/v1/billing/invoices")
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString())
+        .send({
+          customerId: customerA._id.toString(),
+          serviceLines: [
+            {
+              serviceId: serviceHaircut._id.toString(),
+              quantity: 1,
+              performedByStaffId: performedByStaffId.toString(),
+            },
+          ],
+        });
+
+    const created = await createInvoice(assignedStaff._id);
+    expect(created.status).toBe(201);
+    expect(created.body.data.lines[0]).toMatchObject({
+      lineType: "service",
+      staffId: assignedStaff._id.toString(),
+      attribution: {
+        performedBy: {
+          staffId: assignedStaff._id.toString(),
+          name: "Walk-in Performer",
+        },
+      },
+    });
+
+    const otherBranchStaff = await Staff.create({
+      name: "Other Branch Performer",
+      phone: "+919999111223",
+      email: `other_branch_performer_${Date.now()}@test.com`,
+      organizationId: orgAId,
+      designation: "Stylist",
+      staffCode: `OTHER-${Date.now()}`,
+      joiningDate: new Date(),
+      status: "active",
+    });
+    await StaffBranch.create({
+      staffId: otherBranchStaff._id,
+      branchId: branchA2Id,
+      organizationId: orgAId,
+      isPrimary: true,
+      isActive: true,
+    });
+
+    const rejected = await createInvoice(otherBranchStaff._id);
+    expect(rejected.status).toBe(400);
   });
 
   it("2. changing Service master price does NOT alter created or newly created invoice service price snapshot", async () => {
@@ -833,6 +906,51 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
     const savedPayment = await Payment.findById(paymentId);
     expect(savedPayment).not.toBeNull();
     expect(savedPayment.status).toBe("voided");
+  });
+
+  it("13a. payment void rolls back when the incentive reversal hook fails", async () => {
+    const apt = await createTestAppointment();
+    const createRes = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ appointmentId: apt._id.toString() });
+    const invoiceId = createRes.body.data._id;
+
+    await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/finalize`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send();
+
+    const payRes = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${ownerTokenA}`)
+      .set("X-Branch-Id", branchA1Id.toString())
+      .send({ amount: 1900, method: "upi" });
+    const paymentId = payRes.body.data.payment._id;
+    const hook = jest
+      .spyOn(settlementFulfillmentEventService, "handlePaymentVoided")
+      .mockRejectedValue(new Error("incentive reversal unavailable"));
+
+    let voidRes;
+    try {
+      voidRes = await request(app)
+        .post(`/api/v1/billing/payments/${paymentId}/void`)
+        .set("Authorization", `Bearer ${ownerTokenA}`)
+        .set("X-Branch-Id", branchA1Id.toString())
+        .send({ reason: "Customer transaction cancelled by bank" });
+    } finally {
+      hook.mockRestore();
+    }
+
+    expect(voidRes.status).toBe(500);
+    const savedPayment = await Payment.findById(paymentId);
+    const savedInvoice = await Invoice.findById(invoiceId);
+    expect(savedPayment.status).toBe("completed");
+    expect(savedInvoice.amountPaid).toBe(1900);
+    expect(savedInvoice.amountDue).toBe(0);
+    expect(savedInvoice.paymentStatus).toBe("paid");
   });
 
   it("14. invoice cancellation with recorded payments is strictly rejected", async () => {

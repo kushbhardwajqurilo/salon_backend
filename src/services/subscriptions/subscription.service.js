@@ -1,6 +1,10 @@
 import crypto from "crypto";
 import mongoose from "mongoose";
 import { AppError } from "../../utils/errors.js";
+import {
+  loadStaffAttributionSnapshot,
+  resolveStaffAttribution,
+} from "../billing/staffAttribution.service.js";
 import { logger } from "../../utils/logger.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
@@ -11,6 +15,10 @@ import "../../models/billing/payment.model.js";
 import "../../models/appointments/appointment.model.js";
 import "../../models/subscriptions/subscriptionUsage.model.js";
 import { SubscriptionCancellationOperation } from "../../models/subscriptions/subscriptionCancellationOperation.model.js";
+import {
+  SettlementFulfillmentEventService,
+  settlementFulfillmentEventService,
+} from "../incentives/settlementFulfillmentEvent.service.js";
 
 export class SubscriptionService {
   constructor(
@@ -192,6 +200,16 @@ export class SubscriptionService {
     const { billImmediately = false, branchId: invoiceBranchId = null } = data;
     const shouldBill = Boolean(billImmediately);
     const initialStatus = Number(price) > 0 ? "pending_payment" : "active";
+    const soldBy = await resolveStaffAttribution(
+      data.soldByStaffId,
+      organizationId,
+      invoiceBranchId,
+    );
+    const renewalHandler = await resolveStaffAttribution(
+      data.renewedByStaffId,
+      organizationId,
+      invoiceBranchId,
+    );
 
     for (const mem of rawMembers) {
       const mCustIdStr = mem.customerId ? mem.customerId.toString() : null;
@@ -311,6 +329,10 @@ export class SubscriptionService {
           subscriptionCode,
           planId: resolvedPlanId,
           price: Number(price),
+          attribution: {
+            soldBy,
+            renewalHandler,
+          },
           members: resolvedMembers,
           entitlements: legacyEntitlements,
           permittedBranchIds: validPermittedBranchIds,
@@ -1119,9 +1141,24 @@ export class SubscriptionService {
       otherAppointments: 0,
     };
 
+    const hasConsumedEntitlements =
+      usages.length > 0 ||
+      (subscription.members || []).some((member) =>
+        (member.entitlements || []).some((entitlement) => (entitlement.usedQuantity || 0) > 0),
+      ) ||
+      (subscription.entitlements || []).some(
+        (entitlement) => (entitlement.usedQuantity || 0) > 0,
+      );
     let totalRestoredAmount = 0;
     const affectedLinesDetails = [];
     const blockingInconsistencies = [];
+
+    if (usages.length === 0 && hasConsumedEntitlements) {
+      blockingInconsistencies.push({
+        type: "CONSUMED_ENTITLEMENTS_WITHOUT_USAGE_RECORDS",
+        message: "Consumed entitlement counters have no verifiable usage records",
+      });
+    }
 
     for (const usage of usages) {
       if (!usage.appointmentId || !usage.appointmentServiceId) {
@@ -1194,9 +1231,13 @@ export class SubscriptionService {
       }
     });
 
+    const requiresRefundConfirmation =
+      totalCollected > 0 &&
+      !hasConsumedEntitlements &&
+      subscriptionInvoice?.status === "finalized";
     const isEligible =
       subscription.status !== "cancelled" &&
-      isEligibleRuleB &&
+      (isEligibleRuleB || requiresRefundConfirmation) &&
       blockingInconsistencies.length === 0;
 
     return {
@@ -1205,7 +1246,9 @@ export class SubscriptionService {
       currentStatus: subscription.status,
       isPaid: totalCollected > 0,
       totalCollected,
-      hasConsumedEntitlements: usages.length > 0,
+      requiresRefundConfirmation,
+      refundAmount: requiresRefundConfirmation ? totalCollected : 0,
+      hasConsumedEntitlements,
       consumedEntitlementCount: usages.length,
       affectedAppointmentCount: appointments.length,
       affectedServiceLineCount: affectedLinesDetails.length,
@@ -1225,7 +1268,7 @@ export class SubscriptionService {
       expectedRebilledSubtotalIncrease: totalRestoredAmount,
       additionalAppointmentCharges: totalRestoredAmount,
       isEligible,
-      eligibilityRule: usages.length === 0 ? "RULE_A" : "RULE_B",
+      eligibilityRule: hasConsumedEntitlements ? "RULE_B" : "RULE_A",
       blockingInconsistencies,
     };
   }
@@ -1249,6 +1292,7 @@ export class SubscriptionService {
       subscriptionId: id.toString(),
       reason: String(reason).trim(),
       refund: Boolean(options.refund),
+      refundPaymentMethod: options.refund ? options.refundPaymentMethod || null : null,
     });
     const requestPayloadHash = crypto
       .createHash("sha256")
@@ -1279,6 +1323,7 @@ export class SubscriptionService {
           idempotent: true,
           processedUsageCount: idempotentOp.processedUsageCount,
           processedAppointmentCount: idempotentOp.processedAppointmentCount,
+          refund: idempotentOp.metadata?.refund || undefined,
         };
       }
     }
@@ -1325,6 +1370,7 @@ export class SubscriptionService {
             idempotent: true,
             processedUsageCount: idempotentOp.processedUsageCount,
             processedAppointmentCount: idempotentOp.processedAppointmentCount,
+            refund: idempotentOp.metadata?.refund || undefined,
           };
         }
       }
@@ -1416,12 +1462,14 @@ export class SubscriptionService {
           400
         );
       }
-      return await this._executeNormalCancellation(
+      return await this._executePaidUnusedCancellationWithRefund(
         subscription,
         organizationId,
         userId,
         reason,
-        subscriptionInvoice
+        totalCollected,
+        options,
+        requestPayloadHash,
       );
     }
 
@@ -1511,6 +1559,286 @@ export class SubscriptionService {
       totalUsages: usages.length,
       message: "Subscription cancellation accepted for background processing",
     };
+  }
+
+  async _executePaidUnusedCancellationWithRefund(
+    subscription,
+    organizationId,
+    userId,
+    reason,
+    expectedRefundAmount,
+    options,
+    requestPayloadHash,
+  ) {
+    if (!options.idempotencyKey) {
+      throw new AppError("An idempotency key is required to record a manual refund", 400);
+    }
+    if (!["cash", "card", "upi", "other"].includes(options.refundPaymentMethod)) {
+      throw new AppError("A valid refund payment method is required", 400);
+    }
+
+    const SubscriptionModel = mongoose.model("Subscription");
+    const PaymentModel = mongoose.model("Payment");
+    const SubscriptionUsageModel = mongoose.model("SubscriptionUsage");
+    const refundIdempotencyKey = `SUB-REFUND:${crypto
+      .createHash("sha256")
+      .update(`${organizationId}:${subscription._id}:${options.idempotencyKey}`)
+      .digest("hex")}`;
+
+    const replayResult = (operation) => ({
+      operationId: operation.operationId,
+      status: operation.status,
+      idempotent: true,
+      refund: operation.metadata?.refund || undefined,
+    });
+
+    try {
+      return await this.executeTransaction(async (session) => {
+        const existingOperation = await SubscriptionCancellationOperation.findOne({
+          organizationId,
+          idempotencyKey: options.idempotencyKey,
+          isDeleted: false,
+        }).session(session);
+        if (existingOperation) {
+          if (
+            existingOperation.subscriptionId.toString() !== subscription._id.toString() ||
+            (existingOperation.requestPayloadHash &&
+              existingOperation.requestPayloadHash !== requestPayloadHash)
+          ) {
+            throw new AppError(
+              "Idempotency key reuse with differing cancellation parameters or target subscription",
+              409,
+            );
+          }
+          return replayResult(existingOperation);
+        }
+
+        const currentSubscription = await SubscriptionModel.findOne({
+          _id: subscription._id,
+          organizationId,
+          isDeleted: false,
+        }).session(session);
+        if (!currentSubscription || currentSubscription.status === "cancelled") {
+          throw new AppError("Subscription is already cancelled or unavailable", 409);
+        }
+        if (currentSubscription.cancellationStatus === "in_progress") {
+          throw new AppError("Subscription cancellation is already in progress", 409);
+        }
+
+        const paymentState = await this.verifySubscriptionPaymentEligibility(
+          currentSubscription,
+          organizationId,
+          session,
+        );
+        if (!paymentState.subscriptionInvoice || paymentState.totalCollected <= 0) {
+          throw new AppError("No refundable subscription payment remains", 409);
+        }
+        if (
+          Math.abs(
+            Number(paymentState.totalCollected.toFixed(2)) -
+              Number(expectedRefundAmount.toFixed(2)),
+          ) > 0.01
+        ) {
+          throw new AppError("Collected payment changed; refresh the cancellation preview", 409);
+        }
+        if (paymentState.subscriptionInvoice.status !== "finalized") {
+          throw new AppError("Only finalized subscription invoices can be refunded", 409);
+        }
+
+        const usages = await SubscriptionUsageModel.find({
+          organizationId,
+          subscriptionId: currentSubscription._id,
+          isReversed: { $ne: true },
+          isDeleted: false,
+        }).session(session);
+        const hasConsumedEntitlements =
+          usages.length > 0 ||
+          (currentSubscription.members || []).some((member) =>
+            (member.entitlements || []).some((entitlement) => (entitlement.usedQuantity || 0) > 0),
+          ) ||
+          (currentSubscription.entitlements || []).some(
+            (entitlement) => (entitlement.usedQuantity || 0) > 0,
+          );
+        if (hasConsumedEntitlements) {
+          throw new AppError(
+            "Paid subscriptions with consumed entitlements cannot be refunded through cancellation",
+            400,
+          );
+        }
+
+        const refundAmount = Number(paymentState.totalCollected.toFixed(2));
+        const paymentNumber = await this.generatePaymentNumber(organizationId);
+        const [refundPayment] = await PaymentModel.create(
+          [{
+            organizationId,
+            branchId: paymentState.subscriptionInvoice.branchId,
+            invoiceId: paymentState.subscriptionInvoice._id,
+            customerId: paymentState.subscriptionInvoice.customerId,
+            paymentNumber,
+            amount: -refundAmount,
+            type: "refund",
+            method: options.refundPaymentMethod,
+            referenceNote: `Manual subscription refund: ${String(reason).trim()}`,
+            status: "completed",
+            recordedBy: userId,
+            idempotencyKey: refundIdempotencyKey,
+            requestPayloadHash,
+          }],
+          { session },
+        );
+
+        const invoice = paymentState.subscriptionInvoice;
+        const refundAllocations = (invoice.lines || [])
+          .filter(
+            (line) =>
+              line.lineType === "subscription" &&
+              line.subscriptionId?.toString() === currentSubscription._id.toString(),
+          )
+          .map((line) => ({
+            lineItemId: line._id,
+            refundAmountInPaise: SettlementFulfillmentEventService.rupeesToPaise(
+              line.customerPayable,
+            ),
+          }))
+          .filter((allocation) => allocation.refundAmountInPaise > 0);
+        if (refundAllocations.length > 0) {
+          await settlementFulfillmentEventService.handlePurchaseRefundProcessed({
+            invoice,
+            refundPayment,
+            refundAllocations,
+            reason,
+            session,
+            userId,
+          });
+        }
+
+        const updatedSubscription = await SubscriptionModel.findOneAndUpdate(
+          {
+            _id: currentSubscription._id,
+            organizationId,
+            status: { $in: ["active", "pending_payment", "exhausted"] },
+            cancellationStatus: { $ne: "in_progress" },
+            isDeleted: false,
+          },
+          {
+            $set: {
+              status: "cancelled",
+              ...(Array.isArray(currentSubscription.members) && currentSubscription.members.length > 0
+                ? {
+                    members: currentSubscription.members.map((member) => ({
+                      ...(member.toObject ? member.toObject() : member),
+                      status: "cancelled",
+                    })),
+                  }
+                : {}),
+              notes: currentSubscription.notes
+                ? `${currentSubscription.notes}\n[Cancelled]: ${reason}`
+                : `[Cancelled]: ${reason}`,
+            },
+          },
+          { new: true, session },
+        );
+        if (!updatedSubscription) {
+          throw new AppError("Subscription changed during refund processing", 409);
+        }
+
+        invoice.amountPaid = 0;
+        invoice.amountDue = 0;
+        invoice.paymentStatus = "unpaid";
+        invoice.status = "cancelled";
+        invoice.cancelledAt = new Date();
+        invoice.cancelledBy = userId;
+        invoice.cancellationReason = `Subscription ${currentSubscription.subscriptionCode} cancelled: ${String(reason).trim()}`;
+        await invoice.save({ session });
+
+        const operationId = `CAN-REFUND-${Date.now()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+        const refund = {
+          paymentId: refundPayment._id,
+          paymentNumber: refundPayment.paymentNumber,
+          amount: refundAmount,
+          method: refundPayment.method,
+          manual: true,
+        };
+        const operation = new SubscriptionCancellationOperation({
+          operationId,
+          organizationId,
+          branchId: invoice.branchId,
+          subscriptionId: currentSubscription._id,
+          idempotencyKey: options.idempotencyKey,
+          requestPayloadHash,
+          status: "completed",
+          cancellationReason: reason,
+          initiatedBy: userId,
+          totalUsageCount: 0,
+          totalAppointmentCount: 0,
+          completedAt: new Date(),
+          metadata: { refund },
+        });
+        await operation.save({ session });
+
+        if (this.auditRepo && typeof this.auditRepo.create === "function") {
+          await this.auditRepo.create(
+            {
+              branchId: invoice.branchId,
+              action: AUDIT_ACTIONS.SUBSCRIPTION_CANCELLED,
+              entityType: "Subscription",
+              entityId: currentSubscription._id,
+              description: `Subscription ${currentSubscription.subscriptionCode} cancelled with manual refund of ₹${refundAmount.toFixed(2)}: ${String(reason).trim()}`,
+              metadata: {
+                reason,
+                rule: "RULE_A",
+                refundPaymentId: refundPayment._id,
+                refundAmount,
+                refundMethod: refundPayment.method,
+              },
+            },
+            organizationId,
+            userId,
+            session,
+          );
+        }
+
+        return {
+          subscription: updatedSubscription,
+          operationId,
+          status: "completed",
+          idempotent: false,
+          refund,
+        };
+      });
+    } catch (error) {
+      if (error?.code === 11000) {
+        const existingOperation = await SubscriptionCancellationOperation.findOne({
+          organizationId,
+          idempotencyKey: options.idempotencyKey,
+          isDeleted: false,
+        });
+        if (existingOperation) {
+          if (existingOperation.requestPayloadHash !== requestPayloadHash) {
+            throw new AppError(
+              "Idempotency key reuse with differing cancellation parameters or target subscription",
+              409,
+            );
+          }
+          return replayResult(existingOperation);
+        }
+      }
+      throw error;
+    }
+  }
+
+  async generatePaymentNumber(organizationId) {
+    const sequenceKey = `PAY_${organizationId.toString()}`;
+    const seq = await Sequence.findOneAndUpdate(
+      { key: sequenceKey },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true },
+    );
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    return `PAY-${yyyy}${mm}${dd}-${String(seq.seq).padStart(4, "0")}`;
   }
 
   /**
@@ -2155,6 +2483,7 @@ export class SubscriptionService {
       notes = `Renewal of ${existingSub.subscriptionCode}`,
       billImmediately = false,
       branchId = null,
+      renewedByStaffId = null,
     } = renewalData;
 
     if (!endDate) {
@@ -2186,6 +2515,7 @@ export class SubscriptionService {
         notes,
         billImmediately,
         branchId,
+        renewedByStaffId,
       };
     } else {
       // Legacy single-member subscription renewal
@@ -2205,6 +2535,7 @@ export class SubscriptionService {
         notes,
         billImmediately,
         branchId,
+        renewedByStaffId,
       };
     }
 
@@ -2544,6 +2875,18 @@ export class SubscriptionService {
       }
     }
 
+    const performedByStaffId = appointment?.staffId || options.performedByStaffId;
+    const performedBy = appointment
+      ? await loadStaffAttributionSnapshot(
+          performedByStaffId,
+          organizationId,
+        )
+      : await resolveStaffAttribution(
+          performedByStaffId,
+          organizationId,
+          branchId,
+        );
+
     let targetCustomerId = options.memberCustomerId;
     if (!targetCustomerId) {
       if (appointmentId && appointment) {
@@ -2785,6 +3128,7 @@ export class SubscriptionService {
             quantity: qty,
             branchId,
             verifiedBy: userId,
+            attribution: { performedBy },
             verificationMethod: isManual ? "manual" : "otp",
             reason: storedReason,
             appointmentId: appointmentId || null,

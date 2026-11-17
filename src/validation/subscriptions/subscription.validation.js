@@ -41,9 +41,11 @@ export const createSubscriptionSchema = z.object({
         z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)")
       ),
       planId: objectIdSchema.optional().nullable(),
+      soldByStaffId: objectIdSchema.optional().nullable(),
       notes: z.string().trim().max(1000).optional().default(""),
       billImmediately: z.boolean().optional().default(false),
       branchId: objectIdSchema.optional().nullable(),
+      renewedByStaffId: objectIdSchema.optional().nullable(),
     })
     .refine(
       (data) => (data.members && data.members.length > 0) || (data.customerId && data.entitlements && data.entitlements.length > 0),
@@ -93,8 +95,18 @@ export const cancelSubscriptionSchema = z.object({
   body: z.object({
     reason: z.string().trim().max(1000).optional().default(""),
     refund: z.boolean().optional().default(false),
+    refundPaymentMethod: z.enum(["cash", "card", "upi", "other"]).optional(),
     idempotencyKey: z.string().trim().max(255).optional(),
+    performedByStaffId: objectIdSchema.optional().nullable(),
     forceAsync: z.boolean().optional().default(false),
+  }).superRefine((body, ctx) => {
+    if (body.refund && !body.refundPaymentMethod) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["refundPaymentMethod"],
+        message: "Refund method is required when recording a manual refund",
+      });
+    }
   }),
 });
 
@@ -127,6 +139,7 @@ export const renewSubscriptionSchema = z.object({
     notes: z.string().trim().max(1000).optional().default(""),
     billImmediately: z.boolean().optional().default(false),
     branchId: objectIdSchema.optional().nullable(),
+    renewedByStaffId: objectIdSchema.optional().nullable(),
   }),
 });
 
@@ -147,6 +160,7 @@ export const redeemSubscriptionSchema = z.object({
       memberCustomerId: objectIdSchema.optional(),
       appointmentId: objectIdSchema.optional().nullable(),
       branchId: objectIdSchema.optional(), // Can also be resolved from req.branchId
+      performedByStaffId: objectIdSchema.optional().nullable(),
       isManual: z.boolean().optional().default(false),
       reason: z.string().trim().max(1000).optional(),
       idempotencyKey: z.string().trim().max(255).optional(),

@@ -18,6 +18,13 @@ import { SubscriptionUsage } from "../../../src/models/subscriptions/subscriptio
 import { SubscriptionConsumptionChallenge } from "../../../src/models/subscriptions/subscriptionConsumptionChallenge.model.js";
 import { Appointment } from "../../../src/models/appointments/appointment.model.js";
 import { AuditLog } from "../../../src/models/audit/auditLog.model.js";
+import { Invoice } from "../../../src/models/billing/invoice.model.js";
+import {
+  IncentiveLedger,
+  IncentiveScheme,
+  InvoiceSettlementEvent,
+  SchemeAssignment,
+} from "../../../src/models/incentives/index.js";
 import { smsQueue } from "../../../src/queues/client.js";
 import { processSmsJob } from "../../../src/workers/notification.worker.js";
 import jwt from "jsonwebtoken";
@@ -60,6 +67,11 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
   });
 
   afterAll(async () => {
+    await Invoice.deleteMany({});
+    await InvoiceSettlementEvent.deleteMany({});
+    await IncentiveLedger.deleteMany({});
+    await SchemeAssignment.deleteMany({});
+    await IncentiveScheme.deleteMany({});
     await SubscriptionConsumptionChallenge.deleteMany({});
     await Appointment.deleteMany({});
     await SubscriptionUsage.deleteMany({});
@@ -79,6 +91,11 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
   });
 
   beforeEach(async () => {
+    await Invoice.deleteMany({});
+    await InvoiceSettlementEvent.deleteMany({});
+    await IncentiveLedger.deleteMany({});
+    await SchemeAssignment.deleteMany({});
+    await IncentiveScheme.deleteMany({});
     await SubscriptionConsumptionChallenge.deleteMany({});
     await Appointment.deleteMany({});
     await SubscriptionUsage.deleteMany({});
@@ -774,6 +791,8 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toContain("Invalid OTP");
+      expect((await Appointment.findById(appointment.id)).status).toBe("in_progress");
+      expect(await SubscriptionUsage.countDocuments({ appointmentId: appointment.id })).toBe(0);
 
       // Now challenge should be exhausted
       const ch = await SubscriptionConsumptionChallenge.findOne({ appointmentId: appointment.id });
@@ -1023,6 +1042,13 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
 
       expect(resDuplicateLineBinding.status).toBe(400);
       expect(resDuplicateLineBinding.body.message).toContain("Appointment service line binding does not match OTP challenge");
+      expect((await Appointment.findById(appointment.id)).status).toBe("in_progress");
+      expect(await SubscriptionUsage.countDocuments({ appointmentId: appointment.id })).toBe(0);
+      expect(await IncentiveLedger.countDocuments({
+        organizationId: orgA._id,
+        invoiceId: { $exists: true },
+        entryType: "ACCRUAL",
+      })).toBe(0);
 
       // Clean up test challenge
       await SubscriptionConsumptionChallenge.findByIdAndDelete(chWrongCust._id);
@@ -1031,6 +1057,97 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
     it("completes appointment, decrements multi-service entitlements, creates usages, and prevents replay", async () => {
       const rawOtp = "123456";
       const otpHash = crypto.createHash("sha256").update(rawOtp).digest("hex");
+      const appointmentDoc = await Appointment.findById(appointment.id);
+      appointmentDoc.services.push({
+        type: "custom",
+        serviceType: "custom",
+        name: "Paid uncovered service",
+        duration: 15,
+        price: 500,
+        appliedSubscriptionId: null,
+      });
+      appointmentDoc.markModified("services");
+      await appointmentDoc.save();
+
+      const commissionScheme = await IncentiveScheme.create({
+        organizationId: orgA._id,
+        name: "OTP completion service commission",
+        code: `OTP-COMMISSION-${Date.now()}`,
+        schemeType: "COMMISSION",
+        calculationBasis: "SERVICE_NET_REVENUE",
+        rules: { tiers: [{ minPaise: 0, maxPaise: null, percentage: 10, fixedPaise: 0 }] },
+        status: "active",
+      });
+      await SchemeAssignment.create({
+        organizationId: orgA._id,
+        schemeId: commissionScheme._id,
+        scopeType: "STAFF",
+        scopeId: staffMember._id,
+        startDate: new Date(Date.now() - 86400000),
+        status: "active",
+      });
+      const [paidInvoice] = await Invoice.create([{
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        invoiceNumber: `INV-OTP-${Date.now()}`,
+        invoiceType: "appointment",
+        appointmentId: appointment.id,
+        customerId: customerA._id,
+        customerSnapshot: { name: customerA.name, phone: customerA.phone },
+        lines: [{
+          lineType: "service",
+          serviceType: "custom",
+          staffId: staffMember._id,
+          name: "Paid uncovered service",
+          duration: 15,
+          quantity: 1,
+          unitPrice: 500,
+          lineTotal: 500,
+          isCoveredBySubscription: false,
+          subscriptionCoveredAmount: 0,
+          discountAmount: 0,
+          customerPayable: 500,
+        }],
+        subtotal: 500,
+        discountTotal: 0,
+        grossPayable: 500,
+        subscriptionCoveredAmount: 0,
+        payableAmount: 500,
+        amountPaid: 500,
+        amountDue: 0,
+        status: "finalized",
+        paymentStatus: "paid",
+        createdBy: ownerUser._id,
+      }]);
+      await InvoiceSettlementEvent.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        invoiceId: paidInvoice._id,
+        paymentId: new mongoose.Types.ObjectId(),
+        appointmentId: appointment.id,
+        eventType: "SETTLED",
+        settlementCycle: 1,
+        grossAmountInPaise: 50000,
+        discountAmountInPaise: 0,
+        taxAmountInPaise: 0,
+        netSettledInPaise: 50000,
+        lineItems: [{
+          itemId: paidInvoice.lines[0]._id,
+          itemType: "custom_service",
+          name: "Paid uncovered service",
+          priceInPaise: 50000,
+          discountInPaise: 0,
+          netRevenueInPaise: 50000,
+          staffAttributions: [{
+            staffId: staffMember._id,
+            splitPercentage: 100,
+            attributedPaise: 50000,
+          }],
+        }],
+        idempotencyKey: `SETTLE:OTP:${paidInvoice._id}`,
+        eventTimestamp: new Date(),
+      });
+
       await SubscriptionConsumptionChallenge.create({
         organizationId: orgA._id,
         branchId: branchA1._id,
@@ -1087,6 +1204,16 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
       const usages = await SubscriptionUsage.find({ appointmentId: appointment.id });
       expect(usages).toHaveLength(2);
       expect(usages[0].appointmentId.toString()).toBe(appointment.id.toString());
+
+      const accrual = await IncentiveLedger.findOne({
+        organizationId: orgA._id,
+        invoiceId: paidInvoice._id,
+        entryType: "ACCRUAL",
+      });
+      expect(accrual).not.toBeNull();
+      expect(accrual.staffId.toString()).toBe(staffMember._id.toString());
+      expect(accrual.amountInPaise).toBe(5000);
+      expect(accrual.fulfillmentStatus).toBe("confirmed");
 
       // Verify AuditLogs created
       const audits = await AuditLog.find({ "metadata.appointmentId": apt._id });
@@ -1759,6 +1886,8 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
         ],
         pricing: { subtotal: 500, discount: 0, total: 500 },
       });
+
+      await Appointment.findByIdAndUpdate(appointment._id, { status: "completed" });
 
       // Create draft invoice from appointment
       const invoiceRes = await request(app)

@@ -50,6 +50,7 @@ const envSchema = z.object({
   AUTOBYSMS_TEMPLATE_ID: z.string().optional(),
   AUTOBYSMS_ROUTE_ID: z.string().optional().default("9"),
   AUTOBYSMS_CAMPAIGN: z.string().optional().default("0"),
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

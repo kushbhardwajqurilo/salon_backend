@@ -1,7 +1,9 @@
+import { settlementFulfillmentEventService } from "../incentives/settlementFulfillmentEvent.service.js";
 import mongoose from "mongoose";
 import { AppError } from "../../utils/errors.js";
 import { Invoice } from "../../models/billing/invoice.model.js";
 import { Payment } from "../../models/billing/payment.model.js";
+import { InvoiceSettlementEvent } from "../../models/incentives/invoiceSettlementEvent.model.js";
 import { Appointment } from "../../models/appointments/appointment.model.js";
 import { Subscription } from "../../models/subscriptions/subscription.model.js";
 import { Customer } from "../../models/customers/customer.model.js";
@@ -20,6 +22,7 @@ import { inventoryService } from "../inventory/inventory.service.js";
 import { productRepository } from "../../repositories/inventory/product.repository.js";
 import { stockMovementRepository } from "../../repositories/inventory/stockMovement.repository.js";
 import { StockBalance } from "../../models/inventory/stockBalance.model.js";
+import { StockMovement } from "../../models/inventory/stockMovement.model.js";
 import { MembershipPlan } from "../../models/memberships/membershipPlan.model.js";
 import { CustomerMembership } from "../../models/memberships/customerMembership.model.js";
 import { SubscriptionPlan } from "../../models/subscriptions/subscriptionPlan.model.js";
@@ -29,6 +32,42 @@ import { Coupon } from "../../models/coupons/coupon.model.js";
 import { CouponUsage } from "../../models/coupons/couponUsage.model.js";
 import { CouponCustomerUsage } from "../../models/coupons/couponCustomerUsage.model.js";
 import { logger } from "../../utils/logger.js";
+import {
+  loadStaffAttributionSnapshot,
+  resolveStaffAttribution,
+} from "./staffAttribution.service.js";
+
+function allocatePaiseProportionally(totalPaise, weightedLines) {
+  if (!Number.isInteger(totalPaise) || totalPaise < 0) {
+    throw new AppError("Refund total must be integer paise", 400);
+  }
+  const totalWeight = weightedLines.reduce((sum, line) => sum + line.weight, 0);
+  if (totalWeight <= 0) return weightedLines.map((line) => ({ ...line, paise: 0 }));
+
+  let allocated = 0;
+  const shares = weightedLines.map((line) => {
+    const numerator = BigInt(totalPaise) * BigInt(line.weight);
+    const denominator = BigInt(totalWeight);
+    const paise = Number(numerator / denominator);
+    allocated += paise;
+    return {
+      ...line,
+      paise,
+      remainder: numerator % denominator,
+    };
+  });
+
+  let remaining = totalPaise - allocated;
+  const byRemainder = [...shares].sort((a, b) => {
+    if (a.remainder !== b.remainder) return a.remainder > b.remainder ? -1 : 1;
+    return a.lineId.localeCompare(b.lineId);
+  });
+  for (let index = 0; remaining > 0; index += 1, remaining -= 1) {
+    byRemainder[index % byRemainder.length].paise += 1;
+  }
+
+  return shares.map(({ remainder, ...share }) => share);
+}
 
 export class BillingService {
   /**
@@ -443,6 +482,13 @@ export class BillingService {
       );
     }
 
+    const appointmentPerformerAttribution =
+      await loadStaffAttributionSnapshot(
+        appointment.staffId,
+        organizationId,
+        session,
+      );
+
     // Check for existing active (non-cancelled) invoice for this appointment
     const existingActiveInvoice = await Invoice.findOne({
       appointmentId: appointment._id,
@@ -605,6 +651,10 @@ export class BillingService {
         lineType: "service",
         serviceType: s.serviceType || "registered",
         serviceId: s.serviceId || null,
+        staffId: appointment.staffId || null,
+        attribution: {
+          performedBy: appointmentPerformerAttribution,
+        },
         appointmentServiceId: s._id,
         name: s.name,
         duration: s.duration,
@@ -649,12 +699,19 @@ export class BillingService {
         }
 
         const qty = Number(prodInput.quantity);
+        const soldBy = await resolveStaffAttribution(
+          prodInput.soldByStaffId,
+          organizationId,
+          branchId,
+          session,
+        );
         const unitPrice = Number(product.sellingPrice || 0);
         const lineTotal = Number((qty * unitPrice).toFixed(2));
 
         invoiceLines.push({
           lineType: "product",
           productId: product._id,
+          attribution: { soldBy },
           sku: product.sku,
           stockUnit: product.stockUnit,
           costPriceSnapshot: product.costPrice || 0,
@@ -909,6 +966,7 @@ export class BillingService {
         serviceType: undefined,
         serviceId: null,
         subscriptionId: subscription._id,
+        attribution: subscription.attribution || {},
         appointmentServiceId: null,
         name: `Subscription: ${subscription.subscriptionCode}`,
         duration: 0,
@@ -951,12 +1009,19 @@ export class BillingService {
         }
 
         const qty = Number(prodInput.quantity);
+        const soldBy = await resolveStaffAttribution(
+          prodInput.soldByStaffId,
+          organizationId,
+          branchId,
+          session,
+        );
         const prodUnitPrice = Number(product.sellingPrice || 0);
         const prodLineTotal = Number((qty * prodUnitPrice).toFixed(2));
 
         invoiceLines.push({
           lineType: "product",
           productId: product._id,
+          attribution: { soldBy },
           sku: product.sku,
           stockUnit: product.stockUnit,
           costPriceSnapshot: product.costPrice || 0,
@@ -1163,7 +1228,6 @@ export class BillingService {
 
     const invoiceLines = [];
     const productItemsToReserve = [];
-
     for (const prodInput of productLines) {
       const product = await productRepository.findById(
         prodInput.productId,
@@ -1187,12 +1251,19 @@ export class BillingService {
       }
 
       const qty = Number(prodInput.quantity);
+      const soldBy = await resolveStaffAttribution(
+        prodInput.soldByStaffId,
+        organizationId,
+        branchId,
+        session,
+      );
       const unitPrice = Number(product.sellingPrice || 0);
       const lineTotal = Number((qty * unitPrice).toFixed(2));
 
       invoiceLines.push({
         lineType: "product",
         productId: product._id,
+        attribution: { soldBy },
         sku: product.sku,
         stockUnit: product.stockUnit,
         costPriceSnapshot: product.costPrice || 0,
@@ -1351,6 +1422,17 @@ export class BillingService {
    * - membership plans (with same-invoice benefit discount pre-evaluation)
    */
   async createUnifiedInvoice(data, organizationId, userId, session = null) {
+    if (!session) {
+      return this.executeTransaction((transactionSession) =>
+        this.createUnifiedInvoice(
+          data,
+          organizationId,
+          userId,
+          transactionSession,
+        ),
+      );
+    }
+
     const {
       branchId,
       customerId: explicitCustomerId,
@@ -1369,6 +1451,7 @@ export class BillingService {
 
     let targetCustomerId = explicitCustomerId;
     let appointment = null;
+    let appointmentPerformerAttribution = null;
     let appointmentPricingSnapshot = null;
     let reusedDraftInvoice = null;
 
@@ -1403,6 +1486,13 @@ export class BillingService {
           400,
         );
       }
+
+      appointmentPerformerAttribution =
+        await loadStaffAttributionSnapshot(
+          appointment.staffId,
+          organizationId,
+          session,
+        );
 
       // Check existing active invoice
       const existingActiveInvoice = await Invoice.findOne({
@@ -1510,6 +1600,7 @@ export class BillingService {
         invoiceLines.push({
           lineType: "subscription",
           subscriptionId: existingSub._id,
+          attribution: existingSub.attribution || {},
           name: `Subscription: ${existingSub.subscriptionCode}`,
           duration: 0,
           quantity: 1,
@@ -1557,6 +1648,12 @@ export class BillingService {
       // Authoritative server-side price (never trust client)
       const unitPrice = Number(plan.suggestedPrice);
       const lineTotal = unitPrice;
+      const soldBy = await resolveStaffAttribution(
+        subInput.soldByStaffId,
+        organizationId,
+        branchId,
+        session,
+      );
 
       // Register entitlements for same-appointment coverage matching
       for (const ent of plan.entitlements || []) {
@@ -1568,6 +1665,7 @@ export class BillingService {
       invoiceLines.push({
         lineType: "subscription",
         subscriptionPlanId: plan._id,
+        attribution: { soldBy },
         name: `Subscription Plan: ${plan.name}`,
         duration: 0,
         quantity: 1,
@@ -1587,6 +1685,8 @@ export class BillingService {
     }
 
     let inCartMembershipBenefits = null;
+    let inCartMembershipPurchaseLineId = null;
+    let existingActiveMembership = null;
 
     for (const memInput of normalizedMemInputs) {
       const plan = await MembershipPlan.findOne({
@@ -1621,13 +1721,22 @@ export class BillingService {
       const unitPrice = Number(plan.price);
       const qty = Number(memInput.quantity || 1);
       const lineTotal = Number((unitPrice * qty).toFixed(2));
+      const soldBy = await resolveStaffAttribution(
+        memInput.soldByStaffId,
+        organizationId,
+        branchId,
+        session,
+      );
 
       // Track active benefits for same-invoice benefit preview
       inCartMembershipBenefits = plan.benefits;
+      inCartMembershipPurchaseLineId = new mongoose.Types.ObjectId();
 
       invoiceLines.push({
+        _id: inCartMembershipPurchaseLineId,
         lineType: "membership",
         membershipPlanId: plan._id,
+        attribution: { soldBy },
         membershipTierSnapshot: plan.tier || "Standard",
         name: `Membership: ${plan.name}`,
         duration: 0,
@@ -1643,7 +1752,7 @@ export class BillingService {
 
     // Also check if customer already has an existing active membership (outside this cart)
     if (!inCartMembershipBenefits) {
-      const existingActiveMembership = await CustomerMembership.findOne({
+      existingActiveMembership = await CustomerMembership.findOne({
         organizationId,
         customerId: targetCustomerId,
         status: "active",
@@ -1847,6 +1956,10 @@ export class BillingService {
           lineType: "service",
           serviceType: s.serviceType || "registered",
           serviceId: s.serviceId || null,
+          staffId: appointment.staffId || null,
+          attribution: {
+            performedBy: appointmentPerformerAttribution,
+          },
           appointmentServiceId: s._id,
           name: s.name,
           duration: s.duration,
@@ -1857,6 +1970,12 @@ export class BillingService {
           appliedSubscriptionId,
           subscriptionUsageId,
           subscriptionCoveredAmount,
+          appliedCustomerMembershipId: isDiscountedByMembership
+            ? existingActiveMembership?._id || null
+            : null,
+          membershipBenefitSourceLineId: isDiscountedByMembership
+            ? inCartMembershipPurchaseLineId
+            : null,
           isDiscountedByMembership,
           membershipDiscountAmount,
           discountAmount: membershipDiscountAmount,
@@ -1878,6 +1997,12 @@ export class BillingService {
       }
 
       const qty = Number(svcInput.quantity || 1);
+      const performedBy = await resolveStaffAttribution(
+        svcInput.performedByStaffId,
+        organizationId,
+        branchId,
+        session,
+      );
       // Strictly resolve authoritative catalog price server-side; do not trust client unitPrice
       const unitPrice = Number(service.pricing?.basePrice ?? 0);
       const lineTotal = Number((qty * unitPrice).toFixed(2));
@@ -2069,6 +2194,8 @@ export class BillingService {
         lineType: "service",
         serviceType: "registered",
         serviceId: service._id,
+        staffId: performedBy?.staffId || null,
+        attribution: { performedBy },
         appointmentServiceId: null,
         name: service.name,
         duration: service.duration || 30,
@@ -2079,6 +2206,12 @@ export class BillingService {
         appliedSubscriptionId,
         subscriptionUsageId: null,
         subscriptionCoveredAmount,
+        appliedCustomerMembershipId: isDiscountedByMembership
+          ? existingActiveMembership?._id || null
+          : null,
+        membershipBenefitSourceLineId: isDiscountedByMembership
+          ? inCartMembershipPurchaseLineId
+          : null,
         isDiscountedByMembership,
         membershipDiscountAmount,
         discountAmount: membershipDiscountAmount,
@@ -2112,6 +2245,12 @@ export class BillingService {
       const qty = Number(prodInput.quantity);
       const unitPrice = Number(product.sellingPrice || 0);
       const lineTotal = Number((qty * unitPrice).toFixed(2));
+      const soldBy = await resolveStaffAttribution(
+        prodInput.soldByStaffId,
+        organizationId,
+        branchId,
+        session,
+      );
 
       let isDiscountedByMembership = false;
       let membershipDiscountAmount = 0;
@@ -2133,6 +2272,7 @@ export class BillingService {
       invoiceLines.push({
         lineType: "product",
         productId: product._id,
+        attribution: { soldBy },
         sku: product.sku,
         stockUnit: product.stockUnit,
         costPriceSnapshot: product.costPrice || 0,
@@ -2143,6 +2283,12 @@ export class BillingService {
         lineTotal,
         isCoveredBySubscription: false,
         subscriptionCoveredAmount: 0,
+        appliedCustomerMembershipId: isDiscountedByMembership
+          ? existingActiveMembership?._id || null
+          : null,
+        membershipBenefitSourceLineId: isDiscountedByMembership
+          ? inCartMembershipPurchaseLineId
+          : null,
         isDiscountedByMembership,
         membershipDiscountAmount,
         discountAmount: membershipDiscountAmount,
@@ -2288,6 +2434,15 @@ export class BillingService {
       });
     }
 
+    if (
+      existingActiveMembership &&
+      invoiceLines.some((line) => line.isDiscountedByMembership)
+    ) {
+      existingActiveMembership.lastBenefitReservationAt = new Date();
+      existingActiveMembership.lastBenefitReservationInvoiceId = invoiceDoc._id;
+      await existingActiveMembership.save({ session });
+    }
+
     try {
       if (productItemsToReserve.length > 0) {
         // Safely adjust / update stock reservations for this invoice
@@ -2428,12 +2583,18 @@ export class BillingService {
         }
 
         const qty = Number(prodInput.quantity);
+        const soldBy = await resolveStaffAttribution(
+          prodInput.soldByStaffId,
+          organizationId,
+          branchId,
+        );
         const unitPrice = Number(product.sellingPrice || 0);
         const lineTotal = Number((qty * unitPrice).toFixed(2));
 
         updatedProductLines.push({
           lineType: "product",
           productId: product._id,
+          attribution: { soldBy },
           sku: product.sku,
           stockUnit: product.stockUnit,
           costPriceSnapshot: product.costPrice || 0,
@@ -2549,6 +2710,102 @@ export class BillingService {
 
     await invoice.save();
     return invoice;
+  }
+
+  async correctInvoiceAttribution(
+    id,
+    { lineId, sourceRole, staffId, reason },
+    organizationId,
+    branchId,
+    userId,
+  ) {
+    return this.executeTransaction(async (session) => {
+      const invoice = await Invoice.findOne({
+        _id: id,
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (!invoice) {
+        throw new AppError("Invoice not found", 404);
+      }
+      if (invoice.branchId.toString() !== branchId.toString()) {
+        throw new AppError("Target branchId does not match invoice branch", 400);
+      }
+      if (invoice.status !== "draft") {
+        throw new AppError(
+          "Attribution can only be corrected before invoice finalization",
+          400,
+        );
+      }
+
+      const line = invoice.lines.id(lineId);
+      if (!line) {
+        throw new AppError("Invoice line not found", 404);
+      }
+      if (
+        sourceRole === "seller" &&
+        !["product", "membership", "subscription"].includes(line.lineType)
+      ) {
+        throw new AppError("Seller attribution is not valid for this line", 400);
+      }
+      if (
+        sourceRole === "renewal_handler" &&
+        (line.lineType !== "subscription" || !line.subscriptionId)
+      ) {
+        throw new AppError(
+          "Renewal-handler attribution requires a renewal subscription line",
+          400,
+        );
+      }
+
+      const attributionKey =
+        sourceRole === "seller" ? "soldBy" : "renewalHandler";
+      const resolved = await resolveStaffAttribution(
+        staffId,
+        organizationId,
+        branchId,
+        session,
+      );
+      const previous = line.attribution?.[attributionKey] || null;
+      line.attribution = line.attribution || {};
+      line.attribution[attributionKey] = resolved;
+
+      let linkedSubscription = null;
+      if (line.subscriptionId) {
+        linkedSubscription = await Subscription.findOne({
+          _id: line.subscriptionId,
+          organizationId,
+          isDeleted: false,
+        }).session(session);
+        if (!linkedSubscription) {
+          throw new AppError("Linked subscription not found", 404);
+        }
+        linkedSubscription.attribution = linkedSubscription.attribution || {};
+        linkedSubscription.attribution[attributionKey] = resolved;
+        await linkedSubscription.save({ session });
+      }
+
+      await invoice.save({ session });
+      const auditLog = new AuditLog({
+        organizationId,
+        branchId,
+        actorId: userId,
+        action: AUDIT_ACTIONS.INVOICE_ATTRIBUTION_CORRECTED,
+        entityType: "Invoice",
+        entityId: invoice._id,
+        description: `Invoice ${invoice.invoiceNumber} source attribution corrected`,
+        metadata: {
+          lineId: line._id,
+          sourceRole,
+          previousStaffId: previous?.staffId || null,
+          newStaffId: resolved?.staffId || null,
+          reason: reason.trim(),
+        },
+      });
+      await auditLog.save({ session });
+      return invoice;
+    });
   }
 
   /**
@@ -4698,6 +4955,7 @@ export class BillingService {
               subscriptionCode: subCode,
               planId: plan._id,
               price: sLine.unitPrice,
+              attribution: sLine.attribution || {},
               members: [
                 {
                   customerId: updatedInvoice.customerId,
@@ -4738,6 +4996,9 @@ export class BillingService {
                   quantity: 1,
                   verifiedBy: userId,
                   verificationMethod: "manual",
+                  attribution: {
+                    performedBy: wl.attribution?.performedBy || null,
+                  },
                   reason: `Same-appointment upsell coverage for Invoice #${updatedInvoice.invoiceNumber}`,
                   appointmentId: updatedInvoice.appointmentId || null,
                   appointmentServiceId: wl.appointmentServiceId || null,
@@ -4865,6 +5126,9 @@ export class BillingService {
             quantity: qtyToDeduct,
             verifiedBy: userId,
             verificationMethod: "manual",
+            attribution: {
+              performedBy: ecLine.attribution?.performedBy || null,
+            },
             reason: `Service coverage on Invoice #${updatedInvoice.invoiceNumber}`,
             appointmentId: updatedInvoice.appointmentId || null,
             appointmentServiceId: ecLine.appointmentServiceId || null,
@@ -4895,6 +5159,7 @@ export class BillingService {
               organizationId,
               customerId: updatedInvoice.customerId,
               membershipPlanId: plan._id,
+              attribution: mLine.attribution || {},
               membershipCode: memCode,
               planSnapshot: {
                 name: plan.name,
@@ -4913,6 +5178,15 @@ export class BillingService {
 
             await newMembership.save({ session });
             mLine.customerMembershipId = newMembership._id;
+            for (const benefitLine of updatedInvoice.lines) {
+              if (
+                benefitLine.membershipBenefitSourceLineId?.toString() ===
+                mLine._id.toString()
+              ) {
+                benefitLine.appliedCustomerMembershipId = newMembership._id;
+                benefitLine.membershipBenefitSourceLineId = null;
+              }
+            }
             updatedInvoice.customerMembershipId = newMembership._id;
             updatedInvoice.membershipCode = memCode;
           }
@@ -4930,6 +5204,19 @@ export class BillingService {
             actorId: userId,
             session,
           });
+        }
+
+        // Trigger Incentives & Settlement Hook (Dual-Gate Gate 1)
+        try {
+          await settlementFulfillmentEventService.handleInvoiceSettled({
+            invoice: updatedInvoice,
+            payment: paymentDoc,
+            session,
+            userId,
+          });
+        } catch (incentiveErr) {
+          logger.error("Incentive settlement hook failed; rolling back invoice payment: " + incentiveErr.message);
+          throw incentiveErr;
         }
       }
 
@@ -5021,6 +5308,23 @@ export class BillingService {
         },
       });
       await auditLog.save({ session });
+
+      // Trigger Incentives Void/Unsettle Hook
+      try {
+        await settlementFulfillmentEventService.handlePaymentVoided({
+          payment,
+          invoice: updatedInvoice,
+          session,
+          userId,
+          reason,
+        });
+      } catch (incentiveVoidErr) {
+        logger.error(
+          "Incentive void hook failed; rolling back payment void: " +
+            incentiveVoidErr.message,
+        );
+        throw incentiveVoidErr;
+      }
 
       // If the invoice was previously paid/settled, reverse any earned loyalty points atomically
       if (
@@ -5510,14 +5814,277 @@ export class BillingService {
   /**
    * 8. PROCESS INVOICE RETURN & RESTOCK (SEPARATE FINANCIAL REFUND & PHYSICAL RESTOCK)
    */
+  async refundUnusedMembershipLine(
+    invoiceId,
+    payload,
+    organizationId,
+    branchId,
+    userId,
+    idempotencyKey,
+  ) {
+    const { lineId, refundPaymentMethod = "cash", reason } = payload;
+    if (!idempotencyKey || idempotencyKey.length > 200) {
+      throw new AppError("A valid Idempotency-Key header is required for membership refunds", 400);
+    }
+
+    const requestPayloadHash = crypto
+      .createHash("sha256")
+      .update(JSON.stringify({ lineId: String(lineId), refundPaymentMethod, reason }))
+      .digest("hex");
+    const refundPaymentKey = `MEMBERSHIP_REFUND:${invoiceId}:${idempotencyKey}`;
+
+    return this.executeTransaction(async (session) => {
+      const invoice = await Invoice.findOne({
+        _id: invoiceId,
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+      if (!invoice) throw new AppError("Invoice not found", 404);
+      if (invoice.branchId.toString() !== branchId.toString()) {
+        throw new AppError("Target branchId does not match invoice branch", 400);
+      }
+
+      const existingPayment = await Payment.findOne({
+        organizationId,
+        idempotencyKey: refundPaymentKey,
+        type: "refund",
+        isDeleted: false,
+      }).session(session);
+      if (existingPayment) {
+        if (
+          existingPayment.requestPayloadHash !== requestPayloadHash ||
+          existingPayment.invoiceId.toString() !== invoice._id.toString()
+        ) {
+          throw new AppError("Idempotency key was already used for a different membership refund", 409);
+        }
+        const refundEvent = await InvoiceSettlementEvent.findOne({
+          organizationId,
+          paymentId: existingPayment._id,
+          eventType: "RETURN_PROCESSED",
+        }).session(session);
+        return {
+          invoice,
+          refundPayment: existingPayment,
+          refundEvent,
+          idempotentReplay: true,
+          manualRefundRecord: true,
+        };
+      }
+
+      if (invoice.status !== "finalized" || invoice.paymentStatus !== "paid") {
+        throw new AppError("Only fully paid, finalized membership invoices can be refunded", 400);
+      }
+      if (invoice.loyaltyDiscountAmount > 0) {
+        throw new AppError("Membership refund is blocked because loyalty discount allocation is not verifiable", 409);
+      }
+
+      const line = invoice.lines.find(
+        (item) => item._id?.toString() === String(lineId),
+      );
+      if (!line || line.lineType !== "membership" || Number(line.quantity) !== 1) {
+        throw new AppError("A single membership invoice line is required for refund", 400);
+      }
+      if (!line.customerMembershipId) {
+        throw new AppError("Membership issuance record is missing for this invoice line", 409);
+      }
+
+      const membership = await CustomerMembership.findOne({
+        _id: line.customerMembershipId,
+        organizationId,
+        invoiceId: invoice._id,
+        isDeleted: false,
+      }).session(session);
+      if (!membership || !["active", "expired"].includes(membership.status)) {
+        throw new AppError("Membership is not eligible for an unused-membership refund", 409);
+      }
+
+      const benefitUse = await Invoice.exists({
+        organizationId,
+        isDeleted: false,
+        status: { $ne: "cancelled" },
+        $or: [
+          { "lines.appliedCustomerMembershipId": membership._id },
+          { "lines.membershipBenefitSourceLineId": line._id },
+        ],
+      }).session(session);
+      if (benefitUse) {
+        throw new AppError("Membership has been used or reserved on another invoice and cannot be refunded", 409);
+      }
+
+      const netAmountPaise = Math.round(
+        Number(line.customerPayable ?? line.lineTotal) * 100,
+      );
+      if (!Number.isSafeInteger(netAmountPaise) || netAmountPaise <= 0) {
+        throw new AppError("Membership refund amount is invalid", 409);
+      }
+      const refundAmount = netAmountPaise / 100;
+      const paymentNumber = await this.generatePaymentNumber(organizationId);
+      const refundPayment = await Payment.create(
+        [{
+          organizationId,
+          branchId,
+          invoiceId: invoice._id,
+          customerId: invoice.customerId,
+          paymentNumber,
+          amount: -refundAmount,
+          method: refundPaymentMethod,
+          type: "refund",
+          status: "completed",
+          referenceNote: `Unused membership refund recorded: ${reason}`,
+          recordedBy: userId,
+          paymentDate: new Date(),
+          idempotencyKey: refundPaymentKey,
+          requestPayloadHash,
+          isManualRefundRecord: true,
+        }],
+        { session },
+      );
+
+      membership.status = "cancelled";
+      membership.cancelledAt = new Date();
+      membership.cancelledBy = userId;
+      membership.cancellationReason = reason;
+      membership.refundPaymentId = refundPayment[0]._id;
+      await membership.save({ session });
+
+      line.returnedQuantity = Number(line.quantity);
+      const { refundEvent } = await settlementFulfillmentEventService.handlePurchaseRefundProcessed({
+        invoice,
+        refundPayment: refundPayment[0],
+        refundAllocations: [{
+          lineItemId: line._id.toString(),
+          refundAmountInPaise: netAmountPaise,
+        }],
+        customerMembershipId: membership._id,
+        reason,
+        organizationId,
+        branchId,
+        userId,
+        session,
+      });
+
+      const grossLineAmount = Number(line.lineTotal || 0);
+      const lineDiscountAmount = Math.max(
+        0,
+        Number((grossLineAmount - refundAmount).toFixed(2)),
+      );
+      invoice.subtotal = Math.max(
+        0,
+        Number((Number(invoice.subtotal || 0) - grossLineAmount).toFixed(2)),
+      );
+      invoice.discountTotal = Math.max(
+        0,
+        Number((Number(invoice.discountTotal || 0) - lineDiscountAmount).toFixed(2)),
+      );
+      invoice.grossPayable = Math.max(
+        0,
+        Number((Number(invoice.grossPayable || 0) - grossLineAmount).toFixed(2)),
+      );
+      invoice.payableAmount = Math.max(
+        0,
+        Number((Number(invoice.payableAmount || 0) - refundAmount).toFixed(2)),
+      );
+      invoice.amountPaid = Math.max(
+        0,
+        Number((Number(invoice.amountPaid || 0) - refundAmount).toFixed(2)),
+      );
+      invoice.amountDue = Math.max(
+        0,
+        Number((invoice.payableAmount - invoice.amountPaid).toFixed(2)),
+      );
+      invoice.paymentStatus = this.derivePaymentStatus(invoice.amountPaid, invoice.amountDue);
+      await invoice.save({ session });
+
+      await new AuditLog({
+        organizationId,
+        branchId,
+        actorId: userId,
+        action: AUDIT_ACTIONS.INVOICE_RETURN_PROCESSED,
+        entityType: "Invoice",
+        entityId: invoice._id,
+        description: "Unused membership refund recorded and membership cancelled",
+        metadata: {
+          invoiceId: invoice._id,
+          lineId: line._id,
+          paymentId: refundPayment[0]._id,
+          refundEventId: refundEvent?._id || null,
+          amount: refundAmount,
+          reason,
+          manualRefundRecord: true,
+        },
+      }).save({ session });
+
+      return {
+        invoice,
+        refundPayment: refundPayment[0],
+        refundEvent,
+        idempotentReplay: false,
+        manualRefundRecord: true,
+      };
+    }).catch(async (error) => {
+      if (error?.code !== 11000) throw error;
+      const existingPayment = await Payment.findOne({
+        organizationId,
+        idempotencyKey: refundPaymentKey,
+        type: "refund",
+        isDeleted: false,
+      });
+      if (!existingPayment) throw error;
+      if (
+        existingPayment.requestPayloadHash !== requestPayloadHash ||
+        existingPayment.invoiceId.toString() !== String(invoiceId)
+      ) {
+        throw new AppError("Idempotency key was already used for a different membership refund", 409);
+      }
+      const [invoice, refundEvent] = await Promise.all([
+        Invoice.findOne({ _id: invoiceId, organizationId, isDeleted: false }),
+        InvoiceSettlementEvent.findOne({
+          organizationId,
+          paymentId: existingPayment._id,
+          eventType: "RETURN_PROCESSED",
+        }),
+      ]);
+      return {
+        invoice,
+        refundPayment: existingPayment,
+        refundEvent,
+        idempotentReplay: true,
+        manualRefundRecord: true,
+      };
+    });
+  }
+
   async processInvoiceReturn(
     invoiceId,
     payload,
     organizationId,
     branchId,
     userId,
+    idempotencyKey,
   ) {
     const { items = [], refundPaymentMethod = "cash", reason } = payload;
+    if (!idempotencyKey || idempotencyKey.length > 200) {
+      throw new AppError("A valid Idempotency-Key header is required for invoice returns", 400);
+    }
+
+    const normalizedItems = items
+      .map((item) => ({
+        lineId: String(item.lineId),
+        quantity: Number(item.quantity),
+        condition: item.condition || "unopened",
+        acceptPhysicalRestock: item.acceptPhysicalRestock === true,
+        restockReason: item.restockReason || "",
+      }))
+      .sort((a, b) => a.lineId.localeCompare(b.lineId));
+    if (new Set(normalizedItems.map((item) => item.lineId)).size !== normalizedItems.length) {
+      throw new AppError("A return request cannot contain the same invoice line more than once", 400);
+    }
+    const requestPayloadHash = crypto
+      .createHash("sha256")
+      .update(JSON.stringify({ items: normalizedItems, refundPaymentMethod, reason }))
+      .digest("hex");
+    const returnEventKey = `RETURN:INV:${invoiceId}:KEY:${idempotencyKey}`;
+    const refundPaymentKey = `INVOICE_RETURN:${invoiceId}:${idempotencyKey}`;
 
     return await this.executeTransaction(async (session) => {
       const invoice = await Invoice.findOne({
@@ -5535,17 +6102,78 @@ export class BillingService {
           400,
         );
       }
+
+      const existingReturn = await InvoiceSettlementEvent.findOne({
+        organizationId,
+        idempotencyKey: returnEventKey,
+      }).session(session);
+      if (existingReturn) {
+        if (existingReturn.requestPayloadHash !== requestPayloadHash) {
+          throw new AppError("Idempotency key was already used for a different return request", 409);
+        }
+        const [refundPayment, restockedMovements] = await Promise.all([
+          Payment.findOne({
+            _id: existingReturn.paymentId,
+            organizationId,
+          }).session(session),
+          StockMovement.find({
+            _id: { $in: existingReturn.restockedMovementIds || [] },
+            organizationId,
+          }).session(session),
+        ]);
+        if (!refundPayment) {
+          throw new AppError("The recorded return is missing its refund payment", 500);
+        }
+        return {
+          invoice,
+          totalRefundAmount:
+            Number(existingReturn.refundAllocations.reduce(
+              (sum, allocation) => sum + allocation.refundAmountInPaise,
+              0,
+            )) / 100,
+          refundPayment,
+          restockedMovements,
+          isIdempotentReplay: true,
+        };
+      }
+
       if (invoice.status !== "finalized") {
         throw new AppError(
           `Cannot process return on invoice with status '${invoice.status}'. Must be 'finalized'.`,
           400,
         );
       }
+      if (Number(invoice.amountPaid || 0) <= 0) {
+        throw new AppError("Only paid invoice items can be returned", 400);
+      }
+      if (Number(invoice.loyaltyDiscountAmount || 0) > 0) {
+        throw new AppError(
+          "Product returns require line-allocated discounts; this invoice has an unallocated loyalty discount",
+          409,
+        );
+      }
 
-      let totalRefundAmount = 0;
-      const restockedMovements = [];
+      const previousReturnEvents = await InvoiceSettlementEvent.find({
+        organizationId,
+        invoiceId: invoice._id,
+        eventType: "RETURN_PROCESSED",
+      })
+        .select("refundAllocations")
+        .session(session)
+        .lean();
+      const previouslyRefundedByLine = new Map();
+      for (const event of previousReturnEvents) {
+        for (const allocation of event.refundAllocations || []) {
+          const lineId = allocation.lineItemId.toString();
+          previouslyRefundedByLine.set(
+            lineId,
+            (previouslyRefundedByLine.get(lineId) || 0) +
+              allocation.refundAmountInPaise,
+          );
+        }
+      }
 
-      for (const item of items) {
+      const preparedReturns = normalizedItems.map((item) => {
         const line = invoice.lines.id(item.lineId);
         if (!line) {
           throw new AppError(`Invoice line not found: ${item.lineId}`, 404);
@@ -5556,30 +6184,94 @@ export class BillingService {
             400,
           );
         }
-
-        const returnQty = Number(item.quantity);
-        const alreadyReturned = Number(line.returnedQuantity || 0);
-        const maxReturnable = Number(
-          (line.quantity - alreadyReturned).toFixed(3),
+        const quantityUnits = Math.round(Number(line.quantity) * 1000);
+        const returnQuantityUnits = Math.round(item.quantity * 1000);
+        const alreadyReturnedUnits = Math.round(
+          Number(line.returnedQuantity || 0) * 1000,
         );
-
-        if (returnQty > maxReturnable) {
+        const returnableUnits = quantityUnits - alreadyReturnedUnits;
+        if (
+          returnQuantityUnits <= 0 ||
+          returnQuantityUnits > returnableUnits ||
+          !Number.isFinite(quantityUnits) ||
+          quantityUnits <= 0
+        ) {
           throw new AppError(
-            `Return quantity (${returnQty}) exceeds remaining returnable quantity (${maxReturnable}) for '${line.name}' (Purchased: ${line.quantity}, Already Returned: ${alreadyReturned})`,
+            `Return quantity (${item.quantity}) exceeds remaining returnable quantity for '${line.name}'`,
             400,
           );
         }
 
-        // Increment returned quantity on line to prevent duplicate returns
-        line.returnedQuantity = Number(
-          (alreadyReturned + returnQty).toFixed(3),
+        const nextReturnedUnits = alreadyReturnedUnits + returnQuantityUnits;
+        const lineNetPaise = Math.max(
+          0,
+          Math.round(Number(line.customerPayable || 0) * 100),
+        );
+        const cumulativeRefundPaise = Number(
+          (BigInt(lineNetPaise) * BigInt(nextReturnedUnits) +
+            BigInt(Math.floor(quantityUnits / 2))) /
+            BigInt(quantityUnits),
+        );
+        const lineGrossPaise = Math.max(
+          0,
+          Math.round(Number(line.lineTotal || 0) * 100),
+        );
+        const cumulativeGrossPaise = Number(
+          (BigInt(lineGrossPaise) * BigInt(nextReturnedUnits) +
+            BigInt(Math.floor(quantityUnits / 2))) /
+            BigInt(quantityUnits),
+        );
+        const previouslyReturnedGrossPaise = Number(
+          (BigInt(lineGrossPaise) * BigInt(alreadyReturnedUnits) +
+            BigInt(Math.floor(quantityUnits / 2))) /
+            BigInt(quantityUnits),
+        );
+        const previouslyRefundedPaise =
+          previouslyRefundedByLine.get(item.lineId) || 0;
+        const refundDuePaise = Math.max(
+          0,
+          cumulativeRefundPaise - previouslyRefundedPaise,
         );
 
-        const unitPrice = line.unitPrice || 0;
-        const refundItemTotal = Number((returnQty * unitPrice).toFixed(2));
-        totalRefundAmount = Number(
-          (totalRefundAmount + refundItemTotal).toFixed(2),
-        );
+        return {
+          ...item,
+          line,
+          nextReturnedQuantity: nextReturnedUnits / 1000,
+          weight: refundDuePaise,
+          refundDuePaise,
+          grossReturnPaise:
+            cumulativeGrossPaise - previouslyReturnedGrossPaise,
+        };
+      });
+
+      const totalRefundDuePaise = preparedReturns.reduce(
+        (sum, item) => sum + item.refundDuePaise,
+        0,
+      );
+      const amountPaidPaise = Math.max(
+        0,
+        Math.round(Number(invoice.amountPaid || 0) * 100),
+      );
+      const actualRefundPaise = Math.min(amountPaidPaise, totalRefundDuePaise);
+      if (actualRefundPaise <= 0) {
+        throw new AppError("No paid, refundable value remains for the selected items", 409);
+      }
+      const refundAllocations = allocatePaiseProportionally(
+        actualRefundPaise,
+        preparedReturns.map((item) => ({
+          lineId: item.line._id.toString(),
+          lineItemId: item.line._id,
+          weight: item.refundDuePaise,
+          quantity: item.quantity,
+          refundDuePaise: item.refundDuePaise,
+        })),
+      );
+      const restockedMovements = [];
+
+      for (const item of preparedReturns) {
+        const { line } = item;
+        const returnQty = item.quantity;
+        line.returnedQuantity = item.nextReturnedQuantity;
 
         // Rule 9: Restock ONLY if physical return acceptance is confirmed (e.g. unopened/resalable)
         if (item.acceptPhysicalRestock === true) {
@@ -5620,46 +6312,115 @@ export class BillingService {
         }
       }
 
-      // Always persist the updated lines (with returnedQuantity) on the invoice
+      const refundDueAmount = totalRefundDuePaise / 100;
+      const actualRefundAmount = actualRefundPaise / 100;
+      const returnedGrossAmount =
+        preparedReturns.reduce((sum, item) => sum + item.grossReturnPaise, 0) /
+        100;
+      const returnedDiscountAmount = Math.max(
+        0,
+        Number((returnedGrossAmount - refundDueAmount).toFixed(2)),
+      );
+      invoice.subtotal = Math.max(
+        0,
+        Number((Number(invoice.subtotal || 0) - returnedGrossAmount).toFixed(2)),
+      );
+      invoice.discountTotal = Math.max(
+        0,
+        Number((Number(invoice.discountTotal || 0) - returnedDiscountAmount).toFixed(2)),
+      );
+      invoice.grossPayable = Math.max(
+        0,
+        Number((Number(invoice.grossPayable || 0) - returnedGrossAmount).toFixed(2)),
+      );
+      invoice.payableAmount = Math.max(
+        0,
+        Number((Number(invoice.payableAmount || 0) - refundDueAmount).toFixed(2)),
+      );
+      invoice.amountPaid = Math.max(
+        0,
+        Number((Number(invoice.amountPaid || 0) - actualRefundAmount).toFixed(2)),
+      );
+      invoice.amountDue = Math.max(
+        0,
+        Number((invoice.payableAmount - invoice.amountPaid).toFixed(2)),
+      );
+      invoice.paymentStatus = this.derivePaymentStatus(
+        invoice.amountPaid,
+        invoice.amountDue,
+      );
       await invoice.save({ session });
 
-      // Record refund payment entry if money was paid
-      let refundPayment = null;
-      if (invoice.amountPaid > 0 && totalRefundAmount > 0) {
-        const actualRefundToIssue = Math.min(
-          invoice.amountPaid,
-          totalRefundAmount,
-        );
-        invoice.amountPaid = Number(
-          (invoice.amountPaid - actualRefundToIssue).toFixed(2),
-        );
-        invoice.amountDue = Math.max(
-          0,
-          Number((invoice.payableAmount - invoice.amountPaid).toFixed(2)),
-        );
-        invoice.paymentStatus = this.derivePaymentStatus(
-          invoice.amountPaid,
-          invoice.amountDue,
-        );
-        await invoice.save({ session });
+      const paymentNumber = await this.generatePaymentNumber(organizationId);
+      const refundPayment = new Payment({
+        organizationId,
+        branchId,
+        invoiceId: invoice._id,
+        customerId: invoice.customerId,
+        paymentNumber,
+        amount: -actualRefundAmount,
+        type: "refund",
+        method: refundPaymentMethod,
+        referenceNote: `Refund for returned items: ${reason}`,
+        status: "completed",
+        recordedBy: userId,
+        paymentDate: new Date(),
+        idempotencyKey: refundPaymentKey,
+        requestPayloadHash,
+      });
+      await refundPayment.save({ session });
 
-        const paymentNumber = await this.generatePaymentNumber(organizationId);
-        refundPayment = new Payment({
-          organizationId,
-          branchId,
-          invoiceId: invoice._id,
-          customerId: invoice.customerId,
-          paymentNumber,
-          amount: -actualRefundToIssue,
-          type: "refund",
-          method: refundPaymentMethod,
-          referenceNote: `Refund for returned items: ${reason}`,
-          status: "completed",
-          recordedBy: userId,
-          paymentDate: new Date(),
-        });
-        await refundPayment.save({ session });
-      }
+      const returnCount = await InvoiceSettlementEvent.countDocuments({
+        organizationId,
+        invoiceId: invoice._id,
+        eventType: "RETURN_PROCESSED",
+      }).session(session);
+      const [returnEvent] = await InvoiceSettlementEvent.create(
+        [
+          {
+            organizationId,
+            branchId,
+            invoiceId: invoice._id,
+            paymentId: refundPayment._id,
+            eventType: "RETURN_PROCESSED",
+            settlementCycle: returnCount + 1,
+            grossAmountInPaise: Math.round(returnedGrossAmount * 100),
+            discountAmountInPaise: Math.max(
+              0,
+              Math.round(returnedGrossAmount * 100) - totalRefundDuePaise,
+            ),
+            taxAmountInPaise: 0,
+            netSettledInPaise: 0,
+            refundAllocations: refundAllocations
+              .filter((allocation) => allocation.paise > 0)
+              .map((allocation) => ({
+                lineItemId: allocation.lineItemId,
+                refundAmountInPaise: allocation.paise,
+                quantity: allocation.quantity,
+              })),
+            returnItems: preparedReturns.map((item) => ({
+              lineItemId: item.line._id,
+              productId: item.line.productId,
+              quantity: item.quantity,
+              condition: item.condition,
+              physicalRestockAccepted: item.acceptPhysicalRestock,
+              restockReason: item.restockReason,
+              refundDueInPaise: item.refundDuePaise,
+              refundAmountInPaise:
+                refundAllocations.find(
+                  (allocation) => allocation.lineItemId.toString() === item.line._id.toString(),
+                )?.paise || 0,
+            })),
+            requestPayloadHash,
+            restockedMovementIds: restockedMovements.map((movement) => movement._id),
+            reason,
+            recordedBy: userId,
+            idempotencyKey: returnEventKey,
+            eventTimestamp: new Date(),
+          },
+        ],
+        { session },
+      );
 
       const auditLog = new AuditLog({
         organizationId,
@@ -5671,18 +6432,37 @@ export class BillingService {
         description: `Processed return for Invoice ${invoice.invoiceNumber}: ${items.length} item(s)`,
         metadata: {
           invoiceNumber: invoice.invoiceNumber,
-          refundAmount: totalRefundAmount,
+          refundAmount: actualRefundAmount,
           restockedMovementsCount: restockedMovements.length,
           reason,
+          idempotencyKey,
         },
       });
       await auditLog.save({ session });
 
+      // Trigger Incentives Return Clawback Hook
+      const returnedLineItems = refundAllocations
+        .filter((allocation) => allocation.paise > 0)
+        .map((allocation) => ({
+          lineItemId: allocation.lineItemId,
+          returnQty: allocation.quantity,
+          refundPaise: allocation.paise,
+          refundDuePaise: allocation.refundDuePaise,
+        }));
+      await settlementFulfillmentEventService.handleProductReturnProcessed({
+        invoice,
+        returnedItems: returnedLineItems,
+        returnOperationId: returnEvent._id.toString(),
+        session,
+        userId,
+      });
+
       return {
         invoice,
-        totalRefundAmount,
+        totalRefundAmount: actualRefundAmount,
         refundPayment,
         restockedMovements,
+        isIdempotentReplay: false,
       };
     });
   }

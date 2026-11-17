@@ -11,14 +11,24 @@ import { ServiceCategory } from "../../../src/models/services/serviceCategory.mo
 import { Role } from "../../../src/models/roles/role.model.js";
 import { Permission } from "../../../src/models/permissions/permission.model.js";
 import { User } from "../../../src/models/users/user.model.js";
+import { Staff } from "../../../src/models/staff/staff.model.js";
+import { StaffBranch } from "../../../src/models/staff/staffBranch.model.js";
 import { Subscription } from "../../../src/models/subscriptions/subscription.model.js";
 import { SubscriptionPlan } from "../../../src/models/subscriptions/subscriptionPlan.model.js";
 import { SubscriptionUsage } from "../../../src/models/subscriptions/subscriptionUsage.model.js";
+import { SubscriptionCancellationOperation } from "../../../src/models/subscriptions/subscriptionCancellationOperation.model.js";
 import { Appointment } from "../../../src/models/appointments/appointment.model.js";
 import { SubscriptionConsumptionChallenge } from "../../../src/models/subscriptions/subscriptionConsumptionChallenge.model.js";
 import { Invoice } from "../../../src/models/billing/invoice.model.js";
 import { Payment } from "../../../src/models/billing/payment.model.js";
 import { AuditLog } from "../../../src/models/audit/auditLog.model.js";
+import {
+  IncentiveScheme,
+  IncentiveLedger,
+  IncentiveRecoveryObligation,
+  InvoiceSettlementEvent,
+  SchemeAssignment,
+} from "../../../src/models/incentives/index.js";
 import jwt from "jsonwebtoken";
 import { env } from "../../../src/config/env.js";
 import { redis } from "../../../src/utils/redis.js";
@@ -51,10 +61,16 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
   });
 
   afterAll(async () => {
+    await IncentiveLedger.deleteMany({});
+    await IncentiveRecoveryObligation.deleteMany({});
+    await SchemeAssignment.deleteMany({});
+    await IncentiveScheme.deleteMany({});
+    await InvoiceSettlementEvent.deleteMany({});
     await Payment.deleteMany({});
     await Invoice.deleteMany({});
     await Appointment.deleteMany({});
     await SubscriptionUsage.deleteMany({});
+    await SubscriptionCancellationOperation.deleteMany({});
     await Subscription.deleteMany({});
     await SubscriptionPlan.deleteMany({});
     await AuditLog.deleteMany({});
@@ -70,10 +86,16 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
   });
 
   beforeEach(async () => {
+    await IncentiveLedger.deleteMany({});
+    await IncentiveRecoveryObligation.deleteMany({});
+    await SchemeAssignment.deleteMany({});
+    await IncentiveScheme.deleteMany({});
+    await InvoiceSettlementEvent.deleteMany({});
     await Payment.deleteMany({});
     await Invoice.deleteMany({});
     await Appointment.deleteMany({});
     await SubscriptionUsage.deleteMany({});
+    await SubscriptionCancellationOperation.deleteMany({});
     await Subscription.deleteMany({});
     await SubscriptionPlan.deleteMany({});
     await AuditLog.deleteMany({});
@@ -622,6 +644,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
       }
       expect(apptRes.status).toBe(201);
       const apptId = apptRes.body.data._id;
+      await Appointment.findByIdAndUpdate(apptId, { status: "completed" });
 
       // 3. Create appointment invoice via billing API
       const invRes = await request(app)
@@ -811,7 +834,218 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
   });
 
   describe("6. Mid-Appointment Upsell with Covered and Uncovered Services", () => {
-    it("POST /api/v1/appointments/:id/upsell-subscription creates subscription, invoice, and attaches coverage atomically", async () => {
+    it("accrues an unused upsell seller commission and reverses it once on refund retry", async () => {
+      const startAt = new Date(Date.now() + 60000);
+      const appt = await Appointment.create({
+        organizationId: orgA._id,
+        branchId: branchA1._id,
+        customerId: customerA._id,
+        appointmentCode: `APT-UPSELL-REFUND-${Date.now()}`,
+        startAt,
+        endAt: new Date(startAt.getTime() + 3600000),
+        appointmentDate: getFutureDateStr(1),
+        startTime: "12:00",
+        endTime: "13:00",
+        bookingType: "walk_in",
+        status: "completed",
+        services: [{
+          type: "registered",
+          serviceType: "registered",
+          serviceId: serviceA1._id,
+          name: "Classic Haircut",
+          duration: 30,
+          price: 500,
+          appliedSubscriptionId: null,
+        }],
+        pricing: { subtotal: 500, discount: 0, total: 500 },
+        subtotal: 500,
+        totalDuration: 30,
+        amountDue: 500,
+      });
+      const seller = await Staff.create({
+        name: "Refundable Upsell Seller",
+        phone: `+919${Math.floor(100000000 + Math.random() * 900000000)}`,
+        email: `upsell_refund_seller_${Date.now()}@test.com`,
+        designation: "Consultant",
+        joiningDate: new Date(),
+        organizationId: orgA._id,
+        status: "active",
+        staffCode: `REFUND-${Date.now()}`,
+      });
+      await StaffBranch.create({
+        staffId: seller._id,
+        branchId: branchA1._id,
+        organizationId: orgA._id,
+        isPrimary: true,
+        isActive: true,
+      });
+      const scheme = await IncentiveScheme.create({
+        organizationId: orgA._id,
+        name: "Subscription Sale Commission",
+        code: `SUB_SALE_${Date.now()}`,
+        schemeType: "COMMISSION",
+        calculationBasis: "SUBSCRIPTION_NET_REVENUE",
+        rules: {
+          tiers: [{ minPaise: 0, maxPaise: null, percentage: 10, fixedPaise: 0 }],
+        },
+        status: "active",
+      });
+      await SchemeAssignment.create({
+        organizationId: orgA._id,
+        schemeId: scheme._id,
+        scopeType: "STAFF",
+        scopeId: seller._id,
+        startDate: new Date("2026-01-01T00:00:00.000Z"),
+        status: "active",
+      });
+
+      const upsellRes = await request(app)
+        .post(`/api/v1/appointments/${appt._id}/upsell-subscription`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .send({
+          price: 3500,
+          entitlements: [{ serviceId: serviceA1._id.toString(), quantity: 10 }],
+          permittedBranchIds: [branchA1._id.toString()],
+          soldByStaffId: seller._id.toString(),
+          startDate: "2026-01-01",
+          endDate: "2027-01-01",
+          billImmediately: true,
+        });
+      expect(upsellRes.status).toBe(201);
+      const { subscription, invoice } = upsellRes.body.data;
+
+      await request(app)
+        .post(`/api/v1/billing/invoices/${invoice._id}/finalize`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .send({});
+      const paymentRes = await request(app)
+        .post(`/api/v1/billing/invoices/${invoice._id}/payments`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .set("idempotency-key", `UPSELL-REFUND-PAY-${invoice._id}`)
+        .send({ amount: 3500, method: "card" });
+      expect(paymentRes.status).toBe(201);
+      expect(paymentRes.body.data.payment.recordedBy).toBe(ownerUser._id.toString());
+      const paymentRetryRes = await request(app)
+        .post(`/api/v1/billing/invoices/${invoice._id}/payments`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .set("idempotency-key", `UPSELL-REFUND-PAY-${invoice._id}`)
+        .send({ amount: 3500, method: "card" });
+      expect(paymentRetryRes.status).toBe(200);
+      expect(paymentRetryRes.body.data.payment._id).toBe(paymentRes.body.data.payment._id);
+
+      const settledEvent = await InvoiceSettlementEvent.findOne({
+        invoiceId: invoice._id,
+        eventType: "SETTLED",
+      });
+      expect(settledEvent.lineItems[0].sourceAttribution.soldBy.staffId.toString()).toBe(
+        seller._id.toString(),
+      );
+      const accruals = await IncentiveLedger.find({
+        invoiceId: invoice._id,
+        entryType: "ACCRUAL",
+      });
+      expect(accruals).toHaveLength(1);
+      expect(accruals[0].staffId.toString()).toBe(seller._id.toString());
+      expect(accruals[0].staffId.toString()).not.toBe(paymentRes.body.data.payment.recordedBy);
+      expect(accruals[0].sourceType).toBe("subscription_sale_commission");
+      expect(accruals[0].amountInPaise).toBe(35000);
+
+      const previewRes = await request(app)
+        .get(`/api/v1/subscriptions/${subscription._id}/cancel/preview`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString());
+      expect(previewRes.status).toBe(200);
+      expect(previewRes.body.data.isEligible).toBe(true);
+      expect(previewRes.body.data.requiresRefundConfirmation).toBe(true);
+      expect(previewRes.body.data.refundAmount).toBe(3500);
+
+      const refundKey = `UPSELL-REFUND-${invoice._id}`;
+      const refundPayload = {
+        reason: "Unused subscription upsell refund",
+        refund: true,
+        refundPaymentMethod: "card",
+      };
+      const missingKeyRefundRes = await request(app)
+        .patch(`/api/v1/subscriptions/${subscription._id}/cancel`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send(refundPayload);
+      expect(missingKeyRefundRes.status).toBe(400);
+      expect(await Payment.countDocuments({
+        invoiceId: invoice._id,
+        type: "refund",
+      })).toBe(0);
+
+      const refundRes = await request(app)
+        .patch(`/api/v1/subscriptions/${subscription._id}/cancel`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("idempotency-key", refundKey)
+        .send(refundPayload);
+      expect(refundRes.status).toBe(200);
+      expect(refundRes.body.data.refund.amount).toBe(3500);
+      expect(refundRes.body.data.refund.method).toBe("card");
+      expect(refundRes.body.data.refund.manual).toBe(true);
+
+      const refundRetryRes = await request(app)
+        .patch(`/api/v1/subscriptions/${subscription._id}/cancel`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("idempotency-key", refundKey)
+        .send(refundPayload);
+      expect(refundRetryRes.status).toBe(200);
+      expect(refundRetryRes.body.data.refund.paymentId).toBe(
+        refundRes.body.data.refund.paymentId,
+      );
+
+      const changedMethodRetryRes = await request(app)
+        .patch(`/api/v1/subscriptions/${subscription._id}/cancel`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("idempotency-key", refundKey)
+        .send({ ...refundPayload, refundPaymentMethod: "cash" });
+      expect(changedMethodRetryRes.status).toBe(409);
+
+      const cancelledSub = await Subscription.findById(subscription._id);
+      expect(cancelledSub.status).toBe("cancelled");
+      expect(cancelledSub.attribution.soldBy.staffId.toString()).toBe(seller._id.toString());
+
+      const cancelledInvoice = await Invoice.findById(invoice._id);
+      expect(cancelledInvoice.status).toBe("cancelled");
+      expect(cancelledInvoice.amountPaid).toBe(0);
+      expect(cancelledInvoice.amountDue).toBe(0);
+
+      const refunds = await Payment.find({ invoiceId: invoice._id, type: "refund" });
+      expect(refunds).toHaveLength(1);
+      expect(refunds[0].amount).toBe(-3500);
+      expect(refunds[0].idempotencyKey).toBeDefined();
+      const ledgerEntries = await IncentiveLedger.find({
+        invoiceId: invoice._id,
+        entryType: { $in: ["ACCRUAL", "CLAWBACK"] },
+      }).sort({ createdAt: 1 });
+      expect(ledgerEntries).toHaveLength(2);
+      expect(ledgerEntries[1].entryType).toBe("CLAWBACK");
+      expect(ledgerEntries[1].sourceType).toBe("subscription_sale_commission");
+      expect(ledgerEntries[1].reversesLedgerId.toString()).toBe(
+        ledgerEntries[0]._id.toString(),
+      );
+      expect(ledgerEntries[1].amountInPaise).toBe(ledgerEntries[0].amountInPaise);
+      expect(await InvoiceSettlementEvent.countDocuments({
+        invoiceId: invoice._id,
+        eventType: "RETURN_PROCESSED",
+      })).toBe(1);
+      const recovery = await IncentiveRecoveryObligation.findOne({
+        clawbackLedgerId: ledgerEntries[1]._id,
+      });
+      expect(recovery.status).toBe("pending");
+      expect(recovery.totalRecoveredInPaise).toBe(0);
+      expect(await SubscriptionCancellationOperation.countDocuments({
+        organizationId: orgA._id,
+        idempotencyKey: refundKey,
+      })).toBe(1);
+    });
+
+    it("persists upsell seller attribution and keeps payment reversal commission-idempotent", async () => {
       // 1. Create in_progress appointment with 1 haircut (to be covered) and 1 custom line (uncovered)
       const now = new Date();
       const startAt = new Date(now.getTime() + 60000);
@@ -857,6 +1091,23 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
         totalDuration: 60,
         amountDue: 1300,
       });
+      const seller = await Staff.create({
+        name: "Subscription Salesperson",
+        phone: `+919${Math.floor(100000000 + Math.random() * 900000000)}`,
+        email: `subscription_seller_${Date.now()}@test.com`,
+        designation: "Consultant",
+        joiningDate: new Date(),
+        organizationId: orgA._id,
+        status: "active",
+        staffCode: `SELL-${Date.now()}`,
+      });
+      await StaffBranch.create({
+        staffId: seller._id,
+        branchId: branchA1._id,
+        organizationId: orgA._id,
+        isPrimary: true,
+        isActive: true,
+      });
 
       // 2. Call upsell endpoint
       const upsellRes = await request(app)
@@ -869,6 +1120,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
             { serviceId: serviceA1._id.toString(), quantity: 10 },
           ],
           permittedBranchIds: [branchA1._id.toString()],
+          soldByStaffId: seller._id.toString(),
           startDate: "2026-01-01",
           endDate: "2026-12-31",
           notes: "In-chair upsell",
@@ -884,6 +1136,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
       const { subscription, invoice, appointment, summary } = upsellRes.body.data;
       expect(subscription.price).toBe(3500);
       expect(subscription.status).toBe("pending_payment");
+      expect(subscription.attribution.soldBy.staffId).toBe(seller._id.toString());
       expect(invoice).toBeDefined();
       expect(invoice.invoiceType).toBe("subscription");
       expect(invoice.subtotal).toBe(3500);
@@ -907,6 +1160,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
         .post(`/api/v1/billing/invoices/${invoice._id}/payments`)
         .set("Authorization", `Bearer ${ownerToken}`)
         .set("x-branch-id", branchA1._id.toString())
+        .set("idempotency-key", `UPSELL-PAY-${invoice._id}`)
         .send({
           amount: 3500,
           method: "card",
@@ -914,6 +1168,33 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
       expect(payRes.status).toBe(201);
       const paidSub = await Subscription.findById(subscription._id);
       expect(paidSub.status).toBe("active");
+      expect(paidSub.attribution.soldBy.staffId.toString()).toBe(seller._id.toString());
+
+      const retryPaymentRes = await request(app)
+        .post(`/api/v1/billing/invoices/${invoice._id}/payments`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .set("idempotency-key", `UPSELL-PAY-${invoice._id}`)
+        .send({
+          amount: 3500,
+          method: "card",
+        });
+      expect(retryPaymentRes.status).toBe(200);
+      expect(await Payment.countDocuments({
+        invoiceId: invoice._id,
+        idempotencyKey: `UPSELL-PAY-${invoice._id}`,
+      })).toBe(1);
+      expect(await IncentiveLedger.countDocuments({
+        invoiceId: invoice._id,
+        entryType: "ACCRUAL",
+      })).toBe(0);
+      const saleSettlement = await InvoiceSettlementEvent.findOne({
+        invoiceId: invoice._id,
+        eventType: "SETTLED",
+      });
+      expect(saleSettlement.lineItems[0].sourceAttribution.soldBy.staffId.toString()).toBe(
+        seller._id.toString(),
+      );
 
       // Verify the subscription invoice is persisted and retrievable via API
       const getSubInvRes = await request(app)
@@ -924,13 +1205,19 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
       expect(getSubInvRes.body.data.invoice.invoiceType).toBe("subscription");
       expect(getSubInvRes.body.data.invoice.paymentStatus).toBe("paid");
 
-      // Now generate appointment service invoice for the appointment
+      // The Billing API only invoices completed appointments.
+      await Appointment.findByIdAndUpdate(appt._id, { status: "completed" });
+
+      // Now generate appointment service invoice for the completed appointment.
       const apptInvRes = await request(app)
         .post("/api/v1/billing/invoices")
         .set("Authorization", `Bearer ${ownerToken}`)
         .set("x-branch-id", branchA1._id.toString())
         .send({ appointmentId: appt._id.toString() });
 
+      if (apptInvRes.status !== 201) {
+        console.error("APPOINTMENT INVOICE RES ERROR:", apptInvRes.body);
+      }
       expect(apptInvRes.status).toBe(201);
       const apptInvoice = apptInvRes.body.data;
       expect(apptInvoice.invoiceType).toBe("appointment");
@@ -946,6 +1233,40 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
       expect(getApptInvRes.status).toBe(200);
       expect(getApptInvRes.body.data.invoice.invoiceType).toBe("appointment");
       expect(getApptInvRes.body.data.invoice.appointmentId.toString()).toBe(appt._id.toString());
+
+      const paymentId = payRes.body.data.payment._id;
+      const voidRes = await request(app)
+        .post(`/api/v1/billing/payments/${paymentId}/void`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .send({ reason: "Reverse subscription upsell payment" });
+
+      expect(voidRes.status).toBe(200);
+      expect(voidRes.body.data.invoice.paymentStatus).toBe("unpaid");
+
+      const voidRetryRes = await request(app)
+        .post(`/api/v1/billing/payments/${paymentId}/void`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("x-branch-id", branchA1._id.toString())
+        .send({ reason: "Retry subscription upsell payment reversal" });
+      expect(voidRetryRes.status).toBe(400);
+
+      const reversedSub = await Subscription.findById(subscription._id);
+      expect(reversedSub.status).toBe("pending_payment");
+      expect(reversedSub.attribution.soldBy.staffId.toString()).toBe(seller._id.toString());
+
+      const unsettledEvents = await InvoiceSettlementEvent.find({
+        invoiceId: invoice._id,
+        eventType: "UNSETTLED",
+      });
+      expect(unsettledEvents).toHaveLength(1);
+      expect(unsettledEvents[0].idempotencyKey).toBe(
+        `UNSETTLE:INV:${invoice._id}:PAY:${paymentId}`,
+      );
+      expect(await IncentiveLedger.countDocuments({
+        invoiceId: invoice._id,
+        entryType: { $in: ["ACCRUAL", "CLAWBACK"] },
+      })).toBe(0);
     });
   });
 
@@ -1019,6 +1340,24 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
 
   describe("8. Subscription Renewal", () => {
     it("renews subscription with refreshed entitlements and correct customer link", async () => {
+      const renewalHandler = await Staff.create({
+        name: "Renewal Handler",
+        phone: `+919${Math.floor(100000000 + Math.random() * 900000000)}`,
+        email: `renewal_handler_${Date.now()}@test.com`,
+        designation: "Manager",
+        joiningDate: new Date(),
+        organizationId: orgA._id,
+        status: "active",
+        staffCode: `REN-${Date.now()}`,
+      });
+      await StaffBranch.create({
+        staffId: renewalHandler._id,
+        branchId: branchA1._id,
+        organizationId: orgA._id,
+        isPrimary: true,
+        isActive: true,
+      });
+
       const originalSub = await Subscription.create({
         organizationId: orgA._id,
         customerId: customerA._id,
@@ -1048,6 +1387,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
           endDate: "2026-12-31",
           billImmediately: true,
           branchId: branchA1._id.toString(),
+          renewedByStaffId: renewalHandler._id.toString(),
         });
 
       expect(renewRes.status).toBe(201);
@@ -1077,6 +1417,9 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
 
       const activeRenewedSub = await Subscription.findById(renewed._id);
       expect(activeRenewedSub.status).toBe("active");
+      expect(activeRenewedSub.attribution.renewalHandler.staffId.toString()).toBe(
+        renewalHandler._id.toString(),
+      );
     });
   });
 
@@ -1214,7 +1557,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
         .post("/api/v1/billing/invoices")
         .set("Authorization", `Bearer ${ownerToken}`)
         .set("x-branch-id", branchA1._id.toString())
-        .send({ appointmentId: apt._id.toString() });
+        .send({ appointmentId: apt._id.toString(), branchId: branchA1._id.toString() });
 
       expect(aptInvoiceRes.status).toBe(201);
       const aptInv = aptInvoiceRes.body.data;
@@ -1425,7 +1768,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
         startTime: "14:00",
         endTime: "15:00",
         bookingType: "walk_in",
-        status: "in_progress",
+        status: "completed",
         services: [
           {
             type: "registered",
@@ -1448,7 +1791,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
         .post("/api/v1/billing/invoices")
         .set("Authorization", `Bearer ${ownerToken}`)
         .set("x-branch-id", branchA1._id.toString())
-        .send({ appointmentId: apt._id.toString() });
+        .send({ appointmentId: apt._id.toString(), branchId: branchA1._id.toString() });
 
       expect(invRes.status).toBe(201);
       // Because subscription is not permitted at branchA1, coverage must NOT be applied
@@ -1482,7 +1825,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
         startTime: "14:00",
         endTime: "15:00",
         bookingType: "walk_in",
-        status: "in_progress",
+        status: "completed",
         services: [
           {
             type: "registered",
@@ -1515,7 +1858,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
         .post("/api/v1/billing/invoices")
         .set("Authorization", `Bearer ${ownerToken}`)
         .set("x-branch-id", branchA1._id.toString())
-        .send({ appointmentId: apt._id.toString() });
+        .send({ appointmentId: apt._id.toString(), branchId: branchA1._id.toString() });
 
       expect(invRes.status).toBe(201);
       // Line 0 is covered, Line 1 must NOT be covered because remainingQuantity was 1

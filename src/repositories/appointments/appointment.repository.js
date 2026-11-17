@@ -1,5 +1,11 @@
 import { Appointment } from "../../models/appointments/appointment.model.js";
 
+const subscriptionReferencePopulation = {
+  path: "services.appliedSubscriptionId",
+  select: "subscriptionCode status",
+  transform: (subscription, id) => subscription || id,
+};
+
 export class AppointmentRepository {
   async create(appointmentData) {
     const appointment = new Appointment(appointmentData);
@@ -15,7 +21,7 @@ export class AppointmentRepository {
       .populate("branchId", "name")
       .populate("customerId", "name phone email")
       .populate("staffId", "name")
-      .populate("services.appliedSubscriptionId", "subscriptionCode status");
+    .populate(subscriptionReferencePopulation);
   }
 
   async findOne(filter, organizationId) {
@@ -27,7 +33,7 @@ export class AppointmentRepository {
       .populate("branchId", "name")
       .populate("customerId", "name phone email")
       .populate("staffId", "name")
-      .populate("services.appliedSubscriptionId", "subscriptionCode status");
+    .populate(subscriptionReferencePopulation);
   }
 
   async find(filter = {}, pagination = {}, organizationId, branchId = null) {
@@ -49,7 +55,7 @@ export class AppointmentRepository {
         .populate("branchId", "name")
         .populate("customerId", "name phone email")
         .populate("staffId", "name")
-        .populate("services.appliedSubscriptionId", "subscriptionCode status")
+        .populate(subscriptionReferencePopulation)
         .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 })
         .skip(skip)
         .limit(limit),

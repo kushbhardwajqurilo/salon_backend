@@ -7,6 +7,7 @@ import { asyncHandler, AppError } from "../../utils/errors.js";
 import {
   createInvoiceSchema,
   updateDraftInvoiceSchema,
+  correctInvoiceAttributionSchema,
   finalizeInvoiceSchema,
   cancelInvoiceSchema,
   applyInvoiceDiscountSchema,
@@ -19,10 +20,12 @@ import {
   listInvoicesQuerySchema,
   getCheckoutQueueQuerySchema,
   returnInvoiceItemsSchema,
+  refundMembershipLineSchema,
 } from "../../validation/billing/billing.validation.js";
 import {
   createInvoice,
   updateDraftInvoice,
+  correctInvoiceAttribution,
   applyInvoiceDiscount,
   modifyInvoiceDiscount,
   removeInvoiceDiscount,
@@ -32,6 +35,7 @@ import {
   finalizeInvoice,
   cancelInvoice,
   returnInvoiceItems,
+  refundUnusedMembershipLine,
   recordPayment,
   voidPayment,
   getInvoiceById,
@@ -140,6 +144,14 @@ router.patch(
   updateDraftInvoice
 );
 
+router.patch(
+  "/invoices/:id/attributions",
+  validateMutationBranch,
+  validate(correctInvoiceAttributionSchema),
+  requirePermission("billing.attribution.correct"),
+  correctInvoiceAttribution
+);
+
 // Structured Invoice Discounts
 router.post(
   "/invoices/:id/discounts",
@@ -211,6 +223,14 @@ router.post(
   validate(returnInvoiceItemsSchema),
   requirePermission("payments.refund"),
   returnInvoiceItems
+);
+
+router.post(
+  "/invoices/:id/membership-refunds",
+  validateMutationBranch,
+  validate(refundMembershipLineSchema),
+  requirePermission("payments.refund"),
+  refundUnusedMembershipLine
 );
 
 // Payments

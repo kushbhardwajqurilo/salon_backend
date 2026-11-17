@@ -29,6 +29,7 @@ import procurementRouter from "./src/routers/procurement/procurement.routes.js";
 import attendanceRouter from "./src/routers/attendance/attendance.router.js";
 import payrollRouter from "./src/routers/payroll/payroll.routes.js";
 import couponRouter from "./src/routers/coupons/coupon.routes.js";
+import incentivesRouter from "./src/routers/incentives/incentives.routes.js";
 import uploadRouter from "./src/routers/upload.routes.js";
 import {
   apiLimiter,
@@ -70,13 +71,15 @@ app.use((req, res, next) => {
 });
 
 // CORS
+const configuredCorsOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const allowOrigins = [
-  process.env.NODE_ENV === "production"
-    ? "https://theglamup.in"
-    : "http://localhost:3000",
-  process.env.NODE_ENV === "production"
-    ? "https://theglamup.in"
-    : "https://l3zz8htl-3000.inc1.devtunnels.ms",
+  "https://theglamup.in",
+  "https://www.theglamup.in",
+  ...configuredCorsOrigins,
 ];
 
 const corsOptions = {
@@ -122,6 +125,10 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+// Make preflight handling explicit so every mounted API router, including
+// lifecycle action routes such as /incentives/schemes/:id/activate, receives
+// the same CORS response before authentication/authorization middleware.
+app.options(/.*/, cors(corsOptions));
 
 // Speed limiter & API rate limiter for standard routes
 // app.use(speedLimiter); 
@@ -155,6 +162,7 @@ app.use("/api/v1/procurement", procurementRouter);
 app.use("/api/v1/attendance", attendanceRouter);
 app.use("/api/v1/payroll", payrollRouter);
 app.use("/api/v1/coupons", couponRouter);
+app.use("/api/v1/incentives", incentivesRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/api/v1/upload", uploadRouter);
 

@@ -39,6 +39,7 @@ const paymentSchema = new mongoose.Schema(
 
     idempotencyKey: { type: String, default: null, trim: true },
     requestPayloadHash: { type: String, default: null, trim: true },
+    isManualRefundRecord: { type: Boolean, default: false, index: true },
 
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },

@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { auditPlugin } from "../../database/plugins/audit.js";
+import { sourceAttributionSchema } from "../staff/staffAttribution.schema.js";
 
 const entitlementSchema = new mongoose.Schema(
   {
@@ -100,6 +101,10 @@ const subscriptionSchema = new mongoose.Schema(
       ref: "SubscriptionPlan",
       default: null,
       index: true,
+    },
+    attribution: {
+      type: sourceAttributionSchema,
+      default: () => ({}),
     },
     price: {
       type: Number,

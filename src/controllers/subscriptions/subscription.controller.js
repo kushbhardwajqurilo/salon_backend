@@ -103,6 +103,7 @@ export const cancelSubscription = asyncHandler(async (req, res) => {
     reason,
     {
       refund: req.body.refund,
+      refundPaymentMethod: req.body.refundPaymentMethod,
       idempotencyKey,
       forceAsync,
     }
@@ -176,7 +177,16 @@ export const sendRedemptionOTP = asyncHandler(async (req, res) => {
 
 export const redeemSubscription = asyncHandler(async (req, res) => {
   const branchId = req.body.branchId || req.branchId || req.headers["x-branch-id"];
-  const { otp, services, appointmentId, isManual, reason, idempotencyKey, memberCustomerId } = req.body;
+  const {
+    otp,
+    services,
+    appointmentId,
+    isManual,
+    reason,
+    idempotencyKey,
+    memberCustomerId,
+    performedByStaffId,
+  } = req.body;
   const result = await subscriptionService.redeemSubscription(
     req.params.id,
     branchId,
@@ -185,7 +195,7 @@ export const redeemSubscription = asyncHandler(async (req, res) => {
     appointmentId,
     req.organizationId,
     req.user?.id || req.user?._id,
-    { isManual, reason, idempotencyKey, memberCustomerId }
+    { isManual, reason, idempotencyKey, memberCustomerId, performedByStaffId }
   );
   return sendResponse(res, 200, "Subscription services redeemed successfully", result);
 });

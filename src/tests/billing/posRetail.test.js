@@ -556,6 +556,7 @@ describe("Retail POS & Unified Invoice Checkout Integration Test Suite", () => {
         .post(`/api/v1/billing/invoices/${paidInvoiceId}/returns`)
         .set("Authorization", `Bearer ${token}`)
         .set("X-Branch-Id", branchId.toString())
+        .set("Idempotency-Key", `RETURN-RESTOCK-${paidInvoiceId}`)
         .send({
           items: [
             {
@@ -598,6 +599,7 @@ describe("Retail POS & Unified Invoice Checkout Integration Test Suite", () => {
         .post(`/api/v1/billing/invoices/${paidInvoiceId}/returns`)
         .set("Authorization", `Bearer ${token}`)
         .set("X-Branch-Id", branchId.toString())
+        .set("Idempotency-Key", `RETURN-DAMAGED-${paidInvoiceId}`)
         .send({
           items: [
             {
@@ -633,6 +635,7 @@ describe("Retail POS & Unified Invoice Checkout Integration Test Suite", () => {
         .post(`/api/v1/billing/invoices/${paidInvoiceId}/returns`)
         .set("Authorization", `Bearer ${token}`)
         .set("X-Branch-Id", branchId.toString())
+        .set("Idempotency-Key", `RETURN-EXCESS-${paidInvoiceId}`)
         .send({
           items: [
             {
@@ -861,6 +864,7 @@ describe("Retail POS & Unified Invoice Checkout Integration Test Suite", () => {
         .post(`/api/v1/billing/invoices/${paidInvoiceId}/returns`)
         .set("Authorization", `Bearer ${token}`)
         .set("X-Branch-Id", branch2Id.toString()) // Different branch header
+        .set("Idempotency-Key", `RETURN-WRONG-BRANCH-${paidInvoiceId}`)
         .send({
           items: [{ lineId: productLineId.toString(), quantity: 1, acceptPhysicalRestock: true }],
           refundPaymentMethod: "cash",

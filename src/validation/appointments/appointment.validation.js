@@ -262,6 +262,7 @@ export const upsellSubscriptionSchema = z.object({
       .datetime("Invalid ISO date for endDate")
       .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)")),
     planId: objectIdSchema.optional().nullable(),
+    soldByStaffId: objectIdSchema.optional().nullable(),
     notes: z.string().trim().max(1000).optional().default(""),
     billImmediately: z.boolean().optional().default(true),
   }),

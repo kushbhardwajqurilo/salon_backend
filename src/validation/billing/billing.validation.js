@@ -8,16 +8,19 @@ const objectIdSchema = z.string().refine((val) => objectIdRegex.test(val), {
 const invoiceProductLineInputSchema = z.object({
   productId: objectIdSchema,
   quantity: z.coerce.number().positive("Quantity must be greater than zero"),
+  soldByStaffId: objectIdSchema.nullable().optional(),
 });
 
 const invoiceMembershipLineInputSchema = z.object({
   membershipPlanId: objectIdSchema,
   quantity: z.coerce.number().int().positive().default(1),
+  soldByStaffId: objectIdSchema.nullable().optional(),
 });
 
 const invoiceSubscriptionLineInputSchema = z.object({
   planId: objectIdSchema,
   price: z.coerce.number().min(0, "Price must be non-negative").optional(),
+  soldByStaffId: objectIdSchema.nullable().optional(),
 });
 
 const invoiceCustomServiceLineInputSchema = z.object({
@@ -25,6 +28,7 @@ const invoiceCustomServiceLineInputSchema = z.object({
   quantity: z.coerce.number().int().positive().default(1),
   unitPrice: z.coerce.number().min(0).optional(),
   appliedSubscriptionId: objectIdSchema.optional().nullable(),
+  performedByStaffId: objectIdSchema.nullable().optional(),
 });
 
 export const createInvoiceSchema = z.object({
@@ -88,8 +92,21 @@ export const updateDraftInvoiceSchema = z.object({
   }).strict(),
 });
 
-export const returnInvoiceItemsSchema = z.object({
+export const correctInvoiceAttributionSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+  }),
   body: z.object({
+    branchId: objectIdSchema,
+    lineId: objectIdSchema,
+    sourceRole: z.enum(["seller", "renewal_handler"]),
+    staffId: objectIdSchema.nullable(),
+    reason: z.string().trim().min(3).max(500),
+  }).strict(),
+});
+
+export const returnInvoiceItemsSchema = z.object({
+  body: z  .object({
     branchId: objectIdSchema.optional(),
     items: z
       .array(
@@ -104,7 +121,25 @@ export const returnInvoiceItemsSchema = z.object({
       .min(1, "At least one item must be returned"),
     refundPaymentMethod: z.enum(["cash", "card", "upi", "other"]).default("cash"),
     reason: z.string().trim().min(3, "Return reason must be at least 3 characters").max(500),
+  }).superRefine((data, ctx) => {
+    const lineIds = data.items.map((item) => item.lineId);
+    if (new Set(lineIds).size !== lineIds.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["items"],
+        message: "Duplicate invoice lines are not allowed in a return request",
+      });
+    }
   }),
+});
+
+export const refundMembershipLineSchema = z.object({
+  body: z.object({
+    branchId: objectIdSchema.optional(),
+    lineId: objectIdSchema,
+    refundPaymentMethod: z.enum(["cash", "card", "upi", "other"]),
+    reason: z.string().trim().min(3).max(500),
+  }).strict(),
 });
 
 export const finalizeInvoiceSchema = z.object({

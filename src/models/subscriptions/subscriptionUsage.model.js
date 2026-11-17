@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { auditPlugin } from "../../database/plugins/audit.js";
+import { sourceAttributionSchema } from "../staff/staffAttribution.schema.js";
 
 const subscriptionUsageSchema = new mongoose.Schema(
   {
@@ -47,6 +48,10 @@ const subscriptionUsageSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+    },
+    attribution: {
+      type: sourceAttributionSchema,
+      default: () => ({}),
     },
     verificationMethod: {
       type: String,

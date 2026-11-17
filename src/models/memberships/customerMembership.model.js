@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { auditPlugin } from "../../database/plugins/audit.js";
+import { sourceAttributionSchema } from "../staff/staffAttribution.schema.js";
 
 const customerMembershipSchema = new mongoose.Schema(
   {
@@ -20,6 +21,10 @@ const customerMembershipSchema = new mongoose.Schema(
       ref: "MembershipPlan",
       required: true,
       index: true,
+    },
+    attribution: {
+      type: sourceAttributionSchema,
+      default: () => ({}),
     },
     membershipCode: {
       type: String,
@@ -65,6 +70,35 @@ const customerMembershipSchema = new mongoose.Schema(
       ref: "Invoice",
       default: null,
       index: true,
+    },
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    cancellationReason: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 500,
+    },
+    refundPaymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+      default: null,
+    },
+    lastBenefitReservationAt: {
+      type: Date,
+      default: null,
+    },
+    lastBenefitReservationInvoiceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Invoice",
+      default: null,
     },
     notes: {
       type: String,

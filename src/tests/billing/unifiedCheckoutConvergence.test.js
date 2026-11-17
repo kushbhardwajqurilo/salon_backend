@@ -9,6 +9,8 @@ import { Permission } from "../../models/permissions/permission.model.js";
 import { Organization } from "../../models/organizations/organization.model.js";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Appointment } from "../../models/appointments/appointment.model.js";
+import { Staff } from "../../models/staff/staff.model.js";
+import { StaffBranch } from "../../models/staff/staffBranch.model.js";
 import { Service } from "../../models/services/service.model.js";
 import { ServiceCategory } from "../../models/services/serviceCategory.model.js";
 import { Customer } from "../../models/customers/customer.model.js";
@@ -16,18 +18,43 @@ import { Product } from "../../models/inventory/product.model.js";
 import { StockBalance } from "../../models/inventory/stockBalance.model.js";
 import { SubscriptionPlan } from "../../models/subscriptions/subscriptionPlan.model.js";
 import { MembershipPlan } from "../../models/memberships/membershipPlan.model.js";
+import { CustomerMembership } from "../../models/memberships/customerMembership.model.js";
 import { Invoice } from "../../models/billing/invoice.model.js";
+import { Payment } from "../../models/billing/payment.model.js";
+import { StockMovement } from "../../models/inventory/stockMovement.model.js";
+import { PayrollIncentiveAllocation } from "../../models/payroll/payrollIncentiveAllocation.model.js";
+import { PayrollPayment } from "../../models/payroll/payrollPayment.model.js";
+import { PayrollPeriod } from "../../models/payroll/payrollPeriod.model.js";
+import { PayrollRecord } from "../../models/payroll/payrollRecord.model.js";
+import { SalaryStructure } from "../../models/payroll/salaryStructure.model.js";
+import { IncentiveRecoveryPayment } from "../../models/incentives/incentiveRecoveryPayment.model.js";
+import {
+  IncentiveLedger,
+  IncentiveRecoveryObligation,
+  IncentiveScheme,
+  InvoiceSettlementEvent,
+  SchemeAssignment,
+} from "../../models/incentives/index.js";
+import { settlementFulfillmentEventService } from "../../services/incentives/settlementFulfillmentEvent.service.js";
+import { runInTransaction } from "../../utils/transaction.js";
 import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
 
 describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => {
   jest.setTimeout(45000);
-  let orgId, branchId, userToken, role, customer, service, product, subPlan, memPlan;
+  let orgId, branchId, userToken, cashierUserId, role, customer, staff, service, product, subPlan, memPlan;
 
   beforeAll(async () => {
     process.env.NODE_ENV = "test";
     const testUri = getIsolatedTestMongoUri("checkout_queue_test");
     await mongoose.connect(testUri);
+    await Promise.all([
+      InvoiceSettlementEvent.init(),
+      IncentiveLedger.init(),
+      PayrollIncentiveAllocation.init(),
+      PayrollPayment.init(),
+      IncentiveRecoveryPayment.init(),
+    ]);
     // 1. Setup Organization & Branch
     const org = await Organization.create({
       name: "Unified Convergence Org",
@@ -52,8 +79,14 @@ describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => 
       "billing.cancel",
       "payments.receive",
       "payments.view",
+      "payments.refund",
       "memberships.view",
       "subscriptions.sell",
+      "appointments.update_status",
+      "payroll.calculate",
+      "payroll.approve",
+      "payroll.disburse",
+      "payroll.reverse",
     ];
 
     const permDocs = await Promise.all(
@@ -85,6 +118,7 @@ describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => 
       hasOrgWideAccess: false,
       branchAccess: [{ branchId, branchName: "Main Convergence Branch", isActive: true }],
     });
+    cashierUserId = user._id;
 
     userToken = jwt.sign(
       { id: user._id.toString(), role: role.name, organizationId: orgId.toString() },
@@ -99,6 +133,17 @@ describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => 
       organizationId: orgId,
       homeBranchId: branchId,
       status: "active",
+    });
+
+    staff = await Staff.create({
+      name: "Assigned Appointment Stylist",
+      phone: `+919${Math.floor(100000000 + Math.random() * 900000000)}`,
+      email: `stylist_${Date.now()}@test.com`,
+      designation: "Stylist",
+      joiningDate: new Date(),
+      organizationId: orgId,
+      status: "active",
+      staffCode: `STF-${Date.now()}`,
     });
 
     // 4. Catalog items
@@ -159,24 +204,42 @@ describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => 
   });
 
   afterAll(async () => {
+    await PayrollPayment.deleteMany({ organizationId: orgId });
+    await IncentiveRecoveryPayment.deleteMany({ organizationId: orgId });
+    await PayrollIncentiveAllocation.deleteMany({ organizationId: orgId });
+    await PayrollRecord.deleteMany({ organizationId: orgId });
+    await PayrollPeriod.deleteMany({ organizationId: orgId });
+    await SalaryStructure.deleteMany({ organizationId: orgId });
+    await IncentiveLedger.deleteMany({ organizationId: orgId });
+    await IncentiveRecoveryObligation.deleteMany({ organizationId: orgId });
+    await InvoiceSettlementEvent.deleteMany({ organizationId: orgId });
+    await SchemeAssignment.deleteMany({ organizationId: orgId });
+    await IncentiveScheme.deleteMany({ organizationId: orgId });
     await Invoice.deleteMany({ organizationId: orgId });
+    await Payment.deleteMany({ organizationId: orgId });
+    await StockMovement.deleteMany({ organizationId: orgId });
     await Appointment.deleteMany({ organizationId: orgId });
     await Customer.deleteMany({ organizationId: orgId });
     await Product.deleteMany({ organizationId: orgId });
     await Service.deleteMany({ organizationId: orgId });
     await SubscriptionPlan.deleteMany({ organizationId: orgId });
     await MembershipPlan.deleteMany({ organizationId: orgId });
+    await CustomerMembership.deleteMany({ organizationId: orgId });
+    await StaffBranch.deleteMany({ organizationId: orgId });
+    await Staff.deleteMany({ organizationId: orgId });
     await User.deleteMany({ organizationId: orgId });
     await Role.deleteMany({ organizationId: orgId });
     await Branch.deleteMany({ organizationId: orgId });
     await Organization.deleteMany({ _id: orgId });
+    await mongoose.connection.close();
   });
 
-  async function createAppointmentFixture() {
+  async function createAppointmentFixture(status = "completed", staffId = staff._id) {
     return Appointment.create({
       organizationId: orgId,
       branchId,
       customerId: customer._id,
+      staffId,
       appointmentCode: `APT-CONV-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       appointmentDate: "2026-11-20",
       startTime: "10:00",
@@ -185,7 +248,7 @@ describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => 
       startAt: new Date(),
       endAt: new Date(Date.now() + 1800000),
       duration: 30,
-      status: "completed",
+      status,
       bookingType: "advance",
       services: [
         {
@@ -198,6 +261,121 @@ describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => 
       ],
       pricing: { subtotal: 600, discount: 0, total: 600 },
     });
+  }
+
+  async function createCommissionStaff(codePrefix) {
+    const unique = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    const commissionStaff = await Staff.create({
+      name: `${codePrefix} Incentive Staff`,
+      email: `${codePrefix.toLowerCase()}-${unique}@test.com`,
+      phone: `+919${Math.floor(100000000 + Math.random() * 900000000)}`,
+      designation: "Stylist",
+      joiningDate: new Date("2026-01-01T00:00:00.000Z"),
+      organizationId: orgId,
+      status: "active",
+      staffCode: `${codePrefix}-${unique}`,
+    });
+    await StaffBranch.create({
+      staffId: commissionStaff._id,
+      branchId,
+      organizationId: orgId,
+      isPrimary: true,
+      isActive: true,
+    });
+    return commissionStaff;
+  }
+
+  async function getCurrentPayrollPeriod() {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth() + 1;
+    const monthYear = `${year}-${String(month).padStart(2, "0")}`;
+    const existingPeriod = await PayrollPeriod.findOne({
+      organizationId: orgId,
+      monthYear,
+      isDeleted: false,
+    });
+    if (existingPeriod) return existingPeriod;
+
+    return PayrollPeriod.create({
+      organizationId: orgId,
+      year,
+      month,
+      monthYear,
+      startDate: new Date(Date.UTC(year, month - 1, 1)),
+      endDate: new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)),
+      totalDays: new Date(Date.UTC(year, month, 0)).getUTCDate(),
+      status: "open",
+    });
+  }
+
+  async function settleCommissionInPayroll({ commissionStaff, accrual, idempotencyKey }) {
+    const period = await getCurrentPayrollPeriod();
+    await SalaryStructure.create({
+      organizationId: orgId,
+      staffId: commissionStaff._id,
+      payType: "fixed_monthly",
+      baseSalary: 30000,
+      effectiveFrom: period.startDate,
+    });
+
+    const calculation = await request(app)
+      .post("/api/v1/payroll/calculate")
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({
+        payrollPeriodId: period._id.toString(),
+        staffIds: [commissionStaff._id.toString()],
+      });
+    expect(calculation.status).toBe(200);
+    const record = calculation.body.data.find(
+      (item) => item.staffId === commissionStaff._id.toString(),
+    );
+    expect(record).toBeDefined();
+    expect(record.incentiveLedgerEntryIds).toContain(accrual._id.toString());
+
+    const approval = await request(app)
+      .post(`/api/v1/payroll/records/${record._id}/approve`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({});
+    expect(approval.status).toBe(200);
+    const allocation = await PayrollIncentiveAllocation.findOne({
+      organizationId: orgId,
+      incentiveLedgerId: accrual._id,
+    });
+    expect(allocation).toMatchObject({
+      sourceType: accrual.sourceType,
+      payableAmountInPaise: accrual.amountInPaise,
+      status: "approved",
+    });
+    expect(allocation.staffId.toString()).toBe(commissionStaff._id.toString());
+    expect(allocation.sourceBranchId.toString()).toBe(branchId.toString());
+    expect(allocation.payrollPeriodId.toString()).toBe(period._id.toString());
+
+    const paymentAttempt = await request(app)
+      .post(`/api/v1/payroll/records/${record._id}/pay`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({
+        paymentMethod: "bank_transfer",
+        paymentReference: `MANUAL-${idempotencyKey}`,
+        amountInPaise: Math.round(record.calculations.netPayable * 100),
+        paymentDate: period.endDate.toISOString(),
+        idempotencyKey,
+      });
+    expect(paymentAttempt.status).toBe(201);
+    expect(paymentAttempt.body.data.record.status).toBe("approved");
+
+    const confirmation = await request(app)
+      .post(`/api/v1/payroll/records/${record._id}/payments/${paymentAttempt.body.data.payment._id}/confirm`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({ confirmActualPayment: true });
+    expect(confirmation.status).toBe(200);
+    expect(confirmation.body.data.record.status).toBe("paid");
+    expect((await PayrollIncentiveAllocation.findById(allocation._id)).status).toBe("paid");
+    return { record, allocation };
   }
 
   // --------------------------------------------------------------------------
@@ -225,6 +403,120 @@ describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => 
     expect(res.body.data.status).toBe("draft");
     expect(res.body.data.lines).toHaveLength(1);
     expect(res.body.data.lines[0].lineType).toBe("service");
+    expect(res.body.data.lines[0].staffId).toBe(staff._id.toString());
+  });
+
+  it("accrues commission when an already-settled appointment is completed through the appointment API", async () => {
+    const serviceStaff = await createCommissionStaff("SERVICE");
+    const appointment = await createAppointmentFixture("completed", serviceStaff._id);
+    const scheme = await IncentiveScheme.create({
+      organizationId: orgId,
+      name: "Billing integration commission",
+      code: `BILLING-COMMISSION-${Date.now()}`,
+      schemeType: "COMMISSION",
+      calculationBasis: "SERVICE_NET_REVENUE",
+      rules: {
+        tiers: [{ minPaise: 0, maxPaise: null, percentage: 10, fixedPaise: 0 }],
+      },
+      status: "active",
+    });
+    await SchemeAssignment.create({
+      organizationId: orgId,
+      schemeId: scheme._id,
+      scopeType: "STAFF",
+      scopeId: serviceStaff._id,
+      startDate: new Date("2026-01-01T00:00:00.000Z"),
+      endDate: null,
+      status: "active",
+    });
+
+    const checkout = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({ appointmentId: appointment._id.toString() });
+    expect(checkout.status).toBe(201);
+    const invoiceId = checkout.body.data._id;
+    const invoiceLineId = checkout.body.data.lines[0]._id;
+
+    await Appointment.updateOne(
+      { _id: appointment._id, organizationId: orgId },
+      { $set: { status: "in_progress" }, $unset: { completedAt: 1 } },
+    );
+
+    const finalized = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/finalize`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send();
+    expect(finalized.status).toBe(200);
+
+    const payment = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", `SERVICE-PAY-${invoiceId}`)
+      .send({ amount: 600, paymentMethod: "cash" });
+    expect(payment.status).toBe(201);
+    const paymentRetry = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", `SERVICE-PAY-${invoiceId}`)
+      .send({ amount: 600, paymentMethod: "cash" });
+    expect(paymentRetry.status).toBe(200);
+    expect(paymentRetry.body.data.isIdempotentReplay).toBe(true);
+
+    expect(await IncentiveLedger.findOne({ invoiceId, entryType: "ACCRUAL" })).toBeNull();
+
+    const completion = await request(app)
+      .patch(`/api/v1/appointments/${appointment._id}/status`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({ branchId: branchId.toString(), status: "completed" });
+    expect(completion.status).toBe(200);
+    expect(completion.body.data.status).toBe("completed");
+
+    const settlementEvent = await InvoiceSettlementEvent.findOne({ invoiceId });
+    const ledgerEntry = await IncentiveLedger.findOne({ invoiceId, entryType: "ACCRUAL" });
+    expect(settlementEvent.lineItems[0].staffAttributions[0].staffId.toString()).toBe(
+      serviceStaff._id.toString()
+    );
+    expect(ledgerEntry).not.toBeNull();
+    expect(ledgerEntry.sourceType).toBe("service_commission");
+    expect(ledgerEntry.organizationId.toString()).toBe(orgId.toString());
+    expect(ledgerEntry.branchId.toString()).toBe(branchId.toString());
+    expect(ledgerEntry.lineItemId.toString()).toBe(invoiceLineId);
+    expect(ledgerEntry.staffId.toString()).toBe(serviceStaff._id.toString());
+    expect(ledgerEntry.staffId.toString()).not.toBe(cashierUserId.toString());
+    expect(ledgerEntry.amountInPaise).toBe(6000);
+    expect(ledgerEntry.sourceRevenueInPaise).toBe(60000);
+    expect(ledgerEntry.fulfillmentConfirmedBy.toString()).toBe(
+      jwt.decode(userToken).id
+    );
+
+    const replayedEntries = await runInTransaction(async (session) => {
+      const completedAppointment = await Appointment.findById(appointment._id).session(session);
+      const paidInvoice = await Invoice.findById(invoiceId).session(session);
+      return settlementFulfillmentEventService.handlePhysicalFulfillmentCompleted({
+        appointment: completedAppointment,
+        invoice: paidInvoice,
+        session,
+        userId: cashierUserId,
+      });
+    });
+    expect(replayedEntries).toHaveLength(1);
+    expect(await IncentiveLedger.countDocuments({
+      organizationId: orgId,
+      invoiceId,
+      entryType: "ACCRUAL",
+      sourceType: "service_commission",
+    })).toBe(1);
+    await settleCommissionInPayroll({
+      commissionStaff: serviceStaff,
+      accrual: ledgerEntry,
+      idempotencyKey: `service-payroll-${ledgerEntry._id}`,
+    });
   });
 
   it("2. Repeated appointment checkout resumes the same draft instead of erroring or duplicating", async () => {
@@ -278,13 +570,37 @@ describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => 
   });
 
   it("4. Standalone subscription sale routes through the exact same unified checkout pipeline", async () => {
+    const subscriptionSeller = await createCommissionStaff("SUBSCRIPTION");
+    const scheme = await IncentiveScheme.create({
+      organizationId: orgId,
+      name: "Subscription Sale Commission",
+      code: `SUB_SALE_${Date.now()}`,
+      schemeType: "COMMISSION",
+      calculationBasis: "SUBSCRIPTION_NET_REVENUE",
+      rules: {
+        tiers: [{ minPaise: 0, maxPaise: null, percentage: 10, fixedPaise: 0 }],
+      },
+      status: "active",
+    });
+    await SchemeAssignment.create({
+      organizationId: orgId,
+      schemeId: scheme._id,
+      scopeType: "STAFF",
+      scopeId: subscriptionSeller._id,
+      startDate: new Date("2026-01-01T00:00:00.000Z"),
+      status: "active",
+    });
+
     const res = await request(app)
       .post("/api/v1/billing/invoices")
       .set("Authorization", `Bearer ${userToken}`)
       .set("X-Branch-Id", branchId.toString())
       .send({
         customerId: customer._id.toString(),
-        subscriptionLines: [{ planId: subPlan._id.toString() }],
+        subscriptionLines: [{
+          planId: subPlan._id.toString(),
+          soldByStaffId: subscriptionSeller._id.toString(),
+        }],
       });
 
     if (res.status !== 201) {
@@ -296,6 +612,84 @@ describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => 
     expect(inv.lines[0].lineType).toBe("subscription");
     expect(inv.lines[0].unitPrice).toBe(1800);
     expect(inv.payableAmount).toBe(1800);
+
+    const finalizeResponse = await request(app)
+      .post(`/api/v1/billing/invoices/${inv._id}/finalize`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({});
+    expect(finalizeResponse.status).toBe(200);
+    const partialPayment = await request(app)
+      .post(`/api/v1/billing/invoices/${inv._id}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", `SUB-PARTIAL-${inv._id}`)
+      .send({ amount: 800, paymentMethod: "cash" });
+    expect(partialPayment.status).toBe(201);
+    expect(await IncentiveLedger.countDocuments({
+      organizationId: orgId,
+      invoiceId: inv._id,
+      entryType: "ACCRUAL",
+      sourceType: "subscription_sale_commission",
+    })).toBe(0);
+
+    const finalPaymentKey = `SUB-FINAL-${inv._id}`;
+    const payment = await request(app)
+      .post(`/api/v1/billing/invoices/${inv._id}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", finalPaymentKey)
+      .send({ amount: 1000, paymentMethod: "cash" });
+    expect(payment.status).toBe(201);
+    const paymentRetry = await request(app)
+      .post(`/api/v1/billing/invoices/${inv._id}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", finalPaymentKey)
+      .send({ amount: 1000, paymentMethod: "cash" });
+    expect(paymentRetry.status).toBe(200);
+    expect(paymentRetry.body.data.isIdempotentReplay).toBe(true);
+
+    const settlement = await InvoiceSettlementEvent.findOne({
+      organizationId: orgId,
+      invoiceId: inv._id,
+      eventType: "SETTLED",
+    });
+    expect(settlement.lineItems[0].sourceAttribution.soldBy.staffId.toString()).toBe(
+      subscriptionSeller._id.toString(),
+    );
+    const accrual = await IncentiveLedger.findOne({
+      organizationId: orgId,
+      invoiceId: inv._id,
+      entryType: "ACCRUAL",
+      sourceType: "subscription_sale_commission",
+    });
+    expect(accrual.staffId.toString()).toBe(subscriptionSeller._id.toString());
+    const subscriptionSalePayment = await Payment.findOne({
+      organizationId: orgId,
+      invoiceId: inv._id,
+      type: "payment",
+    });
+    expect(subscriptionSalePayment.recordedBy.toString()).toBe(cashierUserId.toString());
+    expect(accrual.staffId.toString()).not.toBe(subscriptionSalePayment.recordedBy.toString());
+    expect(accrual.branchId.toString()).toBe(branchId.toString());
+    expect(accrual.sourceRevenueInPaise).toBe(180000);
+    expect(accrual.amountInPaise).toBe(18000);
+    expect(await IncentiveLedger.countDocuments({
+      organizationId: orgId,
+      invoiceId: inv._id,
+      entryType: "ACCRUAL",
+      sourceType: "subscription_sale_commission",
+    })).toBe(1);
+    await settleCommissionInPayroll({
+      commissionStaff: subscriptionSeller,
+      accrual,
+      idempotencyKey: `subscription-payroll-${accrual._id}`,
+    });
+    await mongoose.model("Subscription").deleteMany({
+      organizationId: orgId,
+      invoiceId: inv._id,
+    });
   });
 
   it("5. Standalone membership sale routes through the exact same unified checkout pipeline", async () => {
@@ -317,6 +711,603 @@ describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => 
     expect(inv.lines[0].lineType).toBe("membership");
     expect(inv.lines[0].unitPrice).toBe(1000);
     expect(inv.payableAmount).toBe(1000);
+  });
+
+  it("accrues membership-sale commission to the selected seller after the unified checkout is paid", async () => {
+    await StaffBranch.create({
+      staffId: staff._id,
+      branchId,
+      organizationId: orgId,
+      isPrimary: true,
+      isActive: true,
+    });
+    const scheme = await IncentiveScheme.create({
+      organizationId: orgId,
+      name: "Membership Sale Commission",
+      code: `MEM_SALE_${Date.now()}`,
+      schemeType: "COMMISSION",
+      calculationBasis: "MEMBERSHIP_NET_REVENUE",
+      rules: {
+        tiers: [{ minPaise: 0, maxPaise: null, percentage: 10, fixedPaise: 0 }],
+      },
+      status: "active",
+    });
+    const membershipSaleAssignment = await SchemeAssignment.create({
+      organizationId: orgId,
+      schemeId: scheme._id,
+      scopeType: "STAFF",
+      scopeId: staff._id,
+      startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      status: "active",
+    });
+
+    const invoiceResponse = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({
+        customerId: customer._id.toString(),
+        membershipLines: [{
+          membershipPlanId: memPlan._id.toString(),
+          quantity: 1,
+          soldByStaffId: staff._id.toString(),
+        }],
+      });
+
+    expect(invoiceResponse.status).toBe(201);
+    const invoice = invoiceResponse.body.data;
+    const membershipLine = invoice.lines[0];
+    expect(membershipLine.attribution.soldBy.staffId).toBe(staff._id.toString());
+
+    const finalizeResponse = await request(app)
+      .post(`/api/v1/billing/invoices/${invoice._id}/finalize`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({});
+    expect(finalizeResponse.status).toBe(200);
+
+    const paymentResponse = await request(app)
+      .post(`/api/v1/billing/invoices/${invoice._id}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("idempotency-key", `MEMBERSHIP-COMMISSION-${invoice._id}`)
+      .send({ amount: 1000, paymentMethod: "card" });
+    expect(paymentResponse.status).toBe(201);
+
+    const settlement = await InvoiceSettlementEvent.findOne({
+      invoiceId: invoice._id,
+      eventType: "SETTLED",
+    });
+    expect(settlement.lineItems[0].sourceAttribution.soldBy.staffId.toString()).toBe(
+      staff._id.toString(),
+    );
+    const accruals = await IncentiveLedger.find({
+      invoiceId: invoice._id,
+      entryType: "ACCRUAL",
+    });
+    expect(accruals).toHaveLength(1);
+    expect(accruals[0].sourceType).toBe("membership_sale_commission");
+    expect(accruals[0].staffId.toString()).toBe(staff._id.toString());
+    expect(accruals[0].sourceRevenueInPaise).toBe(100000);
+    expect(accruals[0].amountInPaise).toBe(10000);
+    await SchemeAssignment.deleteOne({ _id: membershipSaleAssignment._id });
+    await IncentiveScheme.deleteOne({ _id: scheme._id });
+    await CustomerMembership.deleteMany({ organizationId: orgId });
+    await StaffBranch.deleteMany({ organizationId: orgId, staffId: staff._id });
+  });
+
+  it("records an unused membership refund once and claws back its seller commission", async () => {
+    const membershipSeller = await createCommissionStaff("MEMBERSHIP");
+    const scheme = await IncentiveScheme.create({
+      organizationId: orgId,
+      name: "Membership Refund Commission",
+      code: `MEM_REFUND_${Date.now()}`,
+      schemeType: "COMMISSION",
+      calculationBasis: "MEMBERSHIP_NET_REVENUE",
+      rules: {
+        tiers: [{ minPaise: 0, maxPaise: null, percentage: 10, fixedPaise: 0 }],
+      },
+      status: "active",
+    });
+    const membershipRefundAssignment = await SchemeAssignment.create({
+      organizationId: orgId,
+      schemeId: scheme._id,
+      scopeType: "STAFF",
+      scopeId: membershipSeller._id,
+      startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      status: "active",
+    });
+
+    const invoiceResponse = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({
+        customerId: customer._id.toString(),
+        membershipLines: [{
+          membershipPlanId: memPlan._id.toString(),
+          quantity: 1,
+          soldByStaffId: membershipSeller._id.toString(),
+        }],
+      });
+    expect(invoiceResponse.status).toBe(201);
+    const invoiceId = invoiceResponse.body.data._id;
+    const lineId = invoiceResponse.body.data.lines[0]._id;
+
+    const finalizeResponse = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/finalize`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({});
+    expect(finalizeResponse.status).toBe(200);
+    const paymentResponse = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("idempotency-key", `MEMBERSHIP-REFUND-SETTLE-${invoiceId}`)
+      .send({ amount: 1000, paymentMethod: "card" });
+    expect(paymentResponse.status).toBe(201);
+
+    const paidInvoice = await Invoice.findById(invoiceId);
+    const membership = await CustomerMembership.findById(
+      paidInvoice.lines[0].customerMembershipId,
+    );
+    expect(paidInvoice.lines[0].attribution.soldBy.staffId.toString()).toBe(
+      membershipSeller._id.toString(),
+    );
+    expect(membershipSeller._id.toString()).not.toBe(cashierUserId.toString());
+    const accrualsBeforeRefund = await IncentiveLedger.find({
+      organizationId: orgId,
+      invoiceId,
+      entryType: "ACCRUAL",
+    });
+    expect(accrualsBeforeRefund).toHaveLength(1);
+    expect(accrualsBeforeRefund[0].staffId.toString()).toBe(membershipSeller._id.toString());
+    const { allocation } = await settleCommissionInPayroll({
+      commissionStaff: membershipSeller,
+      accrual: accrualsBeforeRefund[0],
+      idempotencyKey: `membership-payroll-${invoiceId}`,
+    });
+
+    const refundPath = `/api/v1/billing/invoices/${invoiceId}/membership-refunds`;
+    const idempotencyKey = `MEMBERSHIP-REFUND-${invoiceId}`;
+    const refundResponse = await request(app)
+      .post(refundPath)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", idempotencyKey)
+      .send({
+        lineId: lineId.toString(),
+        refundPaymentMethod: "card",
+        reason: "Customer cancellation before membership benefits were used",
+      });
+    expect(refundResponse.status).toBe(200);
+    expect(refundResponse.body.data.manualRefundRecord).toBe(true);
+
+    const replayResponse = await request(app)
+      .post(refundPath)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", idempotencyKey)
+      .send({
+        lineId: lineId.toString(),
+        refundPaymentMethod: "card",
+        reason: "Customer cancellation before membership benefits were used",
+      });
+    expect(replayResponse.status).toBe(200);
+    expect(replayResponse.body.data.idempotentReplay).toBe(true);
+    const conflictingReplayResponse = await request(app)
+      .post(refundPath)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", idempotencyKey)
+      .send({
+        lineId: lineId.toString(),
+        refundPaymentMethod: "cash",
+        reason: "Changed refund details",
+      });
+    expect(conflictingReplayResponse.status).toBe(409);
+
+    const cancelledMembership = await CustomerMembership.findById(membership._id);
+    const refundedInvoice = await Invoice.findById(invoiceId);
+    expect(refundedInvoice.lines[0].returnedQuantity).toBe(1);
+    expect(cancelledMembership.status).toBe("cancelled");
+    expect(cancelledMembership.cancellationReason).toBe(
+      "Customer cancellation before membership benefits were used",
+    );
+    const refundPayments = await Payment.find({
+      organizationId: orgId,
+      invoiceId,
+      type: "refund",
+      idempotencyKey: `MEMBERSHIP_REFUND:${invoiceId}:${idempotencyKey}`,
+    });
+    expect(refundPayments).toHaveLength(1);
+    expect(refundPayments[0].amount).toBe(-1000);
+    expect(refundPayments[0].recordedBy.toString()).toBe(cashierUserId.toString());
+    expect(refundPayments[0].isManualRefundRecord).toBe(true);
+    const refundEvents = await InvoiceSettlementEvent.find({
+      organizationId: orgId,
+      invoiceId,
+      eventType: "RETURN_PROCESSED",
+      customerMembershipId: membership._id,
+    });
+    expect(refundEvents).toHaveLength(1);
+    const clawbacks = await IncentiveLedger.find({
+      organizationId: orgId,
+      invoiceId,
+      entryType: "CLAWBACK",
+    });
+    expect(clawbacks).toHaveLength(1);
+    expect(clawbacks[0].sourceType).toBe("membership_sale_commission");
+    expect(clawbacks[0].staffId.toString()).toBe(membershipSeller._id.toString());
+    expect(clawbacks[0].amountInPaise).toBe(accrualsBeforeRefund[0].amountInPaise);
+    const recoveryObligation = await IncentiveRecoveryObligation.findOne({
+      organizationId: orgId,
+      clawbackLedgerId: clawbacks[0]._id,
+    });
+    expect(recoveryObligation.status).toBe("pending");
+    expect(recoveryObligation.totalRecoveredInPaise).toBe(0);
+    expect(await IncentiveLedger.countDocuments({
+      organizationId: orgId,
+      invoiceId,
+      entryType: "CLAWBACK",
+      sourceType: "subscription_sale_commission",
+    })).toBe(0);
+
+    const recoveryBasePath = `/api/v1/incentives/recovery-obligations/${recoveryObligation._id}/payments`;
+    const partialRecoveryPayload = {
+      amountInPaise: 4000,
+      paymentMethod: "cash",
+      paymentReference: `MEMBERSHIP-RECOVERY-PARTIAL-${invoiceId}`,
+      paymentDate: new Date().toISOString(),
+      reason: "Partial manual recovery",
+      idempotencyKey: `membership-recovery-partial-${invoiceId}`,
+    };
+    const partialRecoveryAttempt = await request(app)
+      .post(recoveryBasePath)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send(partialRecoveryPayload);
+    expect(partialRecoveryAttempt.status).toBe(201);
+    expect(partialRecoveryAttempt.body.data.obligation.totalRecoveredInPaise).toBe(0);
+    expect(partialRecoveryAttempt.body.data.obligation.totalReservedInPaise).toBe(4000);
+    const recordedPartialRecovery = await IncentiveRecoveryPayment.findById(
+      partialRecoveryAttempt.body.data.payment._id,
+    );
+    expect(recordedPartialRecovery).toMatchObject({
+      amountInPaise: 4000,
+      paymentMethod: "cash",
+      paymentReference: partialRecoveryPayload.paymentReference,
+      reason: partialRecoveryPayload.reason,
+      status: "recorded",
+    });
+    expect(recordedPartialRecovery.recordedBy.toString()).toBe(cashierUserId.toString());
+    expect(recordedPartialRecovery.history[0]).toMatchObject({
+      action: "recorded",
+      reason: partialRecoveryPayload.reason,
+    });
+    expect(recordedPartialRecovery.history[0].actorId.toString()).toBe(
+      cashierUserId.toString(),
+    );
+    const duplicateRecoveryAttempt = await request(app)
+      .post(recoveryBasePath)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send(partialRecoveryPayload);
+    expect(duplicateRecoveryAttempt.status).toBe(200);
+    expect(duplicateRecoveryAttempt.body.data.isIdempotentReplay).toBe(true);
+
+    const partialRecoveryId = partialRecoveryAttempt.body.data.payment._id;
+    const partialConfirmationPath =
+      `${recoveryBasePath}/${partialRecoveryId}/confirm`;
+    const partialRecoveryConfirmation = await request(app)
+      .post(partialConfirmationPath)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({ confirmActualPayment: true });
+    expect(partialRecoveryConfirmation.status).toBe(200);
+    expect(partialRecoveryConfirmation.body.data.obligation.totalRecoveredInPaise).toBe(4000);
+    const confirmedPartialRecovery = await IncentiveRecoveryPayment.findById(partialRecoveryId);
+    expect(confirmedPartialRecovery.confirmedBy.toString()).toBe(cashierUserId.toString());
+    expect(confirmedPartialRecovery.confirmedAt).toBeInstanceOf(Date);
+    expect(confirmedPartialRecovery.history.at(-1)).toMatchObject({
+      action: "confirmed",
+      reason: partialRecoveryPayload.reason,
+    });
+    expect(confirmedPartialRecovery.history.at(-1).actorId.toString()).toBe(
+      cashierUserId.toString(),
+    );
+    const duplicatePartialConfirmation = await request(app)
+      .post(partialConfirmationPath)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({ confirmActualPayment: true });
+    expect(duplicatePartialConfirmation.status).toBe(200);
+    expect(duplicatePartialConfirmation.body.data.isIdempotentReplay).toBe(true);
+
+    const recoveryReversal = await request(app)
+      .post(`${recoveryBasePath}/${partialRecoveryId}/reverse`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({
+        confirmActualReversal: true,
+        reversalReason: "The partial recovery was returned",
+      });
+    expect(recoveryReversal.status).toBe(200);
+    expect(recoveryReversal.body.data.obligation.totalRecoveredInPaise).toBe(0);
+    expect((await PayrollIncentiveAllocation.findById(allocation._id)).recoveredInPaise).toBe(0);
+    const reversedPartialRecovery = await IncentiveRecoveryPayment.findById(partialRecoveryId);
+    expect(reversedPartialRecovery.reversedBy.toString()).toBe(cashierUserId.toString());
+    expect(reversedPartialRecovery.reversedAt).toBeInstanceOf(Date);
+    expect(reversedPartialRecovery.reversalReason).toBe("The partial recovery was returned");
+    expect(reversedPartialRecovery.history.at(-1)).toMatchObject({
+      action: "reversed",
+      reason: "The partial recovery was returned",
+    });
+
+    const fullRecoveryAttempt = await request(app)
+      .post(recoveryBasePath)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({
+        ...partialRecoveryPayload,
+        amountInPaise: 10000,
+        paymentReference: `MEMBERSHIP-RECOVERY-FULL-${invoiceId}`,
+        idempotencyKey: `membership-recovery-full-${invoiceId}`,
+      });
+    expect(fullRecoveryAttempt.status).toBe(201);
+    expect(fullRecoveryAttempt.body.data.obligation.totalRecoveredInPaise).toBe(0);
+    const fullRecoveryConfirmation = await request(app)
+      .post(`${recoveryBasePath}/${fullRecoveryAttempt.body.data.payment._id}/confirm`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({ confirmActualPayment: true });
+    expect(fullRecoveryConfirmation.status).toBe(200);
+    expect(fullRecoveryConfirmation.body.data.obligation.status).toBe("recovered");
+    expect(fullRecoveryConfirmation.body.data.obligation.totalRecoveredInPaise).toBe(10000);
+    expect((await PayrollIncentiveAllocation.findById(allocation._id)).recoveredInPaise).toBe(10000);
+    const confirmedFullRecovery = await IncentiveRecoveryPayment.findById(
+      fullRecoveryAttempt.body.data.payment._id,
+    );
+    expect(confirmedFullRecovery.confirmedBy.toString()).toBe(cashierUserId.toString());
+    expect(confirmedFullRecovery.confirmedAt).toBeInstanceOf(Date);
+
+    const reservedInvoiceResponse = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({
+        customerId: customer._id.toString(),
+        membershipLines: [{ membershipPlanId: memPlan._id.toString(), quantity: 1 }],
+        serviceLines: [{ serviceId: service._id.toString(), quantity: 1 }],
+      });
+    expect(reservedInvoiceResponse.status).toBe(201);
+    const reservedInvoice = reservedInvoiceResponse.body.data;
+    expect(reservedInvoice.lines[1].membershipBenefitSourceLineId).toBe(
+      reservedInvoice.lines[0]._id,
+    );
+    const reservedFinalize = await request(app)
+      .post(`/api/v1/billing/invoices/${reservedInvoice._id}/finalize`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({});
+    expect(reservedFinalize.status).toBe(200);
+    const reservedPayment = await request(app)
+      .post(`/api/v1/billing/invoices/${reservedInvoice._id}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("idempotency-key", `MEMBERSHIP-RESERVED-SETTLE-${reservedInvoice._id}`)
+      .send({ amount: reservedInvoice.payableAmount, paymentMethod: "cash" });
+    expect(reservedPayment.status).toBe(201);
+    const paidReservedInvoice = await Invoice.findById(reservedInvoice._id);
+    const reservedMembership = await CustomerMembership.findById(
+      paidReservedInvoice.lines[0].customerMembershipId,
+    );
+    expect(
+      paidReservedInvoice.lines[1].appliedCustomerMembershipId.toString(),
+    ).toBe(reservedMembership._id.toString());
+    expect(paidReservedInvoice.lines[1].membershipBenefitSourceLineId).toBeNull();
+    const usedRefundResponse = await request(app)
+      .post(`/api/v1/billing/invoices/${reservedInvoice._id}/membership-refunds`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", `MEMBERSHIP-USED-${reservedInvoice._id}`)
+      .send({
+        lineId: reservedInvoice.lines[0]._id,
+        refundPaymentMethod: "cash",
+        reason: "Attempted refund after a benefit reservation",
+      });
+    expect(usedRefundResponse.status).toBe(409);
+    expect(await Payment.countDocuments({
+      organizationId: orgId,
+      invoiceId: reservedInvoice._id,
+      type: "refund",
+    })).toBe(0);
+    await SchemeAssignment.deleteOne({ _id: membershipRefundAssignment._id });
+    await IncentiveScheme.deleteOne({ _id: scheme._id });
+    await CustomerMembership.deleteMany({ organizationId: orgId });
+    await StaffBranch.deleteMany({ organizationId: orgId, staffId: membershipSeller._id });
+  });
+
+  it("accrues retail commission to the seller and reverses it once for an idempotent refund", async () => {
+    const retailSeller = await createCommissionStaff("RETAIL");
+    const scheme = await IncentiveScheme.create({
+      organizationId: orgId,
+      name: "Retail Sale Commission",
+      code: `RETAIL_${Date.now()}`,
+      schemeType: "COMMISSION",
+      calculationBasis: "PRODUCT_NET_REVENUE",
+      rules: {
+        tiers: [{ minPaise: 0, maxPaise: null, percentage: 10, fixedPaise: 0 }],
+      },
+      status: "active",
+    });
+    await SchemeAssignment.create({
+      organizationId: orgId,
+      schemeId: scheme._id,
+      scopeType: "STAFF",
+      scopeId: retailSeller._id,
+      startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      status: "active",
+    });
+
+    const invoiceResponse = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({
+        customerId: customer._id.toString(),
+        discount: 50,
+        productLines: [{
+          productId: product._id.toString(),
+          quantity: 1,
+          soldByStaffId: retailSeller._id.toString(),
+        }],
+      });
+    expect(invoiceResponse.status).toBe(201);
+    const invoice = invoiceResponse.body.data;
+    const productLine = invoice.lines[0];
+    expect(productLine.attribution.soldBy.staffId).toBe(retailSeller._id.toString());
+    expect(productLine.customerPayable).toBe(450);
+
+    const finalizeResponse = await request(app)
+      .post(`/api/v1/billing/invoices/${invoice._id}/finalize`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({});
+    expect(finalizeResponse.status).toBe(200);
+
+    const partialPaymentResponse = await request(app)
+      .post(`/api/v1/billing/invoices/${invoice._id}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", `RETAIL-PAY-PARTIAL-${invoice._id}`)
+      .send({ amount: 100, paymentMethod: "card" });
+    expect(partialPaymentResponse.status).toBe(201);
+    expect(await IncentiveLedger.countDocuments({
+      invoiceId: invoice._id,
+      sourceType: "retail_sale_commission",
+      entryType: "ACCRUAL",
+    })).toBe(0);
+
+    const finalPaymentKey = `RETAIL-PAY-FINAL-${invoice._id}`;
+    const paymentResponse = await request(app)
+      .post(`/api/v1/billing/invoices/${invoice._id}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", finalPaymentKey)
+      .send({ amount: 350, paymentMethod: "card" });
+    expect(paymentResponse.status).toBe(201);
+
+    const accrual = await IncentiveLedger.findOne({
+      invoiceId: invoice._id,
+      entryType: "ACCRUAL",
+      sourceType: "retail_sale_commission",
+    });
+    expect(accrual).toBeTruthy();
+    expect(accrual.staffId.toString()).toBe(retailSeller._id.toString());
+    expect(accrual.organizationId.toString()).toBe(orgId.toString());
+    expect(accrual.branchId.toString()).toBe(branchId.toString());
+    expect(accrual.sourceRevenueInPaise).toBe(45000);
+    expect(accrual.amountInPaise).toBe(4500);
+    await settleCommissionInPayroll({
+      commissionStaff: retailSeller,
+      accrual,
+      idempotencyKey: `retail-payroll-${accrual._id}`,
+    });
+    const originalPayment = await Payment.findOne({
+      invoiceId: invoice._id,
+      type: "payment",
+    });
+    expect(originalPayment.recordedBy.toString()).toBe(cashierUserId.toString());
+    expect(originalPayment.recordedBy.toString()).not.toBe(retailSeller._id.toString());
+    const paymentRetry = await request(app)
+      .post(`/api/v1/billing/invoices/${invoice._id}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", finalPaymentKey)
+      .send({ amount: 350, paymentMethod: "card" });
+    expect(paymentRetry.status).toBe(200);
+    expect(paymentRetry.body.data.isIdempotentReplay).toBe(true);
+
+    const returnPayload = {
+      items: [{
+        lineId: productLine._id,
+        quantity: 1,
+        condition: "unopened",
+        acceptPhysicalRestock: true,
+        restockReason: "Unopened customer return",
+      }],
+      refundPaymentMethod: "card",
+      reason: "Customer returned unopened product",
+    };
+    const returnKey = `RETAIL-RETURN-${invoice._id}`;
+    const firstReturn = await request(app)
+      .post(`/api/v1/billing/invoices/${invoice._id}/returns`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", returnKey)
+      .send(returnPayload);
+    expect(firstReturn.status).toBe(200);
+    expect(firstReturn.body.data.totalRefundAmount).toBe(450);
+
+    const replayReturn = await request(app)
+      .post(`/api/v1/billing/invoices/${invoice._id}/returns`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", returnKey)
+      .send(returnPayload);
+    expect(replayReturn.status).toBe(200);
+    expect(replayReturn.body.data.isIdempotentReplay).toBe(true);
+    const conflictingReturn = await request(app)
+      .post(`/api/v1/billing/invoices/${invoice._id}/returns`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", returnKey)
+      .send({ ...returnPayload, reason: "Changed reason under same key" });
+    expect(conflictingReturn.status).toBe(409);
+
+    expect(await Payment.countDocuments({
+      invoiceId: invoice._id,
+      type: "refund",
+    })).toBe(1);
+    expect(await InvoiceSettlementEvent.countDocuments({
+      invoiceId: invoice._id,
+      eventType: "RETURN_PROCESSED",
+    })).toBe(1);
+    const returnEvent = await InvoiceSettlementEvent.findOne({
+      invoiceId: invoice._id,
+      eventType: "RETURN_PROCESSED",
+    });
+    expect(returnEvent.reason).toBe(returnPayload.reason);
+    expect(returnEvent.recordedBy.toString()).toBe(cashierUserId.toString());
+    expect(returnEvent.returnItems).toHaveLength(1);
+    expect(returnEvent.returnItems[0].lineItemId.toString()).toBe(productLine._id.toString());
+    expect(returnEvent.returnItems[0].productId.toString()).toBe(product._id.toString());
+    expect(returnEvent.returnItems[0]).toMatchObject({
+      quantity: 1,
+      condition: "unopened",
+      physicalRestockAccepted: true,
+      refundDueInPaise: 45000,
+      refundAmountInPaise: 45000,
+    });
+    expect(await StockMovement.countDocuments({
+      "reference.entityId": invoice._id,
+      movementType: "adjustment",
+    })).toBe(1);
+    const clawbacks = await IncentiveLedger.find({
+      invoiceId: invoice._id,
+      entryType: "CLAWBACK",
+      reversesLedgerId: accrual._id,
+    });
+    expect(clawbacks).toHaveLength(1);
+    expect(clawbacks[0].amountInPaise).toBe(4500);
+    expect(clawbacks[0].refundAmountInPaise).toBe(45000);
+    expect(await IncentiveRecoveryObligation.countDocuments({
+      clawbackLedgerId: clawbacks[0]._id,
+      status: "pending",
+    })).toBe(1);
+    await StaffBranch.deleteMany({ organizationId: orgId, staffId: retailSeller._id });
   });
 
   it("6. Walk-in composite checkout supports all 4 line types in one authoritative invoice", async () => {

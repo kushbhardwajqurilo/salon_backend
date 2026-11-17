@@ -1,4 +1,4 @@
-import { asyncHandler } from "../../utils/errors.js";
+import { AppError, asyncHandler } from "../../utils/errors.js";
 import { billingService } from "../../services/billing/billing.service.js";
 
 export const createInvoice = asyncHandler(async (req, res) => {
@@ -29,6 +29,21 @@ export const updateDraftInvoice = asyncHandler(async (req, res) => {
     success: true,
     message: "Draft invoice updated successfully",
     data: invoice,
+  });
+});
+
+export const correctInvoiceAttribution = asyncHandler(async (req, res) => {
+  const result = await billingService.correctInvoiceAttribution(
+    req.params.id,
+    req.body,
+    req.user.organizationId,
+    req.branchId || req.body.branchId,
+    req.user.id || req.user._id,
+  );
+  res.status(200).json({
+    success: true,
+    message: "Invoice attribution corrected successfully",
+    data: result,
   });
 });
 
@@ -281,16 +296,46 @@ export const getCheckoutQueue = asyncHandler(async (req, res) => {
 
 export const returnInvoiceItems = asyncHandler(async (req, res) => {
   const branchId = req.branchId || req.body?.branchId;
+  const idempotencyKey = String(
+    req.headers["idempotency-key"] || req.headers["x-idempotency-key"] || "",
+  ).trim();
+  if (!idempotencyKey || idempotencyKey.length > 200) {
+    throw new AppError("A valid Idempotency-Key header is required for invoice returns", 400);
+  }
   const result = await billingService.processInvoiceReturn(
     req.params.id,
     req.body,
     req.user.organizationId,
     branchId,
-    req.user.id || req.user._id
+    req.user.id || req.user._id,
+    idempotencyKey,
   );
   res.status(200).json({
     success: true,
     message: "Invoice items returned and processed successfully",
+    data: result,
+  });
+});
+
+export const refundUnusedMembershipLine = asyncHandler(async (req, res) => {
+  const branchId = req.branchId || req.body?.branchId;
+  const idempotencyKey = String(
+    req.headers["idempotency-key"] || req.headers["x-idempotency-key"] || "",
+  ).trim();
+  if (!idempotencyKey || idempotencyKey.length > 200) {
+    throw new AppError("A valid Idempotency-Key header is required for membership refunds", 400);
+  }
+  const result = await billingService.refundUnusedMembershipLine(
+    req.params.id,
+    req.body,
+    req.user.organizationId,
+    branchId,
+    req.user.id || req.user._id,
+    idempotencyKey,
+  );
+  res.status(200).json({
+    success: true,
+    message: "Unused membership refund recorded successfully",
     data: result,
   });
 });

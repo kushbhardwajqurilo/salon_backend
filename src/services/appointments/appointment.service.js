@@ -1,3 +1,4 @@
+import { settlementFulfillmentEventService } from "../incentives/settlementFulfillmentEvent.service.js";
 import { AppointmentRepository } from "../../repositories/appointments/appointment.repository.js";
 import { Appointment } from "../../models/appointments/appointment.model.js";
 import { Customer } from "../../models/customers/customer.model.js";
@@ -17,8 +18,20 @@ import mongoose from "mongoose";
 import crypto from "crypto";
 import { runInTransaction } from "../../utils/transaction.js";
 import { env } from "../../config/env.js";
+import {
+  loadStaffAttributionSnapshot,
+  resolveStaffAttribution,
+} from "../billing/staffAttribution.service.js";
 
 const appointmentRepo = new AppointmentRepository();
+
+const getReferenceId = (value) =>
+  value && typeof value === "object" && value._id ? value._id : value;
+
+const getReferenceIdString = (value) => {
+  const id = getReferenceId(value);
+  return id === null || id === undefined ? null : id.toString();
+};
 
 /**
  * Resolves IANA timezone offset string or branch timezone, defaulting to 'Asia/Kolkata'
@@ -1832,7 +1845,35 @@ export class AppointmentService {
       updates["reminder.status"] = "cancelled";
     }
 
-    const updated = await appointmentRepo.update(id, updates, organizationId);
+    let updated;
+    if (status === "completed") {
+      updated = await runInTransaction(async (session) => {
+        const completedAppointment = await Appointment.findOneAndUpdate(
+          {
+            _id: id,
+            organizationId,
+            isDeleted: false,
+            status: currentStatus,
+          },
+          { $set: updates },
+          { returnDocument: "after", runValidators: true, session },
+        );
+
+        if (!completedAppointment) {
+          throw new AppError("Appointment status conflict during completion", 409);
+        }
+
+        await settlementFulfillmentEventService.handlePhysicalFulfillmentCompleted({
+          appointment: completedAppointment,
+          session,
+          userId,
+        });
+
+        return completedAppointment;
+      }, { requireTransaction: true });
+    } else {
+      updated = await appointmentRepo.update(id, updates, organizationId);
+    }
 
     // Audit log for appointment status changes
     if (userId) {
@@ -1936,23 +1977,23 @@ export class AppointmentService {
     const uniqueSubscriptionIds = [
       ...new Set(
         subscriptionLines
-          .map((l) => l.appliedSubscriptionId?.toString())
+          .map((l) => getReferenceIdString(l.appliedSubscriptionId))
           .filter(Boolean)
       ),
     ];
 
     const serviceLineBindings = subscriptionLines.map((l) => ({
       appointmentServiceId: l._id,
-      serviceId: l.serviceId,
-      appliedSubscriptionId: l.appliedSubscriptionId,
+      serviceId: getReferenceId(l.serviceId),
+      appliedSubscriptionId: getReferenceId(l.appliedSubscriptionId),
       customerId: customer._id,
     }));
 
     // Revalidate subscription eligibility for every subscription-backed line
     for (const line of subscriptionLines) {
       await this.validateSubscriptionEntitlement(
-        line.appliedSubscriptionId,
-        line.serviceId,
+        getReferenceId(line.appliedSubscriptionId),
+        getReferenceId(line.serviceId),
         customer._id,
         branchId,
         organizationId
@@ -2301,7 +2342,7 @@ export class AppointmentService {
 
     // 2. Mandatory subscription verification: challenge must have non-empty subscriptionIds and cover all unredeemed applied subscriptions
     const currentSubIds = [
-      ...new Set(subscriptionLines.map((l) => l.appliedSubscriptionId?.toString()).filter(Boolean)),
+      ...new Set(subscriptionLines.map((l) => getReferenceIdString(l.appliedSubscriptionId)).filter(Boolean)),
     ];
     const challengeSubIds = (challenge.subscriptionIds || []).map((id) => id.toString());
     if (challengeSubIds.length === 0) {
@@ -2314,7 +2355,7 @@ export class AppointmentService {
 
     // 3. Mandatory service and exact service-line verification (Fail Closed):
     // Catalog serviceIds check
-    const currentServiceIds = subscriptionLines.map((l) => l.serviceId?.toString()).filter(Boolean);
+    const currentServiceIds = subscriptionLines.map((l) => getReferenceIdString(l.serviceId)).filter(Boolean);
     const challengeServiceIds = (challenge.serviceIds || []).map((id) => id.toString());
     if (challengeServiceIds.length === 0) {
       throw new AppError("OTP challenge is missing required service bindings", 400);
@@ -2358,8 +2399,11 @@ export class AppointmentService {
         }
 
         const matchesId = cl.appointmentServiceId.toString() === lineIdStr;
-        const matchesService = cl.serviceId.toString() === line.serviceId.toString();
-        const matchesSub = cl.appliedSubscriptionId.toString() === line.appliedSubscriptionId.toString();
+        const matchesService =
+          getReferenceIdString(cl.serviceId) === getReferenceIdString(line.serviceId);
+        const matchesSub =
+          getReferenceIdString(cl.appliedSubscriptionId) ===
+          getReferenceIdString(line.appliedSubscriptionId);
         const matchesCustomer = cl.customerId.toString() === appointmentCustomerId;
 
         if (matchesId && matchesService && matchesSub && matchesCustomer) {
@@ -2479,8 +2523,8 @@ export class AppointmentService {
       // Pre-validation pass: Verify all subscription lines are eligible and have remaining balance before mutating anything
       for (const line of subscriptionLines) {
         await this.validateSubscriptionEntitlement(
-          line.appliedSubscriptionId,
-          line.serviceId,
+          getReferenceId(line.appliedSubscriptionId),
+          getReferenceId(line.serviceId),
           customer._id,
           branchId,
           organizationId,
@@ -2493,13 +2537,20 @@ export class AppointmentService {
       await challenge.save({ session });
 
       const createdUsageRecords = [];
-      const updatedServiceLines = appointment.services.map((s) => s.toObject ? s.toObject() : { ...s });
+      const updatedServiceLines = appointment.services.map((s) => {
+        const serviceLine = s.toObject ? s.toObject() : { ...s };
+        return {
+          ...serviceLine,
+          serviceId: getReferenceId(serviceLine.serviceId),
+          appliedSubscriptionId: getReferenceId(serviceLine.appliedSubscriptionId),
+        };
+      });
       const latestSubMap = new Map();
 
       // Group consumption by subscription to handle multiple services under same or distinct subscriptions
       for (const line of subscriptionLines) {
-        const subId = line.appliedSubscriptionId;
-        const sId = line.serviceId;
+        const subId = getReferenceId(line.appliedSubscriptionId);
+        const sId = getReferenceId(line.serviceId);
 
         // Revalidate subscription eligibility at completion inside transaction
         await this.validateSubscriptionEntitlement(
@@ -2682,6 +2733,11 @@ export class AppointmentService {
         }
 
         // Create SubscriptionUsage record with exact appointmentServiceId
+        const performerAttribution = await loadStaffAttributionSnapshot(
+          appointment.staffId,
+          organizationId,
+          session,
+        );
         const usageData = {
           organizationId,
           subscriptionId: subId,
@@ -2691,6 +2747,7 @@ export class AppointmentService {
           quantity: 1,
           branchId,
           verifiedBy: userId,
+          attribution: { performedBy: performerAttribution },
           verificationMethod: "otp",
           appointmentId: appointment._id,
           appointmentServiceId: line._id,
@@ -2786,6 +2843,12 @@ export class AppointmentService {
       if (!finalAppointment) {
         throw new AppError("Appointment status conflict during completion", 409);
       }
+
+      await settlementFulfillmentEventService.handlePhysicalFulfillmentCompleted({
+        appointment: finalAppointment,
+        session,
+        userId,
+      });
 
       // Create Appointment Completion Audit Log
       const aptAudit = new AuditLog({
@@ -3596,6 +3659,7 @@ export class AppointmentService {
       price,
       entitlements,
       planId = null,
+      soldByStaffId = null,
       permittedBranchIds = [],
       startDate,
       endDate,
@@ -3618,6 +3682,12 @@ export class AppointmentService {
       if (branchId && appointment.branchId.toString() !== branchId.toString()) {
         throw new AppError("Target branchId does not match appointment branch", 400);
       }
+      const soldBy = await resolveStaffAttribution(
+        soldByStaffId,
+        organizationId,
+        appointment.branchId,
+        session,
+      );
 
       if (!["scheduled", "in_progress"].includes(appointment.status)) {
         throw new AppError(
@@ -3733,6 +3803,7 @@ export class AppointmentService {
         customerId: customer._id,
         subscriptionCode,
         planId: planId || null,
+        attribution: { soldBy },
         price: Number(price),
         members: [
           {
