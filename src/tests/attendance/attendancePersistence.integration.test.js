@@ -198,6 +198,108 @@ describe('Attendance MongoDB persistence integration', () => {
     });
   });
 
+  it('credits a day only after a chronological in/out pair and recovers status on idempotent retries', async () => {
+    const checkIn = {
+      externalEventId: 'eligibility-check-in',
+      punchAt: '2024-06-05T05:00:00.000Z',
+      punchType: 'in',
+    };
+    const checkOut = {
+      externalEventId: 'eligibility-check-out',
+      punchAt: '2024-06-05T12:00:00.000Z',
+      punchType: 'out',
+    };
+
+    await ingest(branchA, 'device-0', [checkIn]);
+    let attendance = await Attendance.findOne({ organizationId, staffId });
+    expect(attendance.status).toBe('incomplete');
+
+    await ingest(branchA, 'device-0', [checkIn], 'check-in-retry');
+    expect(await AttendancePunch.countDocuments({ organizationId, staffId })).toBe(1);
+    expect((await Attendance.findOne({ organizationId, staffId })).status).toBe('incomplete');
+
+    await ingest(branchA, 'device-0', [checkOut], 'check-out');
+    attendance = await Attendance.findOne({ organizationId, staffId });
+    expect(attendance.status).toBe('present');
+    expect(await Attendance.countDocuments({ organizationId, staffId })).toBe(1);
+    expect(await AttendancePunch.countDocuments({ organizationId, staffId })).toBe(2);
+
+    await ingest(branchA, 'device-0', [checkOut], 'check-out-retry');
+    expect((await Attendance.findOne({ organizationId, staffId })).status).toBe('present');
+    expect(await AttendancePunch.countDocuments({ organizationId, staffId })).toBe(2);
+  });
+
+  it('does not count repeated same-direction or out-of-order punches as attendance and preserves corrections', async () => {
+    await ingest(branchA, 'device-0', [
+      { externalEventId: 'duplicate-in-1', punchAt: '2024-06-06T05:00:00.000Z', punchType: 'in' },
+      { externalEventId: 'duplicate-in-2', punchAt: '2024-06-06T05:00:00.000Z', punchType: 'in' },
+      { externalEventId: 'early-out', punchAt: '2024-06-06T04:00:00.000Z', punchType: 'out' },
+    ]);
+    let attendance = await Attendance.findOne({ organizationId, staffId });
+    expect(attendance.status).toBe('incomplete');
+
+    await ingest(branchA, 'device-0', [{
+      externalEventId: 'valid-out',
+      punchAt: '2024-06-06T12:00:00.000Z',
+      punchType: 'out',
+    }]);
+    attendance = await Attendance.findOne({ organizationId, staffId });
+    expect(attendance.status).toBe('present');
+
+    attendance.status = 'late';
+    attendance.isReconciled = true;
+    attendance.reconciliationReason = 'Manager verified late arrival';
+    await attendance.save();
+    await ingest(branchA, 'device-0', [{
+      externalEventId: 'later-duplicate-out',
+      punchAt: '2024-06-06T13:00:00.000Z',
+      punchType: 'out',
+    }]);
+
+    attendance = await Attendance.findOne({ organizationId, staffId });
+    expect(attendance.status).toBe('late');
+    expect(attendance.isReconciled).toBe(true);
+  });
+
+  it('repairs a failed attendance status write when the stable provider event is retried', async () => {
+    await ingest(branchA, 'device-0', [{
+      externalEventId: 'repair-check-in',
+      punchAt: '2024-06-07T05:00:00.000Z',
+      punchType: 'in',
+    }]);
+
+    const originalUpdate = Attendance.findOneAndUpdate.bind(Attendance);
+    let failDerivedStatusWrite = true;
+    const updateSpy = jest.spyOn(Attendance, 'findOneAndUpdate').mockImplementation(async (filter, ...args) => {
+      if (failDerivedStatusWrite && filter?._id && filter.isReconciled) {
+        failDerivedStatusWrite = false;
+        return null;
+      }
+      return originalUpdate(filter, ...args);
+    });
+
+    try {
+      await expect(ingest(branchA, 'device-0', [{
+        externalEventId: 'repair-check-out',
+        punchAt: '2024-06-07T12:00:00.000Z',
+        punchType: 'out',
+      }])).rejects.toThrow('Attendance status could not be durably reconciled');
+    } finally {
+      updateSpy.mockRestore();
+    }
+
+    expect(await AttendancePunch.countDocuments({ organizationId, staffId })).toBe(2);
+    expect((await Attendance.findOne({ organizationId, staffId })).status).toBe('incomplete');
+
+    await ingest(branchA, 'device-0', [{
+      externalEventId: 'repair-check-out',
+      punchAt: '2024-06-07T12:00:00.000Z',
+      punchType: 'out',
+    }], 'repair-checkpoint');
+    expect((await Attendance.findOne({ organizationId, staffId })).status).toBe('present');
+    expect(await AttendancePunch.countDocuments({ organizationId, staffId })).toBe(2);
+  });
+
   it('upserts cross-branch conflicts idempotently and captures distinct branches', async () => {
     const conflictIndexes = await AttendanceBranchConflict.collection.indexes();
     expect(conflictIndexes).toContainEqual(expect.objectContaining({

@@ -682,6 +682,16 @@ async function ingestProviderPunch(punchData, organizationId, branchId, branchTi
         externalEventId,
         punchId: existingPunch._id,
       });
+      if (claimResult.success) {
+        await reconcileAttendanceStatusFromPunches({
+          organizationId,
+          branchId: existingPunch.branchId,
+          staffId: existingPunch.staffId,
+          attendanceDate,
+          branchTimezone: originalBranch.timezone,
+          attendanceRecord: claimResult.attendanceRecord,
+        });
+      }
       return {
         punch: existingPunch,
         isDuplicate: true,
@@ -758,6 +768,16 @@ async function ingestProviderPunch(punchData, organizationId, branchId, branchTi
     externalEventId,
     punchId: punch._id,
   });
+  if (claimResult.success) {
+    await reconcileAttendanceStatusFromPunches({
+      organizationId,
+      branchId,
+      staffId,
+      attendanceDate,
+      branchTimezone,
+      attendanceRecord: claimResult.attendanceRecord,
+    });
+  }
 
   return {
     punch,
@@ -1055,17 +1075,82 @@ function normalizeExternalEventId(value) {
   return value.trim() || undefined;
 }
 
+async function reconcileAttendanceStatusFromPunches({
+  organizationId,
+  branchId,
+  staffId,
+  attendanceDate,
+  branchTimezone,
+  attendanceRecord,
+}) {
+  if (!attendanceRecord?._id || attendanceRecord.isReconciled) return;
+
+  const dayStart = new Date(`${attendanceDate}T00:00:00.000Z`);
+  const punches = await AttendancePunch.find({
+    organizationId,
+    branchId,
+    staffId,
+    mappingStatus: 'mapped',
+    punchAt: {
+      $gte: new Date(dayStart.getTime() - 24 * 60 * 60 * 1000),
+      $lt: new Date(dayStart.getTime() + 48 * 60 * 60 * 1000),
+    },
+    isDeleted: { $ne: true },
+  }).select('punchType punchAt').lean();
+  const businessDayPunches = punches
+    .filter((punch) => deriveBusinessDate(punch.punchAt, branchTimezone) === attendanceDate)
+    .sort((left, right) => new Date(left.punchAt) - new Date(right.punchAt));
+  const status = deriveStatus(businessDayPunches);
+
+  const updated = await Attendance.findOneAndUpdate(
+    {
+      _id: attendanceRecord._id,
+      organizationId,
+      branchId,
+      staffId,
+      isDeleted: { $ne: true },
+      isReconciled: { $ne: true },
+      conflictType: { $in: ['none', null] },
+      status: status === 'present' ? { $in: ['incomplete', 'present'] } : 'incomplete',
+    },
+    { $set: { status } },
+    { new: true, runValidators: true },
+  );
+  if (updated) return updated;
+
+  const current = await Attendance.findOne({
+    _id: attendanceRecord._id,
+    organizationId,
+    branchId,
+    staffId,
+    isDeleted: { $ne: true },
+  }).select('_id isReconciled conflictType status').lean();
+  const isConflicted = current?.conflictType != null && current.conflictType !== 'none';
+  if (current && (current.isReconciled || isConflicted ||
+      !['incomplete', 'present'].includes(current.status) ||
+      (status === 'incomplete' && current.status === 'present'))) {
+    return current;
+  }
+  throw new Error('Attendance status could not be durably reconciled from provider punches.');
+}
+
 // Helper: get scheduled hours from branch operating hours
 function getScheduledHours(branch) {
   if (!branch || !branch.operatingHours) return null;
   return branch.operatingHours;
 }
 
-// Basic status derivation from punch count
-function deriveStatus(punchCount) {
-  if (punchCount === 0) return 'absent';
-  if (punchCount === 1) return 'incomplete';
-  return 'present';
+// Payroll treats present, late, and early-departure records as one attended day.
+function deriveStatus(punches) {
+  if (!Array.isArray(punches)) {
+    throw new AppError('Punches must be provided as an array.', 400);
+  }
+  let hasCheckIn = false;
+  for (const punch of punches) {
+    if (punch.punchType === 'in') hasCheckIn = true;
+    else if (punch.punchType === 'out' && hasCheckIn) return 'present';
+  }
+  return 'incomplete';
 }
 
 // Basic punch ingestion schema validation

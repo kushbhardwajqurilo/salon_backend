@@ -2,11 +2,11 @@
 
 ```text
 Module: Staff Attendance, Punches & Biometrics
-Status: ⏳ PENDING / PLANNED
+Status: PARTIAL — biometric ingestion and daily status reconciliation are implemented; broader attendance requirements remain planned
 Layer: Human Resources / Daily Operations
 Parent Architecture: docs/UNISEX_PARLOUR_ERP_TECHNICAL_DOCUMENTATION_SET/ARCHITECTURE.md
 Governing Standard: BACKEND_MODULE_ARCHITECTURE_STANDARD.md v1.0
-Last Updated: 2026-10-28
+Last Updated: 2026-11-16
 ```
 
 ---
@@ -14,6 +14,17 @@ Last Updated: 2026-10-28
 ## 1. Domain Overview & Business Purpose
 
 The **Attendance** module captures daily working hours, punctuality, shift adherence, break durations, and overtime for salon staff. Accurate attendance is the primary prerequisite for monthly payroll and commission processing.
+
+### Current implemented daily-status and payroll eligibility behavior
+
+- Provider punches are grouped by the active branch's local business date. A mapped chronological `in` followed by a later `out` records `present`; a missing side, repeated same-direction punches, or an out-before-in sequence remains `incomplete`.
+- Stable provider event IDs are idempotent. Events without stable IDs are retained independently rather than guessed as duplicates; repeated same-direction punches still cannot establish presence.
+- Status recomputation is retry-safe and does not overwrite a reasoned manual correction or an attendance record already in conflict.
+- Payroll counts `present`, `late`, and `early_departure` statuses as one present day. Incomplete records block payroll approval. A day without an Attendance record appears as `missing_punch` in the register and is not counted as present.
+- Manual corrections require `attendance.adjust`, an active staff/branch link, and a reason; the actor, prior/new status, reason, and time are retained in the attendance history.
+- Pending or disputed cross-branch conflicts block payroll approval until an authorized resolution retains the original branch claim.
+- Approved leave and half-day leave exceptions remain separate from attended days. Branch opening hours are not treated as staff shifts; lateness is not inferred automatically.
+- Attendance and hybrid Incentive bonus schemes remain disabled. No attendance bonus or payout is created by this status policy.
 
 ### Key Capabilities Required
 - Daily clock-in / clock-out punches from multiple sources: Salon kiosk tablet, biometric fingerprint device, or geofenced mobile check-in.
