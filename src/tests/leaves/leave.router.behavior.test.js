@@ -98,6 +98,22 @@ const getLeaveById = jest.fn((req, res) => {
   });
 });
 
+const getLeaveConflicts = jest.fn((req, res) => {
+  controllerCalls.push({
+    action: "conflicts",
+    branchId: req.branchId,
+    organizationId: req.organizationId,
+    params: req.params,
+  });
+  res.status(200).json({
+    success: true,
+    status: "success",
+    message: "ok",
+    data: { id: req.params.id, conflicts: [] },
+    meta: null,
+  });
+});
+
 const updateLeave = jest.fn((req, res) => {
   controllerCalls.push({ action: "update" });
   res.status(200).json({ success: true, status: "success", message: "ok", data: {}, meta: null });
@@ -125,6 +141,7 @@ jest.unstable_mockModule("../../middleware/leaveScope.js", () => ({ requireOnBeh
 jest.unstable_mockModule("../../controllers/leaves/leave.controller.js", () => ({
   createLeave,
   listLeaves,
+  getLeaveConflicts,
   getLeaveById,
   updateLeave,
   approveLeave,
@@ -172,6 +189,20 @@ describe("Leave router behavior", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.message).toBe("X-Branch-Id header is required for this request.");
+  });
+
+  it("uses the conflicts handler within authenticated branch scope", async () => {
+    const response = await request(app)
+      .get("/api/v1/leaves/64b000000000000000000001/conflicts")
+      .set("authorization", "Bearer test-token")
+      .set("x-branch-id", "64b000000000000000000002");
+
+    expect(response.status).toBe(200);
+    expect(controllerCalls.at(-1)).toMatchObject({
+      action: "conflicts",
+      organizationId: "org-123",
+      branchId: "64b000000000000000000002",
+    });
   });
 
   it("requires view permission for list and create", async () => {

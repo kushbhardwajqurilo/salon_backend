@@ -22,6 +22,7 @@ const validate = jest.fn(() =>
 
 const createLeave = Object.assign((req, res) => res.end(), { _tag: "createLeave" });
 const listLeaves = Object.assign((req, res) => res.end(), { _tag: "listLeaves" });
+const getLeaveConflicts = Object.assign((req, res) => res.end(), { _tag: "getLeaveConflicts" });
 const getLeaveById = Object.assign((req, res) => res.end(), { _tag: "getLeaveById" });
 const updateLeave = Object.assign((req, res) => res.end(), { _tag: "updateLeave" });
 const approveLeave = Object.assign((req, res) => res.end(), { _tag: "approveLeave" });
@@ -36,6 +37,7 @@ jest.unstable_mockModule("../../middleware/leaveScope.js", () => ({ requireOnBeh
 jest.unstable_mockModule("../../controllers/leaves/leave.controller.js", () => ({
   createLeave,
   listLeaves,
+  getLeaveConflicts,
   getLeaveById,
   updateLeave,
   approveLeave,
@@ -68,6 +70,7 @@ describe("Leave router registration and middleware ordering", () => {
       expect.arrayContaining([
         { path: "/", methods: ["post"] },
         { path: "/", methods: ["get"] },
+        { path: "/:id/conflicts", methods: ["get"] },
         { path: "/:id", methods: ["get"] },
         { path: "/:id", methods: ["put"] },
         { path: "/:id/approve", methods: ["post"] },
@@ -105,6 +108,14 @@ describe("Leave router registration and middleware ordering", () => {
       "authorize:employees.leaves.view",
       "validate",
       "getLeaveById",
+    ]);
+
+    expect(routeTags(getRouteLayer("/:id/conflicts", "get"))).toEqual([
+      "authenticate",
+      "requireBranchScope",
+      "authorize:employees.leaves.view",
+      "validate",
+      "getLeaveConflicts",
     ]);
   });
 
@@ -148,6 +159,7 @@ describe("Leave router registration and middleware ordering", () => {
 
   it("does not invent new permission names", () => {
     expect(authorize.mock.calls.map(([permission]) => permission)).toEqual([
+      "employees.leaves.view",
       "employees.leaves.view",
       "employees.leaves.view",
       "employees.leaves.view",

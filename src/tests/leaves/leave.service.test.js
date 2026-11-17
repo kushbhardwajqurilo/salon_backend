@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import { LeaveService } from "../../services/leaves/leave.service.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { AppError } from "../../utils/errors.js";
+import { Branch } from "../../models/branches/branch.model.js";
+import { Appointment } from "../../models/appointments/appointment.model.js";
 
 const orgId = new mongoose.Types.ObjectId();
 const branchId = new mongoose.Types.ObjectId();
@@ -133,6 +135,16 @@ describe("LeaveService Phase 4", () => {
     });
 
     jest.spyOn(Sequence, "findOneAndUpdate").mockResolvedValue({ seq: 1 });
+    const branchQuery = Promise.resolve({ timezone: "Asia/Kolkata" });
+    branchQuery.session = jest.fn().mockReturnValue(branchQuery);
+    jest.spyOn(Branch, "findOne").mockReturnValue(branchQuery);
+    const appointmentQuery = {
+      populate: jest.fn().mockReturnThis(),
+      session: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue([]),
+    };
+    jest.spyOn(Appointment, "find").mockReturnValue(appointmentQuery);
   });
 
   it("creates a self leave request with server-derived branch/org and no dates in DTO", async () => {
