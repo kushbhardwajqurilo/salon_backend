@@ -13,6 +13,7 @@ import {
   stockAdjustmentSchema,
   stockTransferSchema,
   listStockMovementsSchema,
+  allocateStockDomainSchema,
   objectIdSchema
 } from "../../validation/inventory/inventory.validation.js";
 import { z } from "zod";
@@ -119,6 +120,18 @@ router.get(
   authorize("inventory.view"),
   validate(listStockMovementsSchema),
   inventoryController.listStockMovements
+);
+
+/**
+ * Manager-Controlled Historical Domain Allocation (usageType: "both")
+ */
+router.post(
+  "/allocate-domain",
+  authenticate,
+  requireBranchScope,
+  authorize("inventory.adjust"),
+  validate(allocateStockDomainSchema),
+  inventoryController.recordDomainAllocation
 );
 
 export default router;

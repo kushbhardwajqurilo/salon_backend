@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { AppError } from "../../utils/errors.js";
 import { runInTransaction } from "../../utils/transaction.js";
 import { productRepository } from "../../repositories/inventory/product.repository.js";
@@ -195,19 +196,48 @@ export class InventoryService {
         throw new AppError(validation.message, 400);
       }
 
-      // 3. Atomically check and deduct stock
+      // 3. Atomically check and deduct stock from salon consumables domain
+      // For products with usageType: "salon_consumption", onHand is exclusively consumables.
+      // For products with usageType: "both", onHandConsumables MUST be allocated and sufficient.
+      // Unallocated historical stock for "both" CANNOT be consumed.
+      const isBothUsage = product.usageType === "both";
+
+      const balanceQuery = {
+        organizationId,
+        branchId,
+        productId,
+        onHand: { $gte: quantity },
+      };
+
+      if (isBothUsage) {
+        // Strictly require confirmed onHandConsumables balance
+        balanceQuery.onHandConsumables = { $gte: quantity };
+      } else {
+        // Exclusively salon_consumption product: onHand is consumables
+        balanceQuery.$or = [
+          { onHandConsumables: { $gte: quantity } },
+          { onHandConsumables: 0, onHandRetail: 0 }
+        ];
+      }
+
       const balance = await StockBalance.findOneAndUpdate(
-        {
-          organizationId,
-          branchId,
-          productId,
-          onHand: { $gte: quantity }
-        },
-        {
-          $inc: { onHand: -quantity },
-          $set: { lastMovementAt: new Date() }
-        },
-        { session, returnDocument: "after" }
+        balanceQuery,
+        [
+          {
+            $set: {
+              lastMovementAt: new Date(),
+              onHand: { $subtract: ["$onHand", quantity] },
+              onHandConsumables: {
+                $cond: {
+                  if: { $gte: ["$onHandConsumables", quantity] },
+                  then: { $subtract: ["$onHandConsumables", quantity] },
+                  else: 0
+                }
+              }
+            }
+          }
+        ],
+        { session, returnDocument: "after", updatePipeline: true }
       );
 
       if (!balance) {
@@ -233,6 +263,7 @@ export class InventoryService {
           quantityDelta: -quantity,
           balanceAfter: this.roundQuantity(balance.onHand),
           movementType: "service_consumption",
+          stockDomain: "salon_consumables",
           reference: {
             entityType: appointmentId ? "Appointment" : serviceId ? "Service" : "ManualConsumption",
             entityId: appointmentId || serviceId || null,
@@ -575,7 +606,26 @@ export class InventoryService {
    * Atomically reserve stock for invoice draft product lines without deducting on-hand stock.
    * Prevents overselling by incrementing `allocated` when (onHand - allocated) >= requested quantity.
    */
-  async reserveStockForInvoice({ invoiceId, branchId, organizationId, items, session, reservationTtlMinutes = 30 }) {
+  async reserveStockForInvoice(arg1, arg2, arg3, arg4, arg5, arg6) {
+    let invoiceId, branchId, organizationId, items, session, reservationTtlMinutes;
+
+    if (arg1 && typeof arg1 === "object" && !mongoose.isValidObjectId(arg1) && !arg1._bsontype) {
+      ({ invoiceId, branchId, organizationId, items, session, reservationTtlMinutes = 30 } = arg1);
+    } else {
+      invoiceId = arg1;
+      organizationId = arg2;
+      branchId = arg3;
+      items = arg4;
+      // If arg5 is a number, it was passed as reservationTtlMinutes with session omitted
+      if (typeof arg5 === "number") {
+        reservationTtlMinutes = arg5;
+        session = null;
+      } else {
+        session = arg5 || null;
+        reservationTtlMinutes = arg6 || 30;
+      }
+    }
+
     const expiresAt = new Date(Date.now() + reservationTtlMinutes * 60 * 1000);
     const reservations = [];
 
@@ -603,21 +653,75 @@ export class InventoryService {
         throw new AppError(validation.message, 400);
       }
 
-      // Atomically allocate stock
-      const updatedBalance = await StockBalance.findOneAndUpdate(
-        {
-          organizationId,
-          branchId,
-          productId,
-          $expr: {
-            $gte: [{ $subtract: ["$onHand", "$allocated"] }, quantity],
+      // Atomically allocate stock with retail domain awareness
+      // For products with usageType: "retail_sale", onHand is exclusively retail.
+      // For products with usageType: "both", onHandRetail MUST be allocated and sufficient.
+      // Unallocated historical stock for "both" CANNOT be reserved or sold.
+      const isBothUsage = product.usageType === "both";
+
+      const allocQuery = {
+        organizationId,
+        branchId,
+        productId,
+        $expr: {
+          $gte: [{ $subtract: ["$onHand", "$allocated"] }, quantity],
+        },
+      };
+
+      if (isBothUsage) {
+        allocQuery.$expr = {
+          $and: [
+            { $gte: [{ $subtract: ["$onHand", "$allocated"] }, quantity] },
+            {
+              $gte: [
+                {
+                  $subtract: [
+                    { $ifNull: ["$onHandRetail", 0] },
+                    { $ifNull: ["$allocatedRetail", 0] }
+                  ]
+                },
+                quantity
+              ]
+            }
+          ]
+        };
+      } else {
+        allocQuery.$or = [
+          {
+            $expr: {
+              $gte: [
+                {
+                  $subtract: [
+                    { $ifNull: ["$onHandRetail", 0] },
+                    { $ifNull: ["$allocatedRetail", 0] }
+                  ]
+                },
+                quantity
+              ]
+            }
           },
-        },
-        {
-          $inc: { allocated: quantity },
-          $set: { lastMovementAt: new Date() },
-        },
-        { session, returnDocument: "after" }
+          { onHandConsumables: 0, onHandRetail: 0 }
+        ];
+      }
+
+      const updatedBalance = await StockBalance.findOneAndUpdate(
+        allocQuery,
+        [
+          {
+            $set: {
+              lastMovementAt: new Date(),
+              allocated: { $add: ["$allocated", quantity] },
+              allocatedRetail: {
+                $cond: {
+                  if: { $gt: [{ $ifNull: ["$onHandRetail", 0] }, 0] },
+                  then: { $add: [{ $ifNull: ["$allocatedRetail", 0] }, quantity] },
+                  else: { $ifNull: ["$allocatedRetail", 0] }
+                }
+              }
+            }
+          }
+        ],
+        { session, returnDocument: "after", updatePipeline: true }
       );
 
       if (!updatedBalance) {
@@ -706,21 +810,37 @@ export class InventoryService {
     for (const res of activeReservations) {
       const product = await productRepository.findById(res.productId, invoice.organizationId, session);
 
-      // Decrement both onHand and allocated
+      // Decrement both onHand and allocated (with retail domain decrement)
       const updatedBalance = await StockBalance.findOneAndUpdate(
         {
           organizationId: invoice.organizationId,
           branchId: res.branchId,
           productId: res.productId,
         },
-        {
-          $inc: {
-            onHand: -res.quantity,
-            allocated: -res.quantity,
-          },
-          $set: { lastMovementAt: new Date() },
-        },
-        { session, returnDocument: "after" }
+        [
+          {
+            $set: {
+              lastMovementAt: new Date(),
+              onHand: { $subtract: ["$onHand", res.quantity] },
+              allocated: { $subtract: ["$allocated", res.quantity] },
+              onHandRetail: {
+                $cond: {
+                  if: { $gte: ["$onHandRetail", res.quantity] },
+                  then: { $subtract: ["$onHandRetail", res.quantity] },
+                  else: 0
+                }
+              },
+              allocatedRetail: {
+                $cond: {
+                  if: { $gte: ["$allocatedRetail", res.quantity] },
+                  then: { $subtract: ["$allocatedRetail", res.quantity] },
+                  else: 0
+                }
+              }
+            }
+          }
+        ],
+        { session, returnDocument: "after", updatePipeline: true }
       );
 
       const movement = await stockMovementRepository.create(
@@ -731,6 +851,7 @@ export class InventoryService {
           quantityDelta: -res.quantity,
           balanceAfter: this.roundQuantity(updatedBalance.onHand),
           movementType: "pos_sale",
+          stockDomain: "retail_products",
           reference: {
             entityType: "Invoice",
             entityId: invoice._id,
@@ -794,6 +915,286 @@ export class InventoryService {
     }
 
     return { processedCount: expiredCount };
+  }
+
+  /**
+   * Manager-controlled domain stock allocation for products with usageType: "both".
+   * Safely allocates from onHandUnallocated to onHandRetail, onHandConsumables, or both.
+   * Concurrency-safe, transactional, idempotent, and audited.
+   */
+  async recordDomainAllocation(payload, organizationId, userId) {
+    const {
+      branchId,
+      productId,
+      retailQuantity = 0,
+      consumablesQuantity = 0,
+      reason,
+      notes = "",
+      idempotencyKey
+    } = payload;
+
+    const getIdempotentReplay = async (session = null) => {
+      if (!idempotencyKey) return null;
+
+      const retailMovement = await stockMovementRepository.findByIdempotencyKey(
+        organizationId,
+        `${idempotencyKey}_retail`,
+        session
+      );
+      const consumablesMovement = await stockMovementRepository.findByIdempotencyKey(
+        organizationId,
+        `${idempotencyKey}_consumables`,
+        session
+      );
+      if (!retailMovement && !consumablesMovement) return null;
+
+      const matchesMovement = (movement, quantity, domain, label) => {
+        if (quantity === 0) return movement === null;
+        return (
+          movement !== null &&
+          String(movement.branchId) === String(branchId) &&
+          String(movement.productId) === String(productId) &&
+          movement.movementType === "domain_allocation" &&
+          movement.stockDomain === domain &&
+          Number(movement.quantityDelta) === Number(quantity) &&
+          movement.notes === `Manager allocation to ${label}: ${reason}. Notes: ${notes}`
+        );
+      };
+
+      if (
+        !matchesMovement(retailMovement, retailQuantity, "retail_products", "Retail Products") ||
+        !matchesMovement(
+          consumablesMovement,
+          consumablesQuantity,
+          "salon_consumables",
+          "Salon Consumables"
+        )
+      ) {
+        throw new AppError(
+          "Idempotency key was already used for a different stock allocation",
+          409
+        );
+      }
+
+      const balance = await stockBalanceRepository.findByBranchAndProduct(
+        organizationId,
+        branchId,
+        productId,
+        session
+      );
+      if (!balance) {
+        throw new AppError("Allocated stock balance could not be found", 409);
+      }
+
+      return {
+        message: "Stock domain allocation already processed (idempotent replay)",
+        isIdempotentReplay: true,
+        balance
+      };
+    };
+
+    const existingReplay = await getIdempotentReplay();
+    if (existingReplay) return existingReplay;
+
+    const totalToAllocate = this.roundQuantity(retailQuantity + consumablesQuantity);
+    if (totalToAllocate <= 0) {
+      throw new AppError("Total allocation quantity must be greater than zero", 400);
+    }
+
+    return await runInTransaction(async (session) => {
+      const replay = await getIdempotentReplay(session);
+      if (replay) return replay;
+
+      const product = await productRepository.findById(productId, organizationId, session);
+      if (!product) {
+        throw new AppError(`Product not found: ${productId}`, 404);
+      }
+      if (product.usageType !== "both") {
+        throw new AppError(
+          `Domain allocation is only applicable to products with usageType: 'both'. Current product is '${product.usageType}'`,
+          400
+        );
+      }
+
+      if (retailQuantity > 0) {
+        const retCheck = validateQuantityForUnit(retailQuantity, product.stockUnit);
+        if (!retCheck.valid) throw new AppError(`Retail quantity: ${retCheck.message}`, 400);
+      }
+      if (consumablesQuantity > 0) {
+        const conCheck = validateQuantityForUnit(consumablesQuantity, product.stockUnit);
+        if (!conCheck.valid) throw new AppError(`Consumables quantity: ${conCheck.message}`, 400);
+      }
+
+      // Ensure stock balance exists
+      const current = await stockBalanceRepository.findOrCreate(
+        organizationId,
+        branchId,
+        productId,
+        session
+      );
+
+      // Determine available unallocated stock
+      // If onHandUnallocated is explicitly recorded, use it.
+      // If legacy balance has onHand > 0 and (onHandConsumables + onHandRetail === 0),
+      // the initial unallocated quantity is onHand.
+      let currentUnallocated = current.onHandUnallocated;
+      if (
+        (currentUnallocated === 0 || currentUnallocated === undefined) &&
+        current.onHand > 0 &&
+        (current.onHandConsumables || 0) + (current.onHandRetail || 0) === 0
+      ) {
+        currentUnallocated = current.onHand;
+      }
+
+      if (totalToAllocate > currentUnallocated) {
+        throw new AppError(
+          `Requested allocation (${totalToAllocate} ${product.stockUnit}) exceeds available unallocated stock (${currentUnallocated} ${product.stockUnit})`,
+          400
+        );
+      }
+
+      // Atomic allocation mutation
+      const updatedBalance = await StockBalance.findOneAndUpdate(
+        {
+          organizationId,
+          branchId,
+          productId,
+          $or: [
+            { onHandUnallocated: { $gte: totalToAllocate } },
+            // Legacy unmigrated state where domain fields are absent or 0 but aggregate onHand >= totalToAllocate
+            {
+              $and: [
+                { $or: [{ onHandUnallocated: { $exists: false } }, { onHandUnallocated: 0 }] },
+                { $or: [{ onHandConsumables: { $exists: false } }, { onHandConsumables: 0 }] },
+                { $or: [{ onHandRetail: { $exists: false } }, { onHandRetail: 0 }] },
+                { onHand: { $gte: totalToAllocate } }
+              ]
+            }
+          ]
+        },
+        [
+          {
+            $set: {
+              lastMovementAt: new Date(),
+              onHandConsumables: {
+                $add: [
+                  { $ifNull: ["$onHandConsumables", 0] },
+                  consumablesQuantity
+                ]
+              },
+              onHandRetail: {
+                $add: [
+                  { $ifNull: ["$onHandRetail", 0] },
+                  retailQuantity
+                ]
+              },
+              onHandUnallocated: {
+                $cond: {
+                  if: { $gt: [{ $ifNull: ["$onHandUnallocated", 0] }, 0] },
+                  then: { $subtract: ["$onHandUnallocated", totalToAllocate] },
+                  else: { $subtract: ["$onHand", totalToAllocate] }
+                }
+              }
+            }
+          }
+        ],
+        { session, returnDocument: "after", updatePipeline: true }
+      );
+
+      if (!updatedBalance) {
+        throw new AppError(
+          "Concurrent allocation conflict or insufficient unallocated stock. Please retry.",
+          409
+        );
+      }
+
+      // Log domain_allocation movement for retail pool if retailQuantity > 0
+      if (retailQuantity > 0) {
+        await stockMovementRepository.create(
+          {
+            organizationId,
+            branchId,
+            productId,
+            quantityDelta: retailQuantity,
+            balanceAfter: updatedBalance.onHandRetail,
+            movementType: "domain_allocation",
+            stockDomain: "retail_products",
+            reference: {
+              entityType: "StockBalance",
+              entityId: updatedBalance._id,
+              identifier: `ALLOC_RETAIL_${Date.now()}`
+            },
+            actorId: userId,
+            notes: `Manager allocation to Retail Products: ${reason}. Notes: ${notes}`,
+            idempotencyKey: idempotencyKey ? `${idempotencyKey}_retail` : null
+          },
+          session
+        );
+      }
+
+      // Log domain_allocation movement for consumables pool if consumablesQuantity > 0
+      if (consumablesQuantity > 0) {
+        await stockMovementRepository.create(
+          {
+            organizationId,
+            branchId,
+            productId,
+            quantityDelta: consumablesQuantity,
+            balanceAfter: updatedBalance.onHandConsumables,
+            movementType: "domain_allocation",
+            stockDomain: "salon_consumables",
+            reference: {
+              entityType: "StockBalance",
+              entityId: updatedBalance._id,
+              identifier: `ALLOC_CONSUMABLE_${Date.now()}`
+            },
+            actorId: userId,
+            notes: `Manager allocation to Salon Consumables: ${reason}. Notes: ${notes}`,
+            idempotencyKey: idempotencyKey ? `${idempotencyKey}_consumables` : null
+          },
+          session
+        );
+      }
+
+      // Audit Log entry
+      await AuditLog.create(
+        [
+          {
+            organizationId,
+            branchId,
+            actorId: userId,
+            action: AUDIT_ACTIONS.INVENTORY_DOMAIN_ALLOCATED,
+            entityType: "StockBalance",
+            entityId: updatedBalance._id,
+            description: `Allocated ${totalToAllocate} ${product.stockUnit} of ${product.name} (Retail: ${retailQuantity}, Consumables: ${consumablesQuantity})`,
+            metadata: {
+              productId,
+              productName: product.name,
+              sku: product.sku,
+              sourceUnallocated: currentUnallocated,
+              retailAllocated: retailQuantity,
+              consumablesAllocated: consumablesQuantity,
+              remainingUnallocated: updatedBalance.onHandUnallocated,
+              reason,
+              notes
+            }
+          }
+        ],
+        { session }
+      );
+
+      return {
+        message: "Domain stock allocation completed successfully",
+        balance: updatedBalance,
+        allocation: {
+          allocatedTotal: totalToAllocate,
+          retailAllocated: retailQuantity,
+          consumablesAllocated: consumablesQuantity,
+          remainingUnallocated: updatedBalance.onHandUnallocated,
+          reason
+        }
+      };
+    });
   }
 }
 

@@ -147,3 +147,19 @@ export const listStockMovementsSchema = z.object({
     limit: z.coerce.number().int().min(1).max(100).optional().default(20)
   })
 });
+
+// 9. Manager domain stock allocation schema
+export const allocateStockDomainSchema = z.object({
+  body: z.object({
+    branchId: objectIdSchema,
+    productId: objectIdSchema,
+    retailQuantity: z.coerce.number().min(0, "retailQuantity cannot be negative").default(0),
+    consumablesQuantity: z.coerce.number().min(0, "consumablesQuantity cannot be negative").default(0),
+    reason: z.string().min(1, "Allocation reason/audit reference is required").max(1000).trim(),
+    notes: z.string().max(1000).trim().optional().default(""),
+    idempotencyKey: z.string().min(1).max(200).trim().optional()
+  }).refine((data) => data.retailQuantity > 0 || data.consumablesQuantity > 0, {
+    message: "At least one domain quantity (retailQuantity or consumablesQuantity) must be greater than zero",
+    path: ["retailQuantity"]
+  })
+});

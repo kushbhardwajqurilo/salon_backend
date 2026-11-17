@@ -154,3 +154,23 @@ export const listStockMovements = async (req, res, next) => {
     next(error);
   }
 };
+
+export const recordDomainAllocation = async (req, res, next) => {
+  try {
+    const idempotencyKey = getIdempotencyKey(req);
+    const branchId = req.branchId || req.body.branchId;
+    const payload = {
+      ...req.body,
+      branchId,
+      idempotencyKey
+    };
+    const result = await inventoryService.recordDomainAllocation(
+      payload,
+      req.user.organizationId,
+      req.user.id
+    );
+    return sendResponse(res, 200, result.message, result.balance);
+  } catch (error) {
+    next(error);
+  }
+};
