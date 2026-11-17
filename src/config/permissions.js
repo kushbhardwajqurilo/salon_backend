@@ -402,6 +402,12 @@ export const CANONICAL_PERMISSIONS = [
     description: "Generate invoice details, apply discounts, and complete checkout."
   },
   {
+    name: "billing.attribution.correct",
+    module: "Billing & POS",
+    action: "Correct sales attribution",
+    description: "Correct seller or renewal-handler attribution on draft invoice lines with an audited reason."
+  },
+  {
     name: "billing.void",
     module: "Billing & POS",
     action: "Void",
@@ -532,6 +538,48 @@ export const CANONICAL_PERMISSIONS = [
     module: "Procurement",
     action: "Manage Payments",
     description: "Track and record payables/payments made to suppliers."
+  },
+  {
+    name: "incentives.view",
+    module: "Incentives",
+    action: "View Own Incentives",
+    description: "View own staff incentive accruals, schemes, and monthly summaries."
+  },
+  {
+    name: "incentives.view.all",
+    module: "Incentives",
+    action: "View All Incentives",
+    description: "View incentives, schemes, obligations, and payout batches across all staff."
+  },
+  {
+    name: "incentives.rules.manage",
+    module: "Incentives",
+    action: "Manage Incentive Rules",
+    description: "Create, configure, and assign incentive schemes and calculation tiers."
+  },
+  {
+    name: "incentives.approve",
+    module: "Incentives",
+    action: "Approve Incentive Payouts",
+    description: "Approve and lock monthly incentive payout batches and manual overrides."
+  },
+  {
+    name: "incentives.payout.sync",
+    module: "Incentives",
+    action: "Sync Incentive Payouts",
+    description: "Synchronize finalized incentive payout batches with payroll."
+  },
+  {
+    name: "incentives.fulfillment.confirm",
+    module: "Incentives",
+    action: "Confirm Service Fulfillment",
+    description: "Confirm physical service fulfillment for subscription or pending redemptions."
+  },
+  {
+    name: "incentives.fulfillment.correct",
+    module: "Incentives",
+    action: "Correct Fulfillment Status",
+    description: "Correct or rectify service fulfillment status and commission eligibility."
   },
   {
     name: "loyalty.view",

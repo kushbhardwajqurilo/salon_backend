@@ -6,6 +6,32 @@ import { CANONICAL_PERMISSIONS } from "../config/permissions.js";
 import { redis } from "../utils/redis.js";
 import { logger } from "../utils/logger.js";
 
+// Permission caches are scoped by organization.  A system-role update (such as
+// owner) must therefore clear every tenant copy, not just the legacy key.
+const invalidateRolePermissionCaches = async (roleName) => {
+  const normalizedRole = roleName.toLowerCase().trim();
+  const match = `rbac:org:*:role:${normalizedRole}:permissions`;
+
+  try {
+    if (typeof redis.scan === "function") {
+      let cursor = "0";
+      do {
+        const [nextCursor, keys] = await redis.scan(cursor, "MATCH", match, "COUNT", 100);
+        cursor = nextCursor;
+        if (keys.length) await redis.del(...keys);
+      } while (cursor !== "0");
+    }
+
+    // Supports global, legacy, and lightweight test Redis clients.
+    await redis.del(
+      `rbac:org:global:role:${normalizedRole}:permissions`,
+      `rbac:role:${normalizedRole}:permissions`,
+    );
+  } catch (err) {
+    logger.warn(`Failed to invalidate permission caches for role '${normalizedRole}': ${err.message}`);
+  }
+};
+
 export const syncPermissionsLogic = async () => {
   logger.info("Starting permission synchronization...");
 
@@ -122,6 +148,22 @@ export const syncPermissionsLogic = async () => {
     "payroll.calculate",
     "payroll.adjust",
     "payroll.export",
+    // Incentives (Manager operational permissions)
+    "incentives.view",
+    "incentives.view.all",
+    "incentives.rules.manage",
+    "incentives.approve",
+    "incentives.payout.sync",
+    "incentives.fulfillment.confirm",
+    "incentives.fulfillment.correct",
+    // Procurement (Manager full operations)
+    "procurement.suppliers.view",
+    "procurement.suppliers.manage",
+    "procurement.orders.view",
+    "procurement.orders.create",
+    "procurement.orders.update",
+    "procurement.invoices.manage",
+    "procurement.payments.manage",
     // Services (all)
     "services.view",
     "services.create",
@@ -135,6 +177,7 @@ export const syncPermissionsLogic = async () => {
     "appointments.cancel",
     "billing.view",
     "billing.checkout",
+    "billing.attribution.correct",
     "reports.revenue.view",
     "branches.view",
     "logs.view",
@@ -171,9 +214,9 @@ export const syncPermissionsLogic = async () => {
   }
 
   // 5. Invalidate Cache
-  await redis.del("rbac:role:owner:permissions");
-  await redis.del("rbac:role:manager:permissions");
-  await redis.del("rbac:role:receptionist:permissions");
+  await invalidateRolePermissionCaches("owner");
+  await invalidateRolePermissionCaches("manager");
+  await invalidateRolePermissionCaches("receptionist");
   await redis.del("rbac:modules");
 
   logger.info(

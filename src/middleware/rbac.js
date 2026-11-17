@@ -105,9 +105,15 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
 
     const permissions = await resolveRolePermissions(roleName, organizationId);
 
-    // Expand candidate permissions via permanent bidirectional alias map
-    const candidatePermissions = PERMISSION_ALIASES[requiredPermission] || [requiredPermission];
-    const hasPermission = candidatePermissions.some((perm) => permissions.includes(perm));
+    // Support single permission string or array/rest permissions (any-of matching)
+    const requiredList = Array.isArray(requiredPermission)
+      ? requiredPermission
+      : [requiredPermission];
+
+    const hasPermission = requiredList.some((reqPerm) => {
+      const candidatePermissions = PERMISSION_ALIASES[reqPerm] || [reqPerm];
+      return candidatePermissions.some((perm) => permissions.includes(perm));
+    });
 
     if (!hasPermission) {
       throw new AppError(
@@ -188,5 +194,23 @@ export const requirePermission = (requiredPermission) => {
     }
 
     next();
+  });
+};
+
+/**
+ * Checks whether a user possesses one or more permissions using the role cache.
+ */
+export const hasUserPermission = async (user, requiredPermission) => {
+  const { role: roleName, organizationId } = user || {};
+  if (!roleName) return false;
+
+  const permissions = await resolveRolePermissions(roleName, organizationId);
+  const requiredList = Array.isArray(requiredPermission)
+    ? requiredPermission
+    : [requiredPermission];
+
+  return requiredList.some((reqPerm) => {
+    const candidatePermissions = PERMISSION_ALIASES[reqPerm] || [reqPerm];
+    return candidatePermissions.some((perm) => permissions.includes(perm));
   });
 };

@@ -88,11 +88,14 @@ const seed = async () => {
       "employees.leaves.view", "employees.leaves.manage",
       // Payroll (Manager operational capabilities)
       "payroll.view", "payroll.structure.manage", "payroll.calculate", "payroll.adjust", "payroll.export",
+      // Incentives (Manager operational capabilities)
+      "incentives.view", "incentives.view.all", "incentives.rules.manage", "incentives.approve", "incentives.payout.sync", "incentives.fulfillment.confirm", "incentives.fulfillment.correct",
       // Services (all)
       "services.view", "services.create", "services.update", "services.delete",
       // Existing defaults
       "appointments.view", "appointments.book", "appointments.reschedule", "appointments.cancel",
       "billing.view", "billing.checkout",
+      "billing.attribution.correct",
       "reports.revenue.view",
       "logs.view"
     ];

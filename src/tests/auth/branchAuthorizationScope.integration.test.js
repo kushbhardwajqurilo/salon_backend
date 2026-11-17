@@ -1,13 +1,17 @@
 import { jest } from "@jest/globals";
 import mongoose from "mongoose";
-import { AppError } from "../../utils/errors.js";
+import { AppError, globalErrorHandler } from "../../utils/errors.js";
 import {
   assertCanManageBranches,
   assertStaffBranchSubsetOfUserAccess,
 } from "../../utils/branchAuthorization.js";
 import { createUser, updateUser } from "../../controllers/users/user.controller.js";
 import { assignBranch } from "../../controllers/staff/staff.controller.js";
-import { requireBranchScope } from "../../middleware/branchScope.js";
+import {
+  requireBranchScope,
+  requireOrganizationScope,
+} from "../../middleware/branchScope.js";
+import { createUserSchema } from "../../validation/users/user.validation.js";
 import { UserRepository } from "../../repositories/users/user.repository.js";
 import { StaffService } from "../../services/staff/staff.service.js";
 import { Branch } from "../../models/branches/branch.model.js";
@@ -83,22 +87,50 @@ describe("Branch Authorization Scope Integration & Policy Verification", () => {
       }),
     });
 
-    Role.findOne = jest.fn().mockReturnValue({
-      populate: jest.fn().mockReturnValue({
-        permissions: [{ name: "users.create" }, { name: "users.view" }],
-      }),
+    Role.findOne = jest.fn((filter) => {
+      const isTargetRole = Boolean(filter?._id);
+      const role = {
+        _id: isTargetRole ? roleId : undefined,
+        name: isTargetRole ? "staff" : "admin",
+        permissions: isTargetRole
+          ? [{ name: "users.create" }]
+          : [{ name: "users.create" }, { name: "users.view" }],
+        populate: jest.fn().mockResolvedValue(undefined),
+      };
+
+      return {
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(role),
+      };
     });
 
     StaffBranch.find.mockResolvedValue([]);
     Staff.findOne.mockResolvedValue(null);
   });
 
+  const captureControllerErrorResponse = () => {
+    const error = next.mock.calls[0]?.[0];
+    if (!error) return null;
+
+    globalErrorHandler(error, req, res, jest.fn());
+    return {
+      status: res.status.mock.calls.at(-1)?.[0],
+      body: res.json.mock.calls.at(-1)?.[0],
+    };
+  };
+
+  const prepareCreateUserRequest = async () => {
+    expect(createUserSchema.safeParse({ body: req.body }).success).toBe(true);
+    await requireOrganizationScope(req, res, () => {});
+    expect(req.organizationId).toBe(req.user.organizationId);
+  };
+
   // A. Caller [A,B], current=A, creates User with [A,B] -> ALLOW
   it("A. Should ALLOW caller with branchAccess [A,B] and active context A to create User with [A,B]", async () => {
     req = {
-      organizationId: orgAId,
       user: {
         id: "caller-1",
+        organizationId: orgAId,
         role: "admin",
         hasOrgWideAccess: false,
         branchAccess: [
@@ -113,10 +145,14 @@ describe("Branch Authorization Scope Integration & Policy Verification", () => {
         email: "testab@example.com",
         phone: "+12345678901",
         roleId,
-        branchAccess: [{ branchId: branchAId }, { branchId: branchBId }],
+        branchAccess: [
+          { branchId: branchAId, branchName: `Branch ${branchAId}` },
+          { branchId: branchBId, branchName: `Branch ${branchBId}` },
+        ],
       },
     };
 
+    await prepareCreateUserRequest();
     UserRepository.prototype.findByEmailOrPhone.mockResolvedValue(null);
     UserRepository.prototype.findByUsername.mockResolvedValue(null);
     UserRepository.prototype.create.mockResolvedValue({
@@ -133,15 +169,16 @@ describe("Branch Authorization Scope Integration & Policy Verification", () => {
 
     await createUser(req, res, next);
 
+    expect(captureControllerErrorResponse()).toBeNull();
     expect(res.status).toHaveBeenCalledWith(201);
   });
 
   // B. Caller [A,B], current=A, creates User with [B] -> ALLOW
   it("B. Should ALLOW caller with branchAccess [A,B] and active context A to create User with [B]", async () => {
     req = {
-      organizationId: orgAId,
       user: {
         id: "caller-1",
+        organizationId: orgAId,
         role: "admin",
         hasOrgWideAccess: false,
         branchAccess: [
@@ -156,10 +193,11 @@ describe("Branch Authorization Scope Integration & Policy Verification", () => {
         email: "testb@example.com",
         phone: "+12345678902",
         roleId,
-        branchAccess: [{ branchId: branchBId }],
+        branchAccess: [{ branchId: branchBId, branchName: `Branch ${branchBId}` }],
       },
     };
 
+    await prepareCreateUserRequest();
     UserRepository.prototype.findByEmailOrPhone.mockResolvedValue(null);
     UserRepository.prototype.findByUsername.mockResolvedValue(null);
     UserRepository.prototype.create.mockResolvedValue({
@@ -173,15 +211,16 @@ describe("Branch Authorization Scope Integration & Policy Verification", () => {
 
     await createUser(req, res, next);
 
+    expect(captureControllerErrorResponse()).toBeNull();
     expect(res.status).toHaveBeenCalledWith(201);
   });
 
   // C. Caller [A,B], current=A, creates User with [A,C] -> DENY
   it("C. Should DENY caller with branchAccess [A,B] from creating User with [A,C] (where C is unauthorized)", async () => {
     req = {
-      organizationId: orgAId,
       user: {
         id: "caller-1",
+        organizationId: orgAId,
         role: "admin",
         hasOrgWideAccess: false,
         branchAccess: [{ branchId: branchAId, isActive: true }, { branchId: branchBId, isActive: true }],
@@ -193,10 +232,14 @@ describe("Branch Authorization Scope Integration & Policy Verification", () => {
         email: "testac@example.com",
         phone: "+12345678903",
         roleId,
-        branchAccess: [{ branchId: branchAId }, { branchId: branchCId }],
+        branchAccess: [
+          { branchId: branchAId, branchName: `Branch ${branchAId}` },
+          { branchId: branchCId, branchName: `Branch ${branchCId}` },
+        ],
       },
     };
 
+    await prepareCreateUserRequest();
     UserRepository.prototype.findByEmailOrPhone.mockResolvedValue(null);
     UserRepository.prototype.findByUsername.mockResolvedValue(null);
 
