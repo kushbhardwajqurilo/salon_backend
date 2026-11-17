@@ -2,13 +2,16 @@ import { asyncHandler } from "../../utils/errors.js";
 import { PayrollService } from "../../services/payroll/payroll.service.js";
 import { generatePayslipPdf } from "../../services/payroll/payslipPdf.service.js";
 
+const getActorId = (req) => req.user?.id || req.user?._id;
+
 export class PayrollController {
   static setSalaryStructure = asyncHandler(async (req, res) => {
-    const { organizationId } = req;
+    const { organizationId, branchId } = req;
     const structure = await PayrollService.setSalaryStructure({
       organizationId,
+      branchId,
       ...req.body,
-      userId: req.user._id,
+      userId: getActorId(req),
     });
 
     res.status(200).json({
@@ -19,12 +22,13 @@ export class PayrollController {
   });
 
   static getEffectiveSalaryStructure = asyncHandler(async (req, res) => {
-    const { organizationId } = req;
+    const { organizationId, branchId } = req;
     const { staffId } = req.params;
     const { date } = req.query;
 
     const structure = await PayrollService.getEffectiveSalaryStructure({
       organizationId,
+      branchId,
       staffId,
       date,
     });
@@ -36,11 +40,12 @@ export class PayrollController {
   });
 
   static getSalaryStructureHistory = asyncHandler(async (req, res) => {
-    const { organizationId } = req;
+    const { organizationId, branchId } = req;
     const { staffId } = req.params;
 
     const history = await PayrollService.getSalaryStructureHistory({
       organizationId,
+      branchId,
       staffId,
     });
 
@@ -55,7 +60,7 @@ export class PayrollController {
     const period = await PayrollService.createPayrollPeriod({
       organizationId,
       ...req.body,
-      userId: req.user._id,
+      userId: getActorId(req),
     });
 
     res.status(201).json({
@@ -84,7 +89,7 @@ export class PayrollController {
       payrollPeriodId,
       staffIds,
       branchId,
-      userId: req.user._id,
+      userId: getActorId(req),
     });
 
     res.status(200).json({
@@ -95,13 +100,14 @@ export class PayrollController {
   });
 
   static submitForApproval = asyncHandler(async (req, res) => {
-    const { organizationId } = req;
+    const { organizationId, branchId } = req;
     const { id } = req.params;
 
     const record = await PayrollService.submitForApproval({
       organizationId,
+      branchId,
       recordId: id,
-      userId: req.user._id,
+      userId: getActorId(req),
     });
 
     res.status(200).json({
@@ -112,13 +118,14 @@ export class PayrollController {
   });
 
   static approvePayrollRecord = asyncHandler(async (req, res) => {
-    const { organizationId } = req;
+    const { organizationId, branchId } = req;
     const { id } = req.params;
 
     const record = await PayrollService.approvePayrollRecord({
       organizationId,
+      branchId,
       recordId: id,
-      userId: req.user._id,
+      userId: getActorId(req),
     });
 
     res.status(200).json({
@@ -129,33 +136,88 @@ export class PayrollController {
   });
 
   static recordPayment = asyncHandler(async (req, res) => {
-    const { organizationId } = req;
+    const { organizationId, branchId } = req;
     const { id } = req.params;
-    const { paymentMethod, paymentReference } = req.body;
+    const {
+      paymentMethod,
+      paymentReference,
+      amountInPaise,
+      paymentDate,
+      idempotencyKey,
+    } = req.body;
 
-    const record = await PayrollService.recordPayment({
+    const result = await PayrollService.recordPayment({
       organizationId,
+      branchId,
       recordId: id,
       paymentMethod,
       paymentReference,
-      userId: req.user._id,
+      amountInPaise,
+      paymentDate,
+      idempotencyKey,
+      userId: getActorId(req),
+    });
+
+    res.status(result.isIdempotentReplay ? 200 : 201).json({
+      success: true,
+      data: result,
+      message: result.isIdempotentReplay
+        ? "Existing payroll payment attempt returned"
+        : "Payment attempt recorded; payroll remains unsettled until confirmation",
+    });
+  });
+
+  static confirmPayment = asyncHandler(async (req, res) => {
+    const { organizationId, branchId } = req;
+    const { id, paymentId } = req.params;
+    const result = await PayrollService.confirmPayment({
+      organizationId,
+      branchId,
+      recordId: id,
+      paymentId,
+      userId: getActorId(req),
     });
 
     res.status(200).json({
       success: true,
-      data: record,
-      message: "Payment recorded successfully",
+      data: result,
+      message: result.isIdempotentReplay
+        ? "Payroll settlement was already confirmed"
+        : "Payroll settlement confirmed",
+    });
+  });
+
+  static failPayment = asyncHandler(async (req, res) => {
+    const { organizationId, branchId } = req;
+    const { id, paymentId } = req.params;
+    const { failureReason } = req.body;
+    const result = await PayrollService.failPayment({
+      organizationId,
+      branchId,
+      recordId: id,
+      paymentId,
+      failureReason,
+      userId: getActorId(req),
+    });
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: result.isIdempotentReplay
+        ? "Payment failure was already recorded"
+        : "Payment failure recorded; payroll remains approved and may be retried",
     });
   });
 
   static addAdjustment = asyncHandler(async (req, res) => {
-    const { organizationId } = req;
+    const { organizationId, branchId } = req;
     const { id } = req.params;
     const { type, amount, reason, reference } = req.body;
-    const userId = req.user?.id || req.user?._id;
+    const userId = getActorId(req);
 
     const record = await PayrollService.addAdjustment({
       organizationId,
+      branchId,
       recordId: id,
       type,
       amount,
@@ -172,21 +234,26 @@ export class PayrollController {
   });
 
   static reversePayment = asyncHandler(async (req, res) => {
-    const { organizationId } = req;
+    const { organizationId, branchId } = req;
     const { id } = req.params;
     const { reversalReason } = req.body;
 
-    const record = await PayrollService.reversePayment({
+    const result = await PayrollService.reversePayment({
       organizationId,
+      branchId,
       recordId: id,
       reversalReason,
-      userId: req.user._id,
+      userId: getActorId(req),
     });
 
     res.status(200).json({
       success: true,
-      data: record,
-      message: "Payment reversed successfully",
+      data: result.record,
+      payment: result.payment,
+      isIdempotentReplay: result.isIdempotentReplay,
+      message: result.isIdempotentReplay
+        ? "Payment reversal was already recorded"
+        : "Payment reversed successfully",
     });
   });
 
@@ -229,11 +296,12 @@ export class PayrollController {
   });
 
   static getPayrollRecordById = asyncHandler(async (req, res) => {
-    const { organizationId } = req;
+    const { organizationId, branchId } = req;
     const { id } = req.params;
 
     const record = await PayrollService.getPayrollRecordById({
       organizationId,
+      branchId,
       recordId: id,
     });
 
@@ -244,11 +312,12 @@ export class PayrollController {
   });
 
   static downloadPayslipPdf = asyncHandler(async (req, res) => {
-    const { organizationId } = req;
+    const { organizationId, branchId } = req;
     const { id } = req.params;
 
     const record = await PayrollService.getPayrollRecordById({
       organizationId,
+      branchId,
       recordId: id,
     });
 

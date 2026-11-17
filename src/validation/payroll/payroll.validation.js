@@ -56,7 +56,30 @@ export const payPayrollRecordSchema = z.object({
   }),
   body: z.object({
     paymentMethod: z.enum(["bank_transfer", "cash", "cheque", "upi"]),
-    paymentReference: z.string().min(1, "Payment reference is required").trim(),
+    paymentReference: z.string().min(1, "Payment reference is required").max(200).trim(),
+    amountInPaise: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    paymentDate: z.string().datetime({ offset: true }),
+    idempotencyKey: z.string().min(8).max(128).trim(),
+  }),
+});
+
+export const confirmPayrollPaymentSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+    paymentId: objectIdSchema,
+  }),
+  body: z.object({
+    confirmActualPayment: z.literal(true),
+  }),
+});
+
+export const failPayrollPaymentSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+    paymentId: objectIdSchema,
+  }),
+  body: z.object({
+    failureReason: z.string().min(3).max(500).trim(),
   }),
 });
 

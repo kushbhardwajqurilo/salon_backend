@@ -10,10 +10,18 @@ import { StaffBranch } from "../../models/staff/staffBranch.model.js";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Organization } from "../../models/organizations/organization.model.js";
 import { Attendance } from "../../models/attendance/attendance.model.js";
+import { AttendanceBranchConflict } from "../../models/attendance/AttendanceLeaveAppointmentConflict.model.js";
 import { Leave } from "../../models/leaves/leave.model.js";
 import { SalaryStructure } from "../../models/payroll/salaryStructure.model.js";
 import { PayrollPeriod } from "../../models/payroll/payrollPeriod.model.js";
 import { PayrollRecord } from "../../models/payroll/payrollRecord.model.js";
+import { PayrollPayment } from "../../models/payroll/payrollPayment.model.js";
+import { PayrollIncentiveAllocation } from "../../models/payroll/payrollIncentiveAllocation.model.js";
+import { IncentiveEvaluation } from "../../models/incentives/incentiveEvaluation.model.js";
+import { IncentiveLedger } from "../../models/incentives/incentiveLedger.model.js";
+import { IncentiveRecoveryObligation } from "../../models/incentives/incentiveRecoveryObligation.model.js";
+import { IncentiveRecoveryPayment } from "../../models/incentives/incentiveRecoveryPayment.model.js";
+import { IncentiveScheme } from "../../models/incentives/incentiveScheme.model.js";
 import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
 import { getIsolatedTestMongoUri } from "../testSetup.js";
@@ -206,10 +214,18 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
   });
 
   afterAll(async () => {
+    await PayrollPayment.deleteMany({ organizationId: orgId });
+    await IncentiveRecoveryPayment.deleteMany({ organizationId: orgId });
+    await IncentiveRecoveryObligation.deleteMany({ organizationId: orgId });
+    await PayrollIncentiveAllocation.deleteMany({ organizationId: orgId });
     await PayrollRecord.deleteMany({ organizationId: orgId });
+    await IncentiveLedger.deleteMany({ organizationId: orgId });
+    await IncentiveEvaluation.deleteMany({ organizationId: orgId });
+    await IncentiveScheme.deleteMany({ organizationId: orgId });
     await PayrollPeriod.deleteMany({ organizationId: orgId });
     await SalaryStructure.deleteMany({ organizationId: orgId });
     await Attendance.deleteMany({ organizationId: orgId });
+    await AttendanceBranchConflict.deleteMany({ organizationId: orgId });
     await Leave.deleteMany({ organizationId: orgId });
     await StaffBranch.deleteMany({ organizationId: orgId });
     await Staff.deleteMany({ organizationId: orgId });
@@ -257,7 +273,8 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
     it("fetches effective salary structure for staff", async () => {
       const res = await request(app)
         .get(`/api/v1/payroll/structures/${testStaff._id}`)
-        .set("Authorization", `Bearer ${staffToken}`);
+        .set("Authorization", `Bearer ${staffToken}`)
+        .set("X-Branch-Id", branchId.toString());
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -306,12 +323,13 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
 
       // Seed 20 present days, 1 incomplete day
       for (let day = 1; day <= 20; day++) {
+        const status = day === 19 ? "late" : day === 20 ? "early_departure" : "present";
         await Attendance.create({
           organizationId: orgId,
           branchId,
           staffId: testStaff._id,
           attendanceDate: new Date(`2026-11-${day < 10 ? "0" + day : day}T10:00:00.000Z`),
-          status: "present",
+          status,
         });
       }
 
@@ -359,6 +377,12 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
       expect(record.approvalBlocked).toBe(true);
       expect(record.approvalBlockReasons.length).toBeGreaterThan(0);
       expect(record.approvalBlockReasons[0]).toContain("incomplete attendance record");
+      expect(record.attendanceSummarySnapshot).toMatchObject({
+        presentDays: 20,
+        lateDays: 1,
+        earlyDepartureDays: 1,
+        incompleteDays: 1,
+      });
 
       // Verify financial deductions:
       // Base: 30,000, 30 days -> 1000/day
@@ -374,6 +398,45 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
       expect(record.calculations.unpaidLeaveDeduction).toBe(2000);
       expect(record.calculations.fixedDeductions).toBe(1000);
       expect(record.calculations.netPayable).toBe(32000);
+    });
+
+    it("blocks payroll when a branch attendance conflict remains pending or disputed", async () => {
+      await AttendanceBranchConflict.create([
+        {
+          organizationId: orgId,
+          staffId: testStaff._id,
+          date: new Date("2026-11-24T00:00:00.000Z"),
+          branchesInvolved: [{ branchId, punchCount: 1 }],
+          primaryBranchId: branchId,
+          conflictStatus: "pending",
+          isActive: true,
+        },
+        {
+          organizationId: orgId,
+          staffId: testStaff._id,
+          date: new Date("2026-11-25T00:00:00.000Z"),
+          branchesInvolved: [{ branchId, punchCount: 1 }],
+          primaryBranchId: branchId,
+          conflictStatus: "disputed",
+          isActive: true,
+          reason: "Branch ownership of attendance is disputed",
+        },
+      ]);
+
+      const res = await request(app)
+        .post("/api/v1/payroll/calculate")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          payrollPeriodId: periodId.toString(),
+          staffIds: [testStaff._id.toString()],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data[0].approvalBlocked).toBe(true);
+      expect(res.body.data[0].approvalBlockReasons).toContain(
+        "Staff has 2 unresolved attendance conflict(s)",
+      );
+      await AttendanceBranchConflict.deleteMany({ organizationId: orgId });
     });
 
     it("blocks approval when attendance has incomplete records", async () => {
@@ -418,6 +481,71 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
         monthYear: "2026-11",
       });
       expect(record.approvalBlocked).toBe(false);
+      expect(record.incentiveAmountInPaise).toBe(0);
+
+      const scheme = await IncentiveScheme.create({
+        organizationId: orgId,
+        name: "Verified attendance payroll test",
+        code: `ATT_PAYROLL_${Date.now()}`,
+        schemeType: "ATTENDANCE_BONUS",
+        calculationBasis: "ATTENDANCE_DAYS",
+        rules: {
+          fixedAmountPaise: 1234,
+          minimumAttendanceDays: 20,
+          tiers: [],
+        },
+        status: "active",
+      });
+      await IncentiveEvaluation.create({
+        organizationId: orgId,
+        branchId,
+        staffId: testStaff._id,
+        schemeId: scheme._id,
+        monthYear: "2026-11",
+        evaluationType: "ATTENDANCE_BONUS",
+        targetDays: 20,
+        achievedDays: 21,
+        isTargetMet: true,
+        bonusAwardedInPaise: 1234,
+        status: "finalized",
+        finalizedBy: adminUser._id,
+        finalizedAt: new Date(),
+      });
+
+      const staleApproval = await request(app)
+        .post(`/api/v1/payroll/records/${record._id}/approve`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send();
+      expect(staleApproval.status).toBe(409);
+      expect(staleApproval.body.message).toContain("Finalized incentives changed");
+
+      const recalculated = await request(app)
+        .post("/api/v1/payroll/calculate")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          payrollPeriodId: periodId.toString(),
+          staffIds: [testStaff._id.toString()],
+        });
+      expect(recalculated.status).toBe(200);
+      expect(recalculated.body.data[0].incentiveAmountInPaise).toBe(1234);
+      expect(recalculated.body.data[0].incentiveEvaluationIds).toContain(
+        (await IncentiveEvaluation.findOne({ organizationId: orgId, staffId: testStaff._id }))._id.toString(),
+      );
+      expect(recalculated.body.data[0].calculations.totalIncentivesInPaise).toBe(1234);
+      expect(recalculated.body.data[0].calculations.totalGrossPay).toBe(35012.34);
+      expect(recalculated.body.data[0].calculations.netPayable).toBe(32012.34);
+
+      const attendanceRetry = await request(app)
+        .post("/api/v1/payroll/calculate")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          payrollPeriodId: periodId.toString(),
+          staffIds: [testStaff._id.toString()],
+        });
+      expect(attendanceRetry.status).toBe(200);
+      expect(attendanceRetry.body.data[0].incentiveAmountInPaise).toBe(1234);
+      expect(attendanceRetry.body.data[0].incentiveEvaluationIds).toHaveLength(1);
+      expect(attendanceRetry.body.data[0].calculations.totalIncentivesInPaise).toBe(1234);
 
       // Now approve
       const res = await request(app)
@@ -428,56 +556,695 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.status).toBe("approved");
+
+      const approvedRecord = await PayrollRecord.findById(record._id);
+      const paymentDate = "2026-11-30T00:00:00.000Z";
+      const recordedPayment = await request(app)
+        .post(`/api/v1/payroll/records/${approvedRecord._id}/pay`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          paymentMethod: "bank_transfer",
+          paymentReference: "ATTENDANCE-BONUS-UTR",
+          amountInPaise: Math.round(approvedRecord.calculations.netPayable * 100),
+          paymentDate,
+          idempotencyKey: `attendance-payroll-${approvedRecord._id}`,
+        });
+      expect(recordedPayment.status).toBe(201);
+      expect(recordedPayment.body.data.record.status).toBe("approved");
+      expect(recordedPayment.body.data.payment.incentiveAmountInPaise).toBe(1234);
+      expect(recordedPayment.body.data.payment.incentiveEvaluationIds).toContain(
+        recalculated.body.data[0].incentiveEvaluationIds[0],
+      );
+
+      const settlement = await request(app)
+        .post(`/api/v1/payroll/records/${approvedRecord._id}/payments/${recordedPayment.body.data.payment._id}/confirm`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ confirmActualPayment: true });
+      expect(settlement.status).toBe(200);
+      expect(settlement.body.data.record.status).toBe("paid");
+      expect(settlement.body.data.payment.status).toBe("confirmed");
+      expect(settlement.body.data.record.manualPaymentStatus).toBe("confirmed");
+    });
+  });
+
+  describe("3a. Commission payroll allocation and manual recovery", () => {
+    it("allocates payable commission once and supports auditable, idempotent partial recovery", async () => {
+      const period = await PayrollPeriod.findOne({
+        organizationId: orgId,
+        monthYear: "2026-11",
+        isDeleted: false,
+      });
+      expect(period).toBeTruthy();
+
+      const staff = await Staff.create({
+        name: "Commission Payroll Test",
+        email: `commission-payroll-${Date.now()}@test.com`,
+        phone: `+9198${String(Date.now()).slice(-8)}`,
+        organizationId: orgId,
+        designation: "Stylist",
+        staffCode: `CPT-${Date.now()}`,
+        joiningDate: new Date("2026-11-01T00:00:00.000Z"),
+        status: "active",
+      });
+      await Promise.all([
+        StaffBranch.create({
+          staffId: staff._id,
+          branchId,
+          organizationId: orgId,
+          isPrimary: true,
+          isActive: true,
+        }),
+        SalaryStructure.create({
+          organizationId: orgId,
+          staffId: staff._id,
+          payType: "fixed_monthly",
+          baseSalary: 30000,
+          effectiveFrom: new Date("2026-11-01T00:00:00.000Z"),
+        }),
+      ]);
+
+      const schemeId = new mongoose.Types.ObjectId();
+      const invoiceId = new mongoose.Types.ObjectId();
+      const settlementEventId = new mongoose.Types.ObjectId();
+      const lineItemId = new mongoose.Types.ObjectId();
+      const accrual = await IncentiveLedger.create({
+        organizationId: orgId,
+        branchId,
+        staffId: staff._id,
+        schemeId,
+        entryType: "ACCRUAL",
+        sourceType: "service_commission",
+        settlementEventId,
+        invoiceId,
+        lineItemId,
+        fulfillmentStatus: "confirmed",
+        fulfillmentConfirmedAt: new Date(),
+        fulfillmentConfirmedBy: adminUser._id,
+        sourceRevenueInPaise: 100000,
+        attributedRevenueInPaise: 100000,
+        amountInPaise: 10000,
+        idempotencyKey: `payroll-commission-accrual-${staff._id}`,
+        createdAt: new Date("2026-11-10T00:00:00.000Z"),
+      });
+      const coveredClawback = await IncentiveLedger.create({
+        organizationId: orgId,
+        branchId,
+        staffId: staff._id,
+        schemeId,
+        entryType: "CLAWBACK",
+        sourceType: "service_commission",
+        settlementEventId: new mongoose.Types.ObjectId(),
+        invoiceId,
+        lineItemId,
+        reversesLedgerId: accrual._id,
+        fulfillmentStatus: "not_applicable",
+        sourceRevenueInPaise: 20000,
+        attributedRevenueInPaise: 20000,
+        amountInPaise: 2000,
+        idempotencyKey: `payroll-commission-clawback-${staff._id}`,
+        createdAt: new Date("2026-11-12T00:00:00.000Z"),
+      });
+
+      const calculated = await request(app)
+        .post("/api/v1/payroll/calculate")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({ payrollPeriodId: period._id.toString(), staffIds: [staff._id.toString()] });
+      expect(calculated.status).toBe(200);
+      const record = calculated.body.data.find((item) => item.staffId === staff._id.toString());
+      expect(record).toBeTruthy();
+      expect(record.incentiveLedgerGrossInPaise).toBe(10000);
+      expect(record.incentiveLedgerClawbackInPaise).toBe(2000);
+      expect(record.incentiveLedgerAmountInPaise).toBe(8000);
+
+      const approved = await request(app)
+        .post(`/api/v1/payroll/records/${record._id}/approve`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send();
+      expect(approved.status).toBe(200);
+      const allocation = await PayrollIncentiveAllocation.findOne({
+        organizationId: orgId,
+        incentiveLedgerId: accrual._id,
+      });
+      expect(allocation.status).toBe("approved");
+      expect(allocation.payableAmountInPaise).toBe(8000);
+      expect(allocation.coveredClawbackLedgerIds.map(String)).toContain(String(coveredClawback._id));
+      expect(await PayrollIncentiveAllocation.countDocuments({
+        organizationId: orgId,
+        incentiveLedgerId: accrual._id,
+      })).toBe(1);
+
+      const paymentAmount = Math.round(approved.body.data.calculations.netPayable * 100);
+      const paymentAttempt = await request(app)
+        .post(`/api/v1/payroll/records/${record._id}/pay`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({
+          paymentMethod: "bank_transfer",
+          paymentReference: `COMMISSION-${record._id}`,
+          amountInPaise: paymentAmount,
+          paymentDate: "2026-11-30T00:00:00.000Z",
+          idempotencyKey: `commission-payroll-${record._id}`,
+        });
+      expect(paymentAttempt.status).toBe(201);
+      expect(paymentAttempt.body.data.payment.incentiveLedgerAmountInPaise).toBe(8000);
+      const settled = await request(app)
+        .post(`/api/v1/payroll/records/${record._id}/payments/${paymentAttempt.body.data.payment._id}/confirm`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({ confirmActualPayment: true });
+      expect(settled.status).toBe(200);
+      expect(settled.body.data.record.status).toBe("paid");
+      expect((await PayrollIncentiveAllocation.findById(allocation._id)).status).toBe("paid");
+
+      const coveredObligation = await IncentiveRecoveryObligation.create({
+        organizationId: orgId,
+        branchId,
+        staffId: staff._id,
+        clawbackLedgerId: coveredClawback._id,
+        originalClawbackInPaise: 2000,
+      });
+      const recoveryRequest = (obligationId, amountInPaise, idempotencyKey) =>
+        request(app)
+          .post(`/api/v1/incentives/recovery-obligations/${obligationId}/payments`)
+          .set("Authorization", `Bearer ${adminToken}`)
+          .set("X-Branch-Id", branchId.toString())
+          .send({
+            amountInPaise,
+            paymentMethod: "bank_transfer",
+            paymentReference: `RECOVERY-${idempotencyKey}`,
+            paymentDate: "2026-12-01T00:00:00.000Z",
+            reason: "Manual recovery settlement",
+            idempotencyKey,
+          });
+      const coveredRecovery = await recoveryRequest(
+        coveredObligation._id,
+        2000,
+        `covered-${record._id}`,
+      );
+      expect(coveredRecovery.status).toBe(409);
+
+      const postPayrollClawback = await IncentiveLedger.create({
+        organizationId: orgId,
+        branchId,
+        staffId: staff._id,
+        schemeId,
+        entryType: "CLAWBACK",
+        sourceType: "service_commission",
+        settlementEventId: new mongoose.Types.ObjectId(),
+        invoiceId,
+        lineItemId,
+        reversesLedgerId: accrual._id,
+        fulfillmentStatus: "not_applicable",
+        sourceRevenueInPaise: 10000,
+        attributedRevenueInPaise: 10000,
+        amountInPaise: 1000,
+        idempotencyKey: `payroll-post-settlement-clawback-${staff._id}`,
+        createdAt: new Date("2026-11-15T00:00:00.000Z"),
+      });
+      const obligation = await IncentiveRecoveryObligation.create({
+        organizationId: orgId,
+        branchId,
+        staffId: staff._id,
+        clawbackLedgerId: postPayrollClawback._id,
+        originalClawbackInPaise: 1000,
+      });
+
+      const unauthorized = await request(app)
+        .post(`/api/v1/incentives/recovery-obligations/${obligation._id}/payments`)
+        .set("Authorization", `Bearer ${managerToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({
+          amountInPaise: 100,
+          paymentMethod: "cash",
+          paymentReference: "UNAUTHORIZED",
+          paymentDate: "2026-12-01T00:00:00.000Z",
+          reason: "Unauthorized recovery attempt",
+          idempotencyKey: `unauth-${record._id}`,
+        });
+      expect(unauthorized.status).toBe(403);
+
+      const concurrentKeys = [
+        `recovery-concurrent-a-${record._id}`,
+        `recovery-concurrent-b-${record._id}`,
+      ];
+      const concurrentAttempts = await Promise.all(
+        concurrentKeys.map((key) => recoveryRequest(obligation._id, 600, key)),
+      );
+      expect(concurrentAttempts.map((attempt) => attempt.status).sort()).toEqual([201, 409]);
+      const failedAttempt = concurrentAttempts.find((attempt) => attempt.status === 201);
+      expect(failedAttempt.body.data.payment.status).toBe("recorded");
+      expect((await IncentiveRecoveryObligation.findById(obligation._id)).totalReservedInPaise).toBe(600);
+      const attemptKey = failedAttempt.body.data.payment.idempotencyKey;
+      const replayedAttempt = await recoveryRequest(obligation._id, 600, attemptKey);
+      expect(replayedAttempt.status).toBe(200);
+      expect(replayedAttempt.body.data.isIdempotentReplay).toBe(true);
+      expect(await IncentiveRecoveryPayment.countDocuments({
+        organizationId: orgId,
+        idempotencyKey: attemptKey,
+      })).toBe(1);
+
+      const failed = await request(app)
+        .post(`/api/v1/incentives/recovery-obligations/${obligation._id}/payments/${failedAttempt.body.data.payment._id}/fail`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({ failureReason: "Cash receipt was not issued" });
+      expect(failed.status).toBe(200);
+      expect(failed.body.data.obligation.totalReservedInPaise).toBe(0);
+
+      const confirmedAttempt = await recoveryRequest(
+        obligation._id,
+        600,
+        `recovery-confirm-${record._id}`,
+      );
+      expect(confirmedAttempt.status).toBe(201);
+      const confirmedRecovery = await request(app)
+        .post(`/api/v1/incentives/recovery-obligations/${obligation._id}/payments/${confirmedAttempt.body.data.payment._id}/confirm`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({ confirmActualPayment: true });
+      expect(confirmedRecovery.status).toBe(200);
+      expect(confirmedRecovery.body.data.obligation.totalRecoveredInPaise).toBe(600);
+      const replayedConfirmation = await request(app)
+        .post(`/api/v1/incentives/recovery-obligations/${obligation._id}/payments/${confirmedAttempt.body.data.payment._id}/confirm`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({ confirmActualPayment: true });
+      expect(replayedConfirmation.status).toBe(200);
+      expect(replayedConfirmation.body.data.isIdempotentReplay).toBe(true);
+
+      const reversedRecovery = await request(app)
+        .post(`/api/v1/incentives/recovery-obligations/${obligation._id}/payments/${confirmedAttempt.body.data.payment._id}/reverse`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({
+          confirmActualReversal: true,
+          reversalReason: "Recovery transfer was returned",
+        });
+      expect(reversedRecovery.status).toBe(200);
+      expect(reversedRecovery.body.data.obligation.totalRecoveredInPaise).toBe(0);
+      expect((await PayrollIncentiveAllocation.findById(allocation._id)).recoveredInPaise).toBe(0);
+      const reversedAgain = await request(app)
+        .post(`/api/v1/incentives/recovery-obligations/${obligation._id}/payments/${confirmedAttempt.body.data.payment._id}/reverse`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({
+          confirmActualReversal: true,
+          reversalReason: "Recovery transfer was returned",
+        });
+      expect(reversedAgain.status).toBe(200);
+      expect(reversedAgain.body.data.isIdempotentReplay).toBe(true);
+
+      const overRecovery = await recoveryRequest(
+        obligation._id,
+        1001,
+        `recovery-over-${record._id}`,
+      );
+      expect(overRecovery.status).toBe(409);
+      const finalRecoveryAttempt = await recoveryRequest(
+        obligation._id,
+        400,
+        `recovery-final-${record._id}`,
+      );
+      expect(finalRecoveryAttempt.status).toBe(201);
+      const finalConfirmation = await request(app)
+        .post(`/api/v1/incentives/recovery-obligations/${obligation._id}/payments/${finalRecoveryAttempt.body.data.payment._id}/confirm`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({ confirmActualPayment: true });
+      expect(finalConfirmation.status).toBe(200);
+      expect(finalConfirmation.body.data.obligation.status).toBe("partially_recovered");
+      expect(finalConfirmation.body.data.obligation.totalRecoveredInPaise).toBe(400);
+
+      const lastRecoveryAttempt = await recoveryRequest(
+        obligation._id,
+        600,
+        `recovery-last-${record._id}`,
+      );
+      expect(lastRecoveryAttempt.status).toBe(201);
+      const lastConfirmation = await request(app)
+        .post(`/api/v1/incentives/recovery-obligations/${obligation._id}/payments/${lastRecoveryAttempt.body.data.payment._id}/confirm`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({ confirmActualPayment: true });
+      expect(lastConfirmation.status).toBe(200);
+      expect(lastConfirmation.body.data.obligation.status).toBe("recovered");
+      expect(lastConfirmation.body.data.obligation.totalRecoveredInPaise).toBe(1000);
+      expect((await PayrollIncentiveAllocation.findById(allocation._id)).recoveredInPaise).toBe(1000);
+    });
+
+    it("allocates each supported commission source once and keeps unapproved categories invalid", async () => {
+      const period = await PayrollPeriod.findOne({
+        organizationId: orgId,
+        monthYear: "2026-11",
+        isDeleted: false,
+      });
+      expect(period).toBeTruthy();
+
+      const staff = await Staff.create({
+        name: "All Commission Sources Test",
+        email: `commission-sources-${Date.now()}@test.com`,
+        phone: `+9197${String(Date.now()).slice(-8)}`,
+        organizationId: orgId,
+        designation: "Stylist",
+        staffCode: `CST-${Date.now()}`,
+        joiningDate: period.startDate,
+        status: "active",
+      });
+      await Promise.all([
+        StaffBranch.create({
+          staffId: staff._id,
+          branchId,
+          organizationId: orgId,
+          isPrimary: true,
+          isActive: true,
+        }),
+        SalaryStructure.create({
+          organizationId: orgId,
+          staffId: staff._id,
+          payType: "fixed_monthly",
+          baseSalary: 30000,
+          effectiveFrom: period.startDate,
+        }),
+      ]);
+
+      const sourceTypes = [
+        "service_commission",
+        "subscription_sale_commission",
+        "membership_sale_commission",
+        "retail_sale_commission",
+      ];
+      const accruals = await IncentiveLedger.create(sourceTypes.map((sourceType, index) => ({
+        organizationId: orgId,
+        branchId,
+        staffId: staff._id,
+        schemeId: new mongoose.Types.ObjectId(),
+        entryType: "ACCRUAL",
+        sourceType,
+        settlementEventId: new mongoose.Types.ObjectId(),
+        invoiceId: new mongoose.Types.ObjectId(),
+        lineItemId: new mongoose.Types.ObjectId(),
+        fulfillmentStatus: sourceType === "service_commission" ? "confirmed" : "not_applicable",
+        sourceRevenueInPaise: 100000,
+        attributedRevenueInPaise: 100000,
+        amountInPaise: 1000,
+        idempotencyKey: `all-commission-sources-${staff._id}-${index}`,
+        createdAt: new Date("2026-11-10T00:00:00.000Z"),
+      })));
+
+      const calculated = await request(app)
+        .post("/api/v1/payroll/calculate")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({ payrollPeriodId: period._id.toString(), staffIds: [staff._id.toString()] });
+      expect(calculated.status).toBe(200);
+      const record = calculated.body.data.find((item) => item.staffId === staff._id.toString());
+      expect(record.incentiveLedgerGrossInPaise).toBe(4000);
+      expect(record.incentiveLedgerAmountInPaise).toBe(4000);
+
+      const approved = await request(app)
+        .post(`/api/v1/payroll/records/${record._id}/approve`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send();
+      expect(approved.status).toBe(200);
+      const allocations = await PayrollIncentiveAllocation.find({
+        organizationId: orgId,
+        incentiveLedgerId: { $in: accruals.map((entry) => entry._id) },
+      }).sort({ sourceType: 1 });
+      expect(allocations).toHaveLength(sourceTypes.length);
+      expect(allocations.map((allocation) => allocation.sourceType).sort()).toEqual(
+        [...sourceTypes].sort(),
+      );
+      expect(allocations.every((allocation) =>
+        allocation.payableAmountInPaise === 1000 &&
+        allocation.payrollPeriodId.toString() === period._id.toString() &&
+        allocation.sourceBranchId.toString() === branchId.toString(),
+      )).toBe(true);
+
+      const paymentAttempt = await request(app)
+        .post(`/api/v1/payroll/records/${record._id}/pay`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({
+          paymentMethod: "bank_transfer",
+          paymentReference: `ALL-COMMISSION-SOURCES-${record._id}`,
+          amountInPaise: Math.round(approved.body.data.calculations.netPayable * 100),
+          paymentDate: period.endDate.toISOString(),
+          idempotencyKey: `all-commission-sources-payment-${record._id}`,
+        });
+      expect(paymentAttempt.status).toBe(201);
+      expect(paymentAttempt.body.data.record.status).toBe("approved");
+      const confirmed = await request(app)
+        .post(`/api/v1/payroll/records/${record._id}/payments/${paymentAttempt.body.data.payment._id}/confirm`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Branch-Id", branchId.toString())
+        .send({ confirmActualPayment: true });
+      expect(confirmed.status).toBe(200);
+      expect(confirmed.body.data.record.status).toBe("paid");
+      expect(await PayrollIncentiveAllocation.countDocuments({
+        organizationId: orgId,
+        incentiveLedgerId: { $in: accruals.map((entry) => entry._id) },
+        status: "paid",
+      })).toBe(sourceTypes.length);
+
+      const unsupported = new IncentiveLedger({
+        ...accruals[0].toObject(),
+        _id: undefined,
+        sourceType: "subscription_renewal_commission",
+        idempotencyKey: `unsupported-renewal-${staff._id}`,
+      });
+      await expect(unsupported.validate()).rejects.toThrow(
+        "subscription_renewal_commission",
+      );
     });
   });
 
   describe("4. Payment Recording & Concurrency Safety", () => {
-    it("successfully records payment for approved record", async () => {
-      const record = await PayrollRecord.findOne({
+    let paymentRecordSequence = 0;
+    const createApprovedRecord = async () => {
+      paymentRecordSequence += 1;
+      const month = String(paymentRecordSequence).padStart(2, "0");
+      const monthYear = `2027-${month}`;
+      const monthNumber = paymentRecordSequence;
+      const totalDays = new Date(Date.UTC(2027, monthNumber, 0)).getUTCDate();
+      const period = await PayrollPeriod.create({
         organizationId: orgId,
-        staffId: testStaff._id,
-        monthYear: "2026-11",
+        year: 2027,
+        month: monthNumber,
+        monthYear,
+        startDate: new Date(Date.UTC(2027, monthNumber - 1, 1)),
+        endDate: new Date(Date.UTC(2027, monthNumber, 0, 23, 59, 59, 999)),
+        totalDays,
+        status: "open",
       });
+      const evaluation = await IncentiveEvaluation.create({
+        organizationId: orgId,
+        branchId,
+        staffId: testStaff._id,
+        schemeId: new mongoose.Types.ObjectId(),
+        monthYear,
+        evaluationType: "ATTENDANCE_BONUS",
+        status: "finalized",
+        bonusAwardedInPaise: 1234,
+        isTargetMet: true,
+        finalizedBy: adminUser._id,
+        finalizedAt: new Date(),
+      });
+      return PayrollRecord.create({
+        organizationId: orgId,
+        branchId,
+        payrollPeriodId: period._id,
+        staffId: testStaff._id,
+        monthYear,
+        status: "approved",
+        salaryStructureSnapshot: {
+          payType: "fixed_monthly",
+          baseSalary: 30000,
+          hourlyRate: 0,
+          allowances: [],
+          deductions: [],
+        },
+        attendanceSummarySnapshot: {
+          totalDaysInMonth: 31,
+          eligibleDays: 31,
+          presentDays: 31,
+          lateDays: 0,
+          earlyDepartureDays: 0,
+          incompleteDays: 0,
+          unresolvedConflicts: 0,
+          paidLeaveDays: 0,
+          unpaidLeaveDays: 0,
+          absentDays: 0,
+        },
+        incentiveEvaluationIds: [evaluation._id],
+        incentiveAmountInPaise: evaluation.bonusAwardedInPaise,
+        calculations: {
+          prorationFactor: 1,
+          grossBaseSalary: 30000,
+          totalAllowances: 0,
+          totalGrossPay: 30012.34,
+          unpaidLeaveDeduction: 0,
+          fixedDeductions: 0,
+          totalAdjustmentsEarning: 0,
+          totalAdjustmentsDeduction: 0,
+          totalIncentivesInPaise: evaluation.bonusAwardedInPaise,
+          totalDeductions: 0,
+          netPayable: 30012.34,
+        },
+        approvalBlocked: false,
+        approvalBlockReasons: [],
+        manualPaymentStatus: "none",
+        manualPaymentId: null,
+        manualPaymentAmountInPaise: null,
+        paymentMethod: null,
+        paymentReference: null,
+        disbursedAt: null,
+        disbursedBy: null,
+        createdBy: adminUser._id,
+        updatedBy: adminUser._id,
+      });
+    };
 
-      const res = await request(app)
-        .post(`/api/v1/payroll/records/${record._id}/pay`)
+    const recordPayment = (recordId, idempotencyKey, amountInPaise) =>
+      request(app)
+        .post(`/api/v1/payroll/records/${recordId}/pay`)
         .set("Authorization", `Bearer ${adminToken}`)
         .send({
           paymentMethod: "bank_transfer",
-          paymentReference: "UTR9876543210",
+          paymentReference: `UTR-${idempotencyKey}`,
+          amountInPaise,
+          paymentDate: "2027-01-15T00:00:00.000Z",
+          idempotencyKey,
         });
 
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.status).toBe("paid");
-      expect(res.body.data.paymentReference).toBe("UTR9876543210");
+    it("separates payment recording from settlement confirmation and makes retries/reversals idempotent", async () => {
+      const record = await createApprovedRecord();
+      const amountInPaise = Math.round(record.calculations.netPayable * 100);
+      const idempotencyKey = `pay-${record._id.toString()}`;
+      const recorded = await recordPayment(record._id, idempotencyKey, amountInPaise);
+
+      expect(recorded.status).toBe(201);
+      expect(recorded.body.data.record.status).toBe("approved");
+      expect(recorded.body.data.record.manualPaymentStatus).toBe("recorded");
+      expect(recorded.body.data.payment.status).toBe("recorded");
+      expect(recorded.body.data.payment.incentiveAmountInPaise).toBe(1234);
+      expect(recorded.body.data.payment.incentiveEvaluationIds).toContain(
+        record.incentiveEvaluationIds[0].toString(),
+      );
+      expect(recorded.body.data.record.disbursedAt).toBeNull();
+
+      const notSettled = await PayrollRecord.findById(record._id);
+      expect(notSettled.status).toBe("approved");
+      expect(notSettled.manualPaymentStatus).toBe("recorded");
+
+      const paymentId = recorded.body.data.payment._id;
+      const confirmed = await request(app)
+        .post(`/api/v1/payroll/records/${record._id}/payments/${paymentId}/confirm`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ confirmActualPayment: true });
+
+      expect(confirmed.status).toBe(200);
+      expect(confirmed.body.data.record.status).toBe("paid");
+      expect(confirmed.body.data.record.manualPaymentStatus).toBe("confirmed");
+      expect(confirmed.body.data.payment.status).toBe("confirmed");
+      expect(confirmed.body.data.record.disbursedBy).toBe(adminUser._id.toString());
+
+      const details = await request(app)
+        .get(`/api/v1/payroll/records/${record._id}`)
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(details.status).toBe(200);
+      expect(details.body.data.latestPaymentAttempt.status).toBe("confirmed");
+      expect(details.body.data.paymentHistory[0].history.map((event) => event.action)).toEqual([
+        "recorded",
+        "confirmed",
+      ]);
+
+      const replayedPayment = await recordPayment(record._id, idempotencyKey, amountInPaise);
+      expect(replayedPayment.status).toBe(200);
+      expect(replayedPayment.body.data.isIdempotentReplay).toBe(true);
+
+      const replayedConfirmation = await request(app)
+        .post(`/api/v1/payroll/records/${record._id}/payments/${paymentId}/confirm`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ confirmActualPayment: true });
+      expect(replayedConfirmation.status).toBe(200);
+      expect(replayedConfirmation.body.data.isIdempotentReplay).toBe(true);
+      expect(await PayrollPayment.countDocuments({ organizationId: orgId, payrollRecordId: record._id })).toBe(1);
+
+      const reversed = await request(app)
+        .post(`/api/v1/payroll/records/${record._id}/reverse`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ reversalReason: "Payment was confirmed against the wrong account" });
+      expect(reversed.status).toBe(200);
+      expect(reversed.body.data.status).toBe("cancelled");
+      expect(reversed.body.payment.status).toBe("reversed");
+
+      const reversalReplay = await request(app)
+        .post(`/api/v1/payroll/records/${record._id}/reverse`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ reversalReason: "Payment was confirmed against the wrong account" });
+      expect(reversalReplay.status).toBe(200);
+      expect(reversalReplay.body.isIdempotentReplay).toBe(true);
+      expect(await PayrollPayment.countDocuments({ organizationId: orgId, payrollRecordId: record._id })).toBe(1);
     });
 
-    it("prevents duplicate payments on already paid record", async () => {
-      const record = await PayrollRecord.findOne({
-        organizationId: orgId,
-        staffId: testStaff._id,
-        monthYear: "2026-11",
-      });
+    it("keeps failed payments unsettled, supports a new idempotent attempt, and rejects duplicate pending attempts", async () => {
+      const record = await createApprovedRecord();
+      const amountInPaise = Math.round(record.calculations.netPayable * 100);
+      const concurrentAttempts = await Promise.all([
+        recordPayment(record._id, `attempt-${record._id}-1`, amountInPaise),
+        recordPayment(record._id, `attempt-${record._id}-2`, amountInPaise),
+      ]);
+      expect(concurrentAttempts.map((attempt) => attempt.status).sort()).toEqual([201, 409]);
+      const firstAttempt = concurrentAttempts.find((attempt) => attempt.status === 201);
+      expect(firstAttempt).toBeTruthy();
+      expect(firstAttempt.status).toBe(201);
 
-      const res = await request(app)
-        .post(`/api/v1/payroll/records/${record._id}/pay`)
+      const firstPaymentId = firstAttempt.body.data.payment._id;
+      const failed = await request(app)
+        .post(`/api/v1/payroll/records/${record._id}/payments/${firstPaymentId}/fail`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .send({
-          paymentMethod: "cash",
-          paymentReference: "CASH-REPEAT",
-        });
+        .send({ failureReason: "Bank rejected beneficiary account" });
+      expect(failed.status).toBe(200);
+      expect(failed.body.data.record.status).toBe("approved");
+      expect(failed.body.data.record.manualPaymentStatus).toBe("failed");
+      expect(failed.body.data.payment.status).toBe("failed");
 
+      const retry = await recordPayment(record._id, `attempt-${record._id}-3`, amountInPaise);
+      expect(retry.status).toBe(201);
+      expect(retry.body.data.payment._id).not.toBe(firstPaymentId);
+      expect(await PayrollPayment.countDocuments({ organizationId: orgId, payrollRecordId: record._id })).toBe(2);
+    });
+
+    it("rejects amounts that do not exactly match the payroll payable", async () => {
+      const record = await createApprovedRecord();
+      const expectedAmountInPaise = Math.round(record.calculations.netPayable * 100);
+      const res = await recordPayment(
+        record._id,
+        `wrong-${record._id}`,
+        expectedAmountInPaise + 1,
+      );
       expect(res.status).toBe(400);
+      expect(res.body.message).toContain("exact payroll payable amount");
+      expect(await PayrollPayment.countDocuments({ organizationId: orgId, payrollRecordId: record._id })).toBe(0);
     });
 
     it("reverses a paid record with an audited reason", async () => {
-      const record = await PayrollRecord.findOne({
-        organizationId: orgId,
-        staffId: testStaff._id,
-        monthYear: "2026-11",
-      });
-
+      const record = await createApprovedRecord();
+      await PayrollRecord.updateOne(
+        { _id: record._id, organizationId: orgId },
+        {
+          $set: {
+            status: "paid",
+            paymentMethod: "bank_transfer",
+            paymentReference: "LEGACY_SETTLEMENT",
+            disbursedAt: new Date(),
+            disbursedBy: adminUser._id,
+          },
+        },
+      );
       const res = await request(app)
         .post(`/api/v1/payroll/records/${record._id}/reverse`)
         .set("Authorization", `Bearer ${adminToken}`)
@@ -674,6 +1441,12 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
         });
       expect(payRes.status).toBe(403);
 
+      const confirmRes = await request(app)
+        .post(`/api/v1/payroll/records/${testRecord._id}/payments/${new mongoose.Types.ObjectId()}/confirm`)
+        .set("Authorization", `Bearer ${managerToken}`)
+        .send({ confirmActualPayment: true });
+      expect(confirmRes.status).toBe(403);
+
       // 4. Manager attempts to reverse -> Denied with 403 (requires payroll.reverse)
       const revRes = await request(app)
         .post(`/api/v1/payroll/records/${testRecord._id}/reverse`)
@@ -682,6 +1455,25 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
           reversalReason: "Manager unauthorized cancel",
         });
       expect(revRes.status).toBe(403);
+
+      const managerRecords = await request(app)
+        .get("/api/v1/payroll/records")
+        .set("Authorization", `Bearer ${managerToken}`)
+        .set("X-Branch-Id", branchId.toString());
+      expect(managerRecords.status).toBe(200);
+
+      const unassignedBranch = await Branch.create({
+        name: "Restricted Payroll Branch",
+        code: `RPB-${Date.now()}`,
+        organizationId: orgId,
+        isActive: true,
+      });
+      const deniedBranchRecords = await request(app)
+        .get("/api/v1/payroll/records")
+        .set("Authorization", `Bearer ${managerToken}`)
+        .set("X-Branch-Id", unassignedBranch._id.toString());
+      expect(deniedBranchRecords.status).toBe(403);
+      await Branch.deleteOne({ _id: unassignedBranch._id });
 
       // Clean up
       await PayrollRecord.deleteOne({ _id: testRecord._id });

@@ -10,6 +10,8 @@ import {
   calculatePayrollSchema,
   approvePayrollRecordSchema,
   payPayrollRecordSchema,
+  confirmPayrollPaymentSchema,
+  failPayrollPaymentSchema,
   reversePayrollRecordSchema,
   addAdjustmentSchema,
 } from "../../validation/payroll/payroll.validation.js";
@@ -24,6 +26,7 @@ router.use(requireOrganizationScope);
 router.post(
   "/structures",
   requirePermission("payroll.structure.manage"),
+  requireBranchScope,
   validate(createSalaryStructureSchema),
   PayrollController.setSalaryStructure
 );
@@ -31,12 +34,14 @@ router.post(
 router.get(
   "/structures/:staffId",
   requirePermission("payroll.view"),
+  requireBranchScope,
   PayrollController.getEffectiveSalaryStructure
 );
 
 router.get(
   "/structures/:staffId/history",
   requirePermission("payroll.view"),
+  requireBranchScope,
   PayrollController.getSalaryStructureHistory
 );
 
@@ -58,6 +63,7 @@ router.get(
 router.post(
   "/calculate",
   requirePermission("payroll.calculate"),
+  requireBranchScope,
   validate(calculatePayrollSchema),
   PayrollController.calculatePayroll
 );
@@ -66,6 +72,7 @@ router.post(
 router.post(
   "/records/:id/adjust",
   requirePermission("payroll.adjust"),
+  requireBranchScope,
   validate(addAdjustmentSchema),
   PayrollController.addAdjustment
 );
@@ -74,12 +81,14 @@ router.post(
 router.post(
   "/records/:id/submit",
   requirePermission("payroll.calculate"),
+  requireBranchScope,
   PayrollController.submitForApproval
 );
 
 router.post(
   "/records/:id/approve",
   requirePermission("payroll.approve"),
+  requireBranchScope,
   validate(approvePayrollRecordSchema),
   PayrollController.approvePayrollRecord
 );
@@ -87,13 +96,31 @@ router.post(
 router.post(
   "/records/:id/pay",
   requirePermission("payroll.disburse"),
+  requireBranchScope,
   validate(payPayrollRecordSchema),
   PayrollController.recordPayment
 );
 
 router.post(
+  "/records/:id/payments/:paymentId/confirm",
+  requirePermission("payroll.disburse"),
+  requireBranchScope,
+  validate(confirmPayrollPaymentSchema),
+  PayrollController.confirmPayment
+);
+
+router.post(
+  "/records/:id/payments/:paymentId/fail",
+  requirePermission("payroll.disburse"),
+  requireBranchScope,
+  validate(failPayrollPaymentSchema),
+  PayrollController.failPayment
+);
+
+router.post(
   "/records/:id/reverse",
   requirePermission("payroll.reverse"),
+  requireBranchScope,
   validate(reversePayrollRecordSchema),
   PayrollController.reversePayment
 );
@@ -102,18 +129,21 @@ router.post(
 router.get(
   "/records",
   requirePermission("payroll.view"),
+  requireBranchScope,
   PayrollController.listPayrollRecords
 );
 
 router.get(
   "/records/:id",
   requirePermission("payroll.view"),
+  requireBranchScope,
   PayrollController.getPayrollRecordById
 );
 
 router.get(
   "/records/:id/payslip-pdf",
   requirePermission("payroll.export"),
+  requireBranchScope,
   PayrollController.downloadPayslipPdf
 );
 

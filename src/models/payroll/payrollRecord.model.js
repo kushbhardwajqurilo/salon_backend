@@ -39,6 +39,57 @@ const adjustmentItemSchema = new Schema(
   { _id: true }
 );
 
+const incentiveLedgerSnapshotSchema = new Schema(
+  {
+    ledgerEntryId: {
+      type: Schema.Types.ObjectId,
+      ref: "IncentiveLedger",
+      required: true,
+    },
+    sourceBranchId: {
+      type: Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+    },
+    sourceType: {
+      type: String,
+      required: true,
+      enum: [
+        "service_commission",
+        "subscription_sale_commission",
+        "membership_sale_commission",
+        "retail_sale_commission",
+      ],
+    },
+    sourceAmountInPaise: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+      validate: { validator: Number.isSafeInteger },
+    },
+    clawbackAmountInPaise: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+      validate: { validator: Number.isSafeInteger },
+    },
+    payableAmountInPaise: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+      validate: { validator: Number.isSafeInteger },
+    },
+    clawbackLedgerEntryIds: [{
+      type: Schema.Types.ObjectId,
+      ref: "IncentiveLedger",
+    }],
+  },
+  { _id: false },
+);
+
 const payrollRecordSchema = new Schema(
   {
     organizationId: {
@@ -109,6 +160,57 @@ const payrollRecordSchema = new Schema(
       sourceAttendanceRecordIds: [{ type: Schema.Types.ObjectId, ref: "Attendance" }],
       sourceLeaveRecordIds: [{ type: Schema.Types.ObjectId, ref: "Leave" }],
     },
+    incentiveEvaluationIds: [{
+      type: Schema.Types.ObjectId,
+      ref: "IncentiveEvaluation",
+    }],
+    incentiveAmountInPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: "{VALUE} is not an integer paise value",
+      },
+    },
+    incentiveLedgerScopeBranchId: {
+      type: Schema.Types.ObjectId,
+      ref: "Branch",
+      default: null,
+    },
+    incentiveLedgerEntries: {
+      type: [incentiveLedgerSnapshotSchema],
+      default: [],
+    },
+    incentiveLedgerEntryIds: [{
+      type: Schema.Types.ObjectId,
+      ref: "IncentiveLedger",
+    }],
+    incentiveLedgerClawbackEntryIds: [{
+      type: Schema.Types.ObjectId,
+      ref: "IncentiveLedger",
+    }],
+    incentiveLedgerGrossInPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+      validate: { validator: Number.isSafeInteger },
+    },
+    incentiveLedgerClawbackInPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+      validate: { validator: Number.isSafeInteger },
+    },
+    incentiveLedgerAmountInPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: Number.MAX_SAFE_INTEGER,
+      validate: { validator: Number.isSafeInteger },
+    },
     calculations: {
       prorationFactor: { type: Number, required: true },
       grossBaseSalary: { type: Number, required: true },
@@ -118,6 +220,7 @@ const payrollRecordSchema = new Schema(
       fixedDeductions: { type: Number, required: true },
       totalAdjustmentsEarning: { type: Number, default: 0 },
       totalAdjustmentsDeduction: { type: Number, default: 0 },
+      totalIncentivesInPaise: { type: Number, default: 0, min: 0 },
       totalDeductions: { type: Number, required: true },
       netPayable: { type: Number, required: true },
     },
@@ -151,6 +254,28 @@ const payrollRecordSchema = new Schema(
       type: String,
       trim: true,
       default: null,
+    },
+    manualPaymentStatus: {
+      type: String,
+      enum: ["none", "recorded", "confirmed", "failed", "reversed"],
+      default: "none",
+      required: true,
+      index: true,
+    },
+    manualPaymentId: {
+      type: Schema.Types.ObjectId,
+      ref: "PayrollPayment",
+      default: null,
+    },
+    manualPaymentAmountInPaise: {
+      type: Number,
+      default: null,
+      min: 1,
+      max: Number.MAX_SAFE_INTEGER,
+      validate: {
+        validator: (value) => value === null || Number.isSafeInteger(value),
+        message: "{VALUE} is not a safe integer paise amount",
+      },
     },
     disbursedAt: {
       type: Date,

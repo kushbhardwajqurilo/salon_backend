@@ -1,12 +1,19 @@
+import { createHash } from "node:crypto";
 import mongoose from "mongoose";
 import { AppError } from "../../utils/errors.js";
 import { SalaryStructure } from "../../models/payroll/salaryStructure.model.js";
 import { PayrollPeriod } from "../../models/payroll/payrollPeriod.model.js";
 import { PayrollRecord } from "../../models/payroll/payrollRecord.model.js";
+import { PayrollPayment } from "../../models/payroll/payrollPayment.model.js";
+import { PayrollIncentiveAllocation } from "../../models/payroll/payrollIncentiveAllocation.model.js";
 import { Staff } from "../../models/staff/staff.model.js";
 import { StaffBranch } from "../../models/staff/staffBranch.model.js";
 import { Attendance } from "../../models/attendance/attendance.model.js";
+import { AttendanceBranchConflict } from "../../models/attendance/AttendanceLeaveAppointmentConflict.model.js";
+import { IncentiveEvaluation } from "../../models/incentives/incentiveEvaluation.model.js";
+import { IncentiveLedger } from "../../models/incentives/incentiveLedger.model.js";
 import { Leave } from "../../models/leaves/leave.model.js";
+import { runInTransaction } from "../../utils/transaction.js";
 
 /**
  * Helper to calculate calendar days in a month
@@ -23,12 +30,203 @@ export function formatMonthYear(year, month) {
   return `${year}-${paddedMonth}`;
 }
 
+const branchCondition = (branchId) => branchId ? { branchId } : {};
+
+const assertStaffBranchAssignment = async ({ organizationId, staffId, branchId }) => {
+  if (!branchId) return;
+  const assignment = await StaffBranch.findOne({
+    organizationId,
+    staffId,
+    branchId,
+    isActive: true,
+  }).select("_id");
+  if (!assignment) throw new AppError("Staff member not found in the selected branch", 404);
+};
+
+const getNetPayableInPaise = (record) => {
+  const payable = Number(record.calculations?.netPayable);
+  if (!Number.isFinite(payable) || payable < 0) {
+    throw new AppError("Payroll payable amount is invalid", 409);
+  }
+  const amountInPaise = Math.round(payable * 100);
+  if (!Number.isSafeInteger(amountInPaise) || Math.abs(payable * 100 - amountInPaise) > 0.000001) {
+    throw new AppError("Payroll payable amount cannot be represented in integer paise", 409);
+  }
+  return amountInPaise;
+};
+
+const hashPaymentRequest = ({ amountInPaise, paymentMethod, paymentReference, paymentDate }) =>
+  createHash("sha256")
+    .update(JSON.stringify({
+      amountInPaise,
+      paymentMethod,
+      paymentReference: paymentReference.trim(),
+      paymentDate: new Date(paymentDate).toISOString(),
+    }))
+    .digest("hex");
+
+const COMMISSION_LEDGER_SOURCE_TYPES = [
+  "service_commission",
+  "subscription_sale_commission",
+  "membership_sale_commission",
+  "retail_sale_commission",
+];
+
+const getCommissionLedgerSnapshot = async ({
+  organizationId,
+  staffId,
+  branchId,
+  startDate,
+  endDate,
+  session,
+}) => {
+  const query = IncentiveLedger.find({
+    organizationId,
+    staffId,
+    sourceType: { $in: COMMISSION_LEDGER_SOURCE_TYPES },
+    entryType: "ACCRUAL",
+    fulfillmentStatus: { $in: ["confirmed", "not_applicable"] },
+    amountInPaise: { $gt: 0 },
+    createdAt: { $gte: startDate, $lte: endDate },
+    ...(branchId ? { branchId } : {}),
+  }).sort({ _id: 1 });
+  if (session) query.session(session);
+  const accruals = await query.lean();
+  if (accruals.length === 0) {
+    return {
+      entries: [],
+      ledgerEntryIds: [],
+      clawbackEntryIds: [],
+      grossAmountInPaise: 0,
+      clawbackAmountInPaise: 0,
+      payableAmountInPaise: 0,
+    };
+  }
+
+  const clawbackQuery = IncentiveLedger.find({
+    organizationId,
+    entryType: "CLAWBACK",
+    reversesLedgerId: { $in: accruals.map((entry) => entry._id) },
+  }).sort({ _id: 1 });
+  if (session) clawbackQuery.session(session);
+  const clawbacks = await clawbackQuery.lean();
+  const clawbacksByAccrual = new Map();
+  for (const clawback of clawbacks) {
+    const key = clawback.reversesLedgerId.toString();
+    clawbacksByAccrual.set(key, [
+      ...(clawbacksByAccrual.get(key) || []),
+      clawback,
+    ]);
+  }
+
+  const entries = accruals.map((accrual) => {
+    const relatedClawbacks = clawbacksByAccrual.get(accrual._id.toString()) || [];
+    const clawbackAmountInPaise = relatedClawbacks.reduce(
+      (total, clawback) => total + clawback.amountInPaise,
+      0,
+    );
+    if (!Number.isSafeInteger(clawbackAmountInPaise)
+      || clawbackAmountInPaise > accrual.amountInPaise) {
+      throw new AppError("Commission ledger clawbacks exceed the source accrual", 409);
+    }
+    return {
+      ledgerEntryId: accrual._id,
+      sourceBranchId: accrual.branchId,
+      sourceType: accrual.sourceType,
+      sourceAmountInPaise: accrual.amountInPaise,
+      clawbackAmountInPaise,
+      payableAmountInPaise: accrual.amountInPaise - clawbackAmountInPaise,
+      clawbackLedgerEntryIds: relatedClawbacks.map((entry) => entry._id),
+    };
+  });
+  const grossAmountInPaise = entries.reduce(
+    (total, entry) => total + entry.sourceAmountInPaise,
+    0,
+  );
+  const clawbackAmountInPaise = entries.reduce(
+    (total, entry) => total + entry.clawbackAmountInPaise,
+    0,
+  );
+  const payableAmountInPaise = entries.reduce(
+    (total, entry) => total + entry.payableAmountInPaise,
+    0,
+  );
+  if (![grossAmountInPaise, clawbackAmountInPaise, payableAmountInPaise]
+    .every(Number.isSafeInteger)) {
+    throw new AppError("Commission ledger total exceeds the safe paise limit", 409);
+  }
+  return {
+    entries,
+    ledgerEntryIds: accruals.map((entry) => entry._id),
+    clawbackEntryIds: clawbacks.map((entry) => entry._id),
+    grossAmountInPaise,
+    clawbackAmountInPaise,
+    payableAmountInPaise,
+  };
+};
+
+const hasSameCommissionSnapshot = (record, current) => {
+  const recordedEntries = (record.incentiveLedgerEntries || []).map((entry) => ({
+    ledgerEntryId: entry.ledgerEntryId.toString(),
+    sourceBranchId: entry.sourceBranchId.toString(),
+    sourceType: entry.sourceType,
+    sourceAmountInPaise: entry.sourceAmountInPaise,
+    clawbackAmountInPaise: entry.clawbackAmountInPaise,
+    payableAmountInPaise: entry.payableAmountInPaise,
+    clawbackLedgerEntryIds: (entry.clawbackLedgerEntryIds || []).map((id) => id.toString()).sort(),
+  }));
+  const currentEntries = current.entries.map((entry) => ({
+    ...entry,
+    ledgerEntryId: entry.ledgerEntryId.toString(),
+    sourceBranchId: entry.sourceBranchId.toString(),
+    clawbackLedgerEntryIds: entry.clawbackLedgerEntryIds.map((id) => id.toString()).sort(),
+  }));
+  return record.incentiveLedgerGrossInPaise === current.grossAmountInPaise
+    && record.incentiveLedgerClawbackInPaise === current.clawbackAmountInPaise
+    && record.incentiveLedgerAmountInPaise === current.payableAmountInPaise
+    && JSON.stringify((record.incentiveLedgerEntryIds || []).map((id) => id.toString()).sort())
+      === JSON.stringify(current.ledgerEntryIds.map((id) => id.toString()).sort())
+    && JSON.stringify((record.incentiveLedgerClawbackEntryIds || []).map((id) => id.toString()).sort())
+      === JSON.stringify(current.clawbackEntryIds.map((id) => id.toString()).sort())
+    && JSON.stringify(recordedEntries) === JSON.stringify(currentEntries);
+};
+
+const withPaymentHistory = async (records, organizationId) => {
+  if (records.length === 0) return records;
+  const recordIds = records.map((record) => record._id);
+  const payments = await PayrollPayment.find({
+    organizationId,
+    payrollRecordId: { $in: recordIds },
+  })
+    .populate("recordedBy", "name email")
+    .populate("confirmedBy", "name email")
+    .populate("failedBy", "name email")
+    .populate("reversedBy", "name email")
+    .sort({ createdAt: -1 })
+    .lean();
+  const paymentsByRecordId = new Map();
+  for (const payment of payments) {
+    const key = payment.payrollRecordId.toString();
+    paymentsByRecordId.set(key, [...(paymentsByRecordId.get(key) || []), payment]);
+  }
+  return records.map((record) => {
+    const document = record.toObject ? record.toObject() : record;
+    const paymentHistory = paymentsByRecordId.get(record._id.toString()) || [];
+    return {
+      ...document,
+      paymentHistory,
+      latestPaymentAttempt: paymentHistory[0] || null,
+    };
+  });
+};
+
 export class PayrollService {
   /**
    * Create or update salary structure for a staff member
    */
   static async setSalaryStructure({
     organizationId,
+    branchId,
     staffId,
     payType,
     baseSalary,
@@ -47,6 +245,7 @@ export class PayrollService {
     if (!staff) {
       throw new AppError("Staff member not found", 404);
     }
+    await assertStaffBranchAssignment({ organizationId, staffId, branchId });
 
     // Validate against conflicting future overlapping structures
     const fromDate = new Date(effectiveFrom);
@@ -106,7 +305,8 @@ export class PayrollService {
   /**
    * Get effective salary structure for a staff member at a specific date
    */
-  static async getEffectiveSalaryStructure({ organizationId, staffId, date }) {
+  static async getEffectiveSalaryStructure({ organizationId, branchId, staffId, date }) {
+    await assertStaffBranchAssignment({ organizationId, staffId, branchId });
     const targetDate = date ? new Date(date) : new Date();
 
     const structure = await SalaryStructure.findOne({
@@ -123,7 +323,8 @@ export class PayrollService {
   /**
    * Get complete salary structure history for a staff member
    */
-  static async getSalaryStructureHistory({ organizationId, staffId }) {
+  static async getSalaryStructureHistory({ organizationId, branchId, staffId }) {
+    await assertStaffBranchAssignment({ organizationId, staffId, branchId });
     return SalaryStructure.find({
       organizationId,
       staffId,
@@ -241,13 +442,100 @@ export class PayrollService {
         staffId: staff._id,
         monthYear: period.monthYear,
         isDeleted: false,
+        ...branchCondition(branchId),
       });
 
       if (existingRecord) {
-        if (existingRecord.status === "approved" || existingRecord.status === "paid") {
-          // Cannot recalculate approved or paid records
+        if (existingRecord.status === "paid"
+          || existingRecord.manualPaymentStatus === "recorded") {
           continue;
         }
+        if (existingRecord.status === "approved") {
+          await runInTransaction(async (session) => {
+            const options = session ? { session } : {};
+            const approvedAllocations = await PayrollIncentiveAllocation.find({
+              organizationId,
+              payrollRecordId: existingRecord._id,
+              status: "approved",
+            }).session(session);
+            for (const allocation of approvedAllocations) {
+              const releasedAt = new Date();
+              await PayrollIncentiveAllocation.updateOne(
+                { _id: allocation._id, organizationId, status: "approved" },
+                {
+                  $set: { status: "released", paymentId: null },
+                  $push: {
+                    history: {
+                      action: "released",
+                      actorId: userId,
+                      occurredAt: releasedAt,
+                      payrollRecordId: existingRecord._id,
+                    },
+                  },
+                },
+                options,
+              );
+            }
+            const reopened = await PayrollRecord.findOneAndUpdate(
+              {
+                _id: existingRecord._id,
+                organizationId,
+                status: "approved",
+                manualPaymentStatus: { $in: ["none", "failed"] },
+              },
+              {
+                $set: {
+                  status: "draft",
+                  manualPaymentStatus: "none",
+                  manualPaymentId: null,
+                  manualPaymentAmountInPaise: null,
+                  paymentMethod: null,
+                  paymentReference: null,
+                  approvedBy: null,
+                  approvedAt: null,
+                  updatedBy: userId,
+                },
+              },
+              { new: true, ...options },
+            );
+            if (!reopened) {
+              throw new AppError("Approved payroll changed before recalculation", 409);
+            }
+          });
+        }
+      }
+
+      const approvedIncentiveEvaluations = await IncentiveEvaluation.find({
+        organizationId,
+        staffId: staff._id,
+        monthYear: period.monthYear,
+        evaluationType: "ATTENDANCE_BONUS",
+        status: "finalized",
+        bonusAwardedInPaise: { $gt: 0 },
+        ...branchCondition(branchId),
+      }).select("_id bonusAwardedInPaise").lean();
+      const attendanceIncentiveAmountInPaise = approvedIncentiveEvaluations.reduce(
+        (total, evaluation) => total + evaluation.bonusAwardedInPaise,
+        0,
+      );
+      if (!Number.isSafeInteger(attendanceIncentiveAmountInPaise)) {
+        throw new AppError("Finalized incentive total exceeds the safe paise limit", 400);
+      }
+      const incentiveEvaluationIds = approvedIncentiveEvaluations.map(
+        (evaluation) => evaluation._id,
+      );
+      const commissionLedger = await getCommissionLedgerSnapshot({
+        organizationId,
+        staffId: staff._id,
+        branchId,
+        startDate: period.startDate,
+        endDate: period.endDate,
+      });
+      const incentiveLedgerAmountInPaise = commissionLedger.payableAmountInPaise;
+      const incentiveAmountInPaise =
+        attendanceIncentiveAmountInPaise + incentiveLedgerAmountInPaise;
+      if (!Number.isSafeInteger(incentiveAmountInPaise)) {
+        throw new AppError("Finalized incentive total exceeds the safe paise limit", 400);
       }
 
       // 2. Fetch Effective Salary Structure
@@ -284,12 +572,19 @@ export class PayrollService {
         attendanceDate: { $gte: period.startDate, $lte: period.endDate },
         isDeleted: false,
       });
+      const branchAttendanceConflicts = await AttendanceBranchConflict.find({
+        organizationId,
+        staffId: staff._id,
+        date: { $gte: period.startDate, $lte: period.endDate },
+        conflictStatus: { $in: ["pending", "disputed"] },
+        isActive: { $ne: false },
+      }).select("_id").lean();
 
       let presentDays = 0;
       let lateDays = 0;
       let earlyDepartureDays = 0;
       let incompleteDays = 0;
-      let unresolvedConflicts = 0;
+      let unresolvedConflicts = branchAttendanceConflicts.length;
 
       for (const att of attendanceRecords) {
         if (att.status === "present") presentDays++;
@@ -414,7 +709,9 @@ export class PayrollService {
           .toFixed(2)
       );
 
-      const finalTotalGrossPay = Number((totalGrossPay + totalAdjEarning).toFixed(2));
+      const finalTotalGrossPay = Number(
+        (totalGrossPay + totalAdjEarning + incentiveAmountInPaise / 100).toFixed(2),
+      );
       const finalTotalDeductions = Number((totalDeductions + totalAdjDeduction).toFixed(2));
       const finalNetPayable = Math.max(0, Number((finalTotalGrossPay - finalTotalDeductions).toFixed(2)));
 
@@ -451,6 +748,15 @@ export class PayrollService {
           sourceAttendanceRecordIds: attendanceRecords.map((a) => a._id),
           sourceLeaveRecordIds: leaveRecords.map((l) => l._id),
         },
+        incentiveEvaluationIds,
+        incentiveAmountInPaise,
+        incentiveLedgerScopeBranchId: branchId || null,
+        incentiveLedgerEntries: commissionLedger.entries,
+        incentiveLedgerEntryIds: commissionLedger.ledgerEntryIds,
+        incentiveLedgerClawbackEntryIds: commissionLedger.clawbackEntryIds,
+        incentiveLedgerGrossInPaise: commissionLedger.grossAmountInPaise,
+        incentiveLedgerClawbackInPaise: commissionLedger.clawbackAmountInPaise,
+        incentiveLedgerAmountInPaise,
         calculations: {
           prorationFactor,
           grossBaseSalary,
@@ -460,6 +766,7 @@ export class PayrollService {
           fixedDeductions,
           totalAdjustmentsEarning: totalAdjEarning,
           totalAdjustmentsDeduction: totalAdjDeduction,
+          totalIncentivesInPaise: incentiveAmountInPaise,
           totalDeductions: finalTotalDeductions,
           netPayable: finalNetPayable,
         },
@@ -495,6 +802,7 @@ export class PayrollService {
    */
   static async addAdjustment({
     organizationId,
+    branchId,
     recordId,
     type,
     amount,
@@ -506,6 +814,7 @@ export class PayrollService {
       _id: recordId,
       organizationId,
       isDeleted: false,
+      ...branchCondition(branchId),
     });
 
     if (!record) {
@@ -545,7 +854,11 @@ export class PayrollService {
     );
 
     const baseGross = Number(
-      (record.calculations.grossBaseSalary + record.calculations.totalAllowances).toFixed(2)
+      (
+        record.calculations.grossBaseSalary +
+        record.calculations.totalAllowances +
+        (record.incentiveAmountInPaise || 0) / 100
+      ).toFixed(2)
     );
     const baseDeductions = Number(
       (record.calculations.unpaidLeaveDeduction + record.calculations.fixedDeductions).toFixed(2)
@@ -569,11 +882,12 @@ export class PayrollService {
   /**
    * Submit payroll for approval (moves draft -> pending_approval)
    */
-  static async submitForApproval({ organizationId, recordId, userId }) {
+  static async submitForApproval({ organizationId, branchId, recordId, userId }) {
     const record = await PayrollRecord.findOne({
       _id: recordId,
       organizationId,
       isDeleted: false,
+      ...branchCondition(branchId),
     });
 
     if (!record) {
@@ -597,116 +911,523 @@ export class PayrollService {
   /**
    * Approve a payroll record
    */
-  static async approvePayrollRecord({ organizationId, recordId, userId }) {
-    const record = await PayrollRecord.findOne({
-      _id: recordId,
-      organizationId,
-      isDeleted: false,
-    });
+  static async approvePayrollRecord({ organizationId, branchId, recordId, userId }) {
+    try {
+      return await runInTransaction(async (session) => {
+        const options = session ? { session } : {};
+        const record = await PayrollRecord.findOne({
+          _id: recordId,
+          organizationId,
+          isDeleted: false,
+          ...branchCondition(branchId),
+        }).session(session);
+        if (!record) throw new AppError("Payroll record not found", 404);
+        if (record.status !== "pending_approval" && record.status !== "draft") {
+          throw new AppError(
+            `Cannot approve record with status '${record.status}'. Record is already ${record.status}.`,
+            400,
+          );
+        }
+        if (record.approvalBlocked) {
+          throw new AppError(
+            `Cannot approve payroll: ${record.approvalBlockReasons.join("; ")}`,
+            400,
+          );
+        }
 
-    if (!record) {
-      throw new AppError("Payroll record not found", 404);
+        const finalizedIncentives = await IncentiveEvaluation.find({
+          organizationId,
+          staffId: record.staffId,
+          monthYear: record.monthYear,
+          evaluationType: "ATTENDANCE_BONUS",
+          status: "finalized",
+          bonusAwardedInPaise: { $gt: 0 },
+          ...branchCondition(record.incentiveLedgerScopeBranchId),
+        }).select("_id bonusAwardedInPaise").session(session).lean();
+        const expectedEvaluationIds = finalizedIncentives
+          .map((evaluation) => evaluation._id.toString())
+          .sort();
+        const recordedEvaluationIds = (record.incentiveEvaluationIds || [])
+          .map((id) => id.toString())
+          .sort();
+        const attendanceAmountInPaise = finalizedIncentives.reduce(
+          (total, evaluation) => total + evaluation.bonusAwardedInPaise,
+          0,
+        );
+        const period = await PayrollPeriod.findOne({
+          _id: record.payrollPeriodId,
+          organizationId,
+          isDeleted: false,
+        }).session(session);
+        if (!period) throw new AppError("Payroll period not found", 404);
+        const commissionLedger = await getCommissionLedgerSnapshot({
+          organizationId,
+          staffId: record.staffId,
+          branchId: record.incentiveLedgerScopeBranchId,
+          startDate: period.startDate,
+          endDate: period.endDate,
+          session,
+        });
+        const expectedIncentiveAmount =
+          attendanceAmountInPaise + commissionLedger.payableAmountInPaise;
+        if (!Number.isSafeInteger(expectedIncentiveAmount)
+          || expectedIncentiveAmount !== (record.incentiveAmountInPaise || 0)
+          || expectedEvaluationIds.length !== recordedEvaluationIds.length
+          || expectedEvaluationIds.some((id, index) => id !== recordedEvaluationIds[index])
+          || !hasSameCommissionSnapshot(record, commissionLedger)) {
+          throw new AppError(
+            "Finalized incentives changed after payroll calculation. Recalculate payroll before approval.",
+            409,
+          );
+        }
+
+        for (const entry of commissionLedger.entries.filter(
+          (snapshot) => snapshot.payableAmountInPaise > 0,
+        )) {
+          const existingAllocation = await PayrollIncentiveAllocation.findOne({
+            organizationId,
+            incentiveLedgerId: entry.ledgerEntryId,
+          }).session(session);
+          const occurredAt = new Date();
+          if (existingAllocation) {
+            if (existingAllocation.status !== "released") {
+              throw new AppError("Commission ledger entry is already allocated to payroll", 409);
+            }
+            const reallocated = await PayrollIncentiveAllocation.findOneAndUpdate(
+              { _id: existingAllocation._id, organizationId, status: "released" },
+              {
+                $set: {
+                  staffId: record.staffId,
+                  sourceBranchId: entry.sourceBranchId,
+                  payrollBranchId: record.branchId,
+                  payrollPeriodId: record.payrollPeriodId,
+                  payrollRecordId: record._id,
+                  sourceType: entry.sourceType,
+                  sourceAmountInPaise: entry.sourceAmountInPaise,
+                  reversedAmountInPaise: entry.clawbackAmountInPaise,
+                  payableAmountInPaise: entry.payableAmountInPaise,
+                  coveredClawbackLedgerIds: entry.clawbackLedgerEntryIds,
+                  status: "approved",
+                  paymentId: null,
+                },
+                $push: {
+                  history: {
+                    action: "approved",
+                    actorId: userId,
+                    occurredAt,
+                    payrollRecordId: record._id,
+                  },
+                },
+              },
+              { new: true, ...options },
+            );
+            if (!reallocated) throw new AppError("Commission allocation changed concurrently", 409);
+          } else {
+            await PayrollIncentiveAllocation.create(
+              [{
+                organizationId,
+                staffId: record.staffId,
+                sourceBranchId: entry.sourceBranchId,
+                payrollBranchId: record.branchId,
+                payrollPeriodId: record.payrollPeriodId,
+                payrollRecordId: record._id,
+                incentiveLedgerId: entry.ledgerEntryId,
+                sourceType: entry.sourceType,
+                sourceAmountInPaise: entry.sourceAmountInPaise,
+                reversedAmountInPaise: entry.clawbackAmountInPaise,
+                payableAmountInPaise: entry.payableAmountInPaise,
+                coveredClawbackLedgerIds: entry.clawbackLedgerEntryIds,
+                status: "approved",
+                history: [{
+                  action: "approved",
+                  actorId: userId,
+                  occurredAt,
+                  payrollRecordId: record._id,
+                }],
+              }],
+              options,
+            );
+          }
+        }
+
+        const updated = await PayrollRecord.findOneAndUpdate(
+          {
+            _id: recordId,
+            organizationId,
+            status: { $in: ["draft", "pending_approval"] },
+            approvalBlocked: false,
+            ...branchCondition(branchId),
+          },
+          {
+            $set: {
+              status: "approved",
+              approvedBy: userId,
+              approvedAt: new Date(),
+              updatedBy: userId,
+            },
+          },
+          { new: true, ...options },
+        );
+        if (!updated) {
+          throw new AppError("Approval failed: record was modified concurrently or is blocked", 409);
+        }
+        return updated;
+      });
+    } catch (error) {
+      if (error?.code === 11000) {
+        throw new AppError("Commission ledger entry is already allocated to another payroll record", 409);
+      }
+      throw error;
     }
-
-    if (record.status !== "pending_approval" && record.status !== "draft") {
-      throw new AppError(
-        `Cannot approve record with status '${record.status}'. Record is already ${record.status}.`,
-        400
-      );
-    }
-
-    // Attendance blocker enforcement
-    if (record.approvalBlocked) {
-      throw new AppError(
-        `Cannot approve payroll: ${record.approvalBlockReasons.join("; ")}`,
-        400
-      );
-    }
-
-    // Atomic update to prevent race conditions
-    const updated = await PayrollRecord.findOneAndUpdate(
-      {
-        _id: recordId,
-        organizationId,
-        status: { $in: ["draft", "pending_approval"] },
-        approvalBlocked: false,
-      },
-      {
-        $set: {
-          status: "approved",
-          approvedBy: userId,
-          approvedAt: new Date(),
-          updatedBy: userId,
-        },
-      },
-      { new: true }
-    );
-
-    if (!updated) {
-      throw new AppError(
-        "Approval failed: record was modified concurrently or is blocked",
-        409
-      );
-    }
-
-    return updated;
   }
 
   /**
-   * Record payment for an approved payroll record
+   * Record a manual payment attempt. Payroll stays approved until an authorized
+   * user separately confirms that the settlement actually completed.
    */
   static async recordPayment({
     organizationId,
+    branchId,
     recordId,
+    userId,
+    amountInPaise,
     paymentMethod,
     paymentReference,
-    userId,
+    paymentDate,
+    idempotencyKey,
   }) {
-    const record = await PayrollRecord.findOne({
-      _id: recordId,
-      organizationId,
-      isDeleted: false,
+    if (!Number.isSafeInteger(amountInPaise) || amountInPaise <= 0) {
+      throw new AppError("Payment amount must be a positive integer paise value", 400);
+    }
+    if (!["bank_transfer", "cash", "cheque", "upi"].includes(paymentMethod)) {
+      throw new AppError("Unsupported payroll payment method", 400);
+    }
+    if (typeof paymentReference !== "string" || !paymentReference.trim()) {
+      throw new AppError("A payment reference is required", 400);
+    }
+    if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 128) {
+      throw new AppError("A valid idempotency key is required", 400);
+    }
+    const parsedPaymentDate = new Date(paymentDate);
+    if (Number.isNaN(parsedPaymentDate.getTime())) {
+      throw new AppError("A valid payment date is required", 400);
+    }
+    const requestPayloadHash = hashPaymentRequest({
+      amountInPaise,
+      paymentMethod,
+      paymentReference,
+      paymentDate: parsedPaymentDate,
     });
-
-    if (!record) {
-      throw new AppError("Payroll record not found", 404);
+    const paymentScope = {
+      organizationId,
+      idempotencyKey,
+      ...branchCondition(branchId),
+    };
+    const existing = await PayrollPayment.findOne(paymentScope);
+    if (existing) {
+      if (existing.requestPayloadHash !== requestPayloadHash) {
+        throw new AppError("Idempotency key was already used with different payment details", 409);
+      }
+      const record = await this.getPayrollRecordById({ organizationId, branchId, recordId });
+      if (existing.payrollRecordId.toString() !== record._id.toString()) {
+        throw new AppError("Idempotency key is already associated with another payroll record", 409);
+      }
+      return { record, payment: existing, isIdempotentReplay: true };
     }
 
-    if (record.status !== "approved") {
-      throw new AppError(
-        `Cannot record payment for record with status '${record.status}'. Record must be 'approved'.`,
-        400
-      );
-    }
+    try {
+      return await runInTransaction(async (session) => {
+        const options = session ? { session } : {};
+        const repeatedRequest = await PayrollPayment.findOne(paymentScope).session(session);
+        if (repeatedRequest) {
+          if (repeatedRequest.requestPayloadHash !== requestPayloadHash
+            || repeatedRequest.payrollRecordId.toString() !== recordId.toString()) {
+            throw new AppError("Idempotency key was already used with different payment details", 409);
+          }
+          const record = await PayrollRecord.findOne({
+            _id: recordId,
+            organizationId,
+            isDeleted: false,
+            ...branchCondition(branchId),
+          }).session(session);
+          if (!record) throw new AppError("Payroll record not found", 404);
+          return { record, payment: repeatedRequest, isIdempotentReplay: true };
+        }
 
-    // Atomic update to guarantee single execution (idempotency guard)
-    const paidRecord = await PayrollRecord.findOneAndUpdate(
-      {
+        const record = await PayrollRecord.findOne({
+          _id: recordId,
+          organizationId,
+          isDeleted: false,
+          ...branchCondition(branchId),
+        }).session(session);
+        if (!record) throw new AppError("Payroll record not found", 404);
+        if (record.status !== "approved") {
+          throw new AppError(
+            `Cannot record payment for record with status '${record.status}'. Record must be 'approved'.`,
+            400,
+          );
+        }
+        if (!["none", "failed"].includes(record.manualPaymentStatus)) {
+          throw new AppError("A payment attempt is already awaiting confirmation", 409);
+        }
+        const expectedAmountInPaise = getNetPayableInPaise(record);
+        const period = await PayrollPeriod.findOne({
+          _id: record.payrollPeriodId,
+          organizationId,
+          isDeleted: false,
+        }).session(session);
+        if (!period) throw new AppError("Payroll period not found", 404);
+        const currentCommissionLedger = await getCommissionLedgerSnapshot({
+          organizationId,
+          staffId: record.staffId,
+          branchId: record.incentiveLedgerScopeBranchId,
+          startDate: period.startDate,
+          endDate: period.endDate,
+          session,
+        });
+        if (!hasSameCommissionSnapshot(record, currentCommissionLedger)) {
+          throw new AppError(
+            "Commission ledger changed after approval. Recalculate and reapprove payroll before recording payment.",
+            409,
+          );
+        }
+        if (amountInPaise !== expectedAmountInPaise) {
+          throw new AppError("Payment amount must equal the exact payroll payable amount", 400);
+        }
+
+        const recordedAt = new Date();
+        const payment = new PayrollPayment({
+          organizationId,
+          branchId: record.branchId,
+          payrollRecordId: record._id,
+          staffId: record.staffId,
+          source: "MANUAL",
+          amountInPaise,
+          paymentMethod,
+          paymentReference: paymentReference.trim(),
+          paymentDate: parsedPaymentDate,
+          status: "recorded",
+          idempotencyKey,
+          requestPayloadHash,
+          recordedBy: userId,
+          recordedAt,
+          incentiveEvaluationIds: record.incentiveEvaluationIds || [],
+          incentiveAmountInPaise: record.incentiveAmountInPaise || 0,
+          incentiveLedgerEntryIds: record.incentiveLedgerEntryIds || [],
+          incentiveLedgerAmountInPaise: record.incentiveLedgerAmountInPaise || 0,
+          history: [{ action: "recorded", actorId: userId, occurredAt: recordedAt }],
+        });
+        await payment.save(options);
+
+        const availablePaymentStatus = record.manualPaymentStatus === "failed"
+          ? [{ manualPaymentStatus: "failed" }]
+          : [
+            { manualPaymentStatus: "none" },
+            { manualPaymentStatus: { $exists: false } },
+          ];
+        const updatedRecord = await PayrollRecord.findOneAndUpdate(
+          {
+            _id: recordId,
+            organizationId,
+            isDeleted: false,
+            status: "approved",
+            $or: availablePaymentStatus,
+            ...branchCondition(branchId),
+          },
+          {
+            $set: {
+              manualPaymentStatus: "recorded",
+              manualPaymentId: payment._id,
+              manualPaymentAmountInPaise: amountInPaise,
+              paymentMethod,
+              paymentReference: payment.paymentReference,
+              updatedBy: userId,
+            },
+          },
+          { new: true, ...options },
+        );
+        if (!updatedRecord) {
+          throw new AppError("Payroll record changed while recording the payment", 409);
+        }
+        return { record: updatedRecord, payment, isIdempotentReplay: false };
+      });
+    } catch (error) {
+      if (error.code !== 11000) throw error;
+      const duplicate = await PayrollPayment.findOne(paymentScope);
+      if (!duplicate) throw error;
+      if (duplicate.requestPayloadHash !== requestPayloadHash
+        || duplicate.payrollRecordId.toString() !== recordId.toString()) {
+        throw new AppError("Idempotency key was already used with different payment details", 409);
+      }
+      const record = await this.getPayrollRecordById({ organizationId, branchId, recordId });
+      return { record, payment: duplicate, isIdempotentReplay: true };
+    }
+  }
+
+  static async confirmPayment({ organizationId, branchId, recordId, paymentId, userId }) {
+    return runInTransaction(async (session) => {
+      const options = session ? { session } : {};
+      const record = await PayrollRecord.findOne({
         _id: recordId,
         organizationId,
+        isDeleted: false,
+        ...branchCondition(branchId),
+      }).session(session);
+      if (!record) throw new AppError("Payroll record not found", 404);
+      const payment = await PayrollPayment.findOne({
+        _id: paymentId,
+        organizationId,
+        payrollRecordId: record._id,
+        branchId: record.branchId,
+      }).session(session);
+      if (!payment) throw new AppError("Payroll payment attempt not found", 404);
+
+      if (payment.status === "confirmed" && record.status === "paid"
+        && record.manualPaymentId?.toString() === payment._id.toString()) {
+        return { record, payment, isIdempotentReplay: true };
+      }
+      if (record.status !== "approved" || record.manualPaymentStatus !== "recorded"
+        || record.manualPaymentId?.toString() !== payment._id.toString()
+        || payment.status !== "recorded") {
+        throw new AppError("Only the current recorded payment attempt can be confirmed", 409);
+      }
+      if (payment.amountInPaise !== getNetPayableInPaise(record)
+        || record.manualPaymentAmountInPaise !== payment.amountInPaise) {
+        throw new AppError("Recorded payment no longer matches the payroll payable amount", 409);
+      }
+      if (payment.incentiveLedgerAmountInPaise !== (record.incentiveLedgerAmountInPaise || 0)
+        || JSON.stringify((payment.incentiveLedgerEntryIds || []).map((id) => id.toString()).sort())
+          !== JSON.stringify((record.incentiveLedgerEntryIds || []).map((id) => id.toString()).sort())) {
+        throw new AppError("Recorded payment incentive allocation no longer matches the approved payroll snapshot", 409);
+      }
+
+      const ledgerIds = record.incentiveLedgerEntries
+        .filter((entry) => entry.payableAmountInPaise > 0)
+        .map((entry) => entry.ledgerEntryId);
+      const allocations = await PayrollIncentiveAllocation.find({
+        organizationId,
+        payrollRecordId: record._id,
+        incentiveLedgerId: { $in: ledgerIds },
         status: "approved",
-      },
-      {
-        $set: {
-          status: "paid",
-          paymentMethod,
-          paymentReference,
-          disbursedAt: new Date(),
-          disbursedBy: userId,
-          updatedBy: userId,
+      }).session(session);
+      if (allocations.length !== ledgerIds.length) {
+        throw new AppError("Approved payroll is missing one or more commission allocations", 409);
+      }
+
+      const confirmedAt = new Date();
+      const updatedPayment = await PayrollPayment.findOneAndUpdate(
+        { _id: payment._id, organizationId, status: "recorded" },
+        {
+          $set: { status: "confirmed", confirmedBy: userId, confirmedAt },
+          $push: { history: { action: "confirmed", actorId: userId, occurredAt: confirmedAt } },
         },
-      },
-      { new: true }
-    );
-
-    if (!paidRecord) {
-      throw new AppError(
-        "Payment recording failed: record is not in approved status or was already paid.",
-        409
+        { new: true, ...options },
       );
-    }
+      if (!updatedPayment) throw new AppError("Payment attempt changed before confirmation", 409);
 
-    return paidRecord;
+      const updatedRecord = await PayrollRecord.findOneAndUpdate(
+        {
+          _id: recordId,
+          organizationId,
+          status: "approved",
+          manualPaymentStatus: "recorded",
+          manualPaymentId: payment._id,
+          ...branchCondition(branchId),
+        },
+        {
+          $set: {
+            status: "paid",
+            manualPaymentStatus: "confirmed",
+            disbursedAt: payment.paymentDate,
+            disbursedBy: userId,
+            updatedBy: userId,
+          },
+        },
+        { new: true, ...options },
+      );
+      if (!updatedRecord) throw new AppError("Payroll record changed before payment confirmation", 409);
+      for (const allocation of allocations) {
+        const updatedAllocation = await PayrollIncentiveAllocation.findOneAndUpdate(
+          {
+            _id: allocation._id,
+            organizationId,
+            payrollRecordId: record._id,
+            status: "approved",
+          },
+          {
+            $set: { status: "paid", paymentId: payment._id },
+            $push: {
+              history: {
+                action: "paid",
+                actorId: userId,
+                occurredAt: confirmedAt,
+                payrollRecordId: record._id,
+              },
+            },
+          },
+          { new: true, ...options },
+        );
+        if (!updatedAllocation) {
+          throw new AppError("Commission allocation changed before payment confirmation", 409);
+        }
+      }
+      return { record: updatedRecord, payment: updatedPayment, isIdempotentReplay: false };
+    });
+  }
+
+  static async failPayment({ organizationId, branchId, recordId, paymentId, userId, failureReason }) {
+    const reason = typeof failureReason === "string" ? failureReason.trim() : "";
+    if (reason.length < 3) throw new AppError("A failure reason of at least 3 characters is required", 400);
+    return runInTransaction(async (session) => {
+      const options = session ? { session } : {};
+      const record = await PayrollRecord.findOne({
+        _id: recordId,
+        organizationId,
+        isDeleted: false,
+        ...branchCondition(branchId),
+      }).session(session);
+      if (!record) throw new AppError("Payroll record not found", 404);
+      const payment = await PayrollPayment.findOne({
+        _id: paymentId,
+        organizationId,
+        payrollRecordId: record._id,
+        branchId: record.branchId,
+      }).session(session);
+      if (!payment) throw new AppError("Payroll payment attempt not found", 404);
+      if (payment.status === "failed" && record.manualPaymentStatus === "failed") {
+        return { record, payment, isIdempotentReplay: true };
+      }
+      if (record.status !== "approved" || record.manualPaymentStatus !== "recorded"
+        || record.manualPaymentId?.toString() !== payment._id.toString()
+        || payment.status !== "recorded") {
+        throw new AppError("Only the current recorded payment attempt can be marked failed", 409);
+      }
+
+      const failedAt = new Date();
+      const updatedPayment = await PayrollPayment.findOneAndUpdate(
+        { _id: payment._id, organizationId, status: "recorded" },
+        {
+          $set: { status: "failed", failedBy: userId, failedAt, failureReason: reason },
+          $push: { history: { action: "failed", actorId: userId, occurredAt: failedAt, reason } },
+        },
+        { new: true, ...options },
+      );
+      if (!updatedPayment) throw new AppError("Payment attempt changed before failure was recorded", 409);
+      const updatedRecord = await PayrollRecord.findOneAndUpdate(
+        {
+          _id: recordId,
+          organizationId,
+          status: "approved",
+          manualPaymentStatus: "recorded",
+          manualPaymentId: payment._id,
+          ...branchCondition(branchId),
+        },
+        { $set: { manualPaymentStatus: "failed", updatedBy: userId } },
+        { new: true, ...options },
+      );
+      if (!updatedRecord) throw new AppError("Payroll record changed while recording payment failure", 409);
+      return { record: updatedRecord, payment: updatedPayment, isIdempotentReplay: false };
+    });
   }
 
   /**
@@ -714,46 +1435,130 @@ export class PayrollService {
    */
   static async reversePayment({
     organizationId,
+    branchId,
     recordId,
     reversalReason,
     userId,
   }) {
-    const record = await PayrollRecord.findOne({
-      _id: recordId,
-      organizationId,
-      isDeleted: false,
-    });
-
-    if (!record) {
-      throw new AppError("Payroll record not found", 404);
-    }
-
-    if (record.status !== "paid") {
-      throw new AppError(
-        `Cannot reverse record with status '${record.status}'. Only 'paid' records can be reversed.`,
-        400
-      );
-    }
-
-    const reversedRecord = await PayrollRecord.findOneAndUpdate(
-      {
+    return runInTransaction(async (session) => {
+      const options = session ? { session } : {};
+      const record = await PayrollRecord.findOne({
         _id: recordId,
         organizationId,
-        status: "paid",
-      },
-      {
-        $set: {
-          status: "cancelled",
-          reversalReason,
-          reversedAt: new Date(),
-          reversedBy: userId,
-          updatedBy: userId,
-        },
-      },
-      { new: true }
-    );
+        isDeleted: false,
+        ...branchCondition(branchId),
+      }).session(session);
+      if (!record) throw new AppError("Payroll record not found", 404);
+      if (record.status === "cancelled" && record.manualPaymentStatus === "reversed") {
+        const payment = record.manualPaymentId
+          ? await PayrollPayment.findOne({
+            _id: record.manualPaymentId,
+            organizationId,
+            payrollRecordId: record._id,
+          }).session(session)
+          : null;
+        if (payment?.reversalReason !== reversalReason) {
+          throw new AppError("Payroll payment was already reversed with a different reason", 409);
+        }
+        return { record, payment, isIdempotentReplay: true };
+      }
+      if (record.status !== "paid") {
+        throw new AppError(
+          `Cannot reverse record with status '${record.status}'. Only 'paid' records can be reversed.`,
+          400,
+        );
+      }
 
-    return reversedRecord;
+      const paidAllocations = await PayrollIncentiveAllocation.find({
+        organizationId,
+        payrollRecordId: record._id,
+        status: "paid",
+      }).session(session);
+      if (paidAllocations.some(
+        (allocation) => allocation.recoveredInPaise > 0 || allocation.reservedRecoveryInPaise > 0,
+      )) {
+        throw new AppError(
+          "Reverse related manual recovery payments before reversing this payroll payment",
+          409,
+        );
+      }
+
+      let updatedPayment = null;
+      if (record.manualPaymentId) {
+        const payment = await PayrollPayment.findOne({
+          _id: record.manualPaymentId,
+          organizationId,
+          payrollRecordId: record._id,
+          status: "confirmed",
+        }).session(session);
+        if (!payment) throw new AppError("Confirmed payment audit record was not found", 409);
+        const reversedAt = new Date();
+        updatedPayment = await PayrollPayment.findOneAndUpdate(
+          { _id: payment._id, organizationId, status: "confirmed" },
+          {
+            $set: {
+              status: "reversed",
+              reversedBy: userId,
+              reversedAt,
+              reversalReason,
+            },
+            $push: { history: { action: "reversed", actorId: userId, occurredAt: reversedAt, reason: reversalReason } },
+          },
+          { new: true, ...options },
+        );
+        if (!updatedPayment) throw new AppError("Payment attempt changed before reversal", 409);
+      }
+
+      const reversedRecord = await PayrollRecord.findOneAndUpdate(
+        {
+          _id: recordId,
+          organizationId,
+          status: "paid",
+          ...branchCondition(branchId),
+        },
+        {
+          $set: {
+            status: "cancelled",
+            reversalReason,
+            reversedAt: new Date(),
+            reversedBy: userId,
+            ...(record.manualPaymentId ? { manualPaymentStatus: "reversed" } : {}),
+            updatedBy: userId,
+          },
+        },
+        { new: true, ...options },
+      );
+      if (!reversedRecord) throw new AppError("Payroll record changed before reversal", 409);
+      for (const allocation of paidAllocations) {
+        const releasedAt = new Date();
+        const releasedAllocation = await PayrollIncentiveAllocation.findOneAndUpdate(
+          {
+            _id: allocation._id,
+            organizationId,
+            payrollRecordId: record._id,
+            status: "paid",
+            recoveredInPaise: 0,
+            reservedRecoveryInPaise: 0,
+          },
+          {
+            $set: { status: "released", paymentId: null },
+            $push: {
+              history: {
+                action: "released",
+                actorId: userId,
+                occurredAt: releasedAt,
+                payrollRecordId: record._id,
+              },
+            },
+          },
+          { new: true, ...options },
+        );
+        if (!releasedAllocation) {
+          throw new AppError("Commission allocation changed before payroll reversal completed", 409);
+        }
+      }
+      return { record: reversedRecord, payment: updatedPayment, isIdempotentReplay: false };
+    });
   }
 
   /**
@@ -836,6 +1641,7 @@ export class PayrollService {
       PayrollRecord.countDocuments({ ...query, approvalBlocked: true }),
     ]);
 
+    const recordsWithPaymentHistory = await withPaymentHistory(records, organizationId);
     const kpiSummary = summaryAgg[0] || {
       totalGrossPay: 0,
       totalDeductions: 0,
@@ -844,7 +1650,7 @@ export class PayrollService {
     };
 
     return {
-      records,
+      records: recordsWithPaymentHistory,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -864,11 +1670,12 @@ export class PayrollService {
   /**
    * Get single payslip / payroll record details
    */
-  static async getPayrollRecordById({ organizationId, recordId }) {
+  static async getPayrollRecordById({ organizationId, branchId, recordId }) {
     const record = await PayrollRecord.findOne({
       _id: recordId,
       organizationId,
       isDeleted: false,
+      ...branchCondition(branchId),
     })
       .populate("staffId", "name email phone staffCode designation joiningDate")
       .populate("branchId", "name address code")
@@ -879,6 +1686,7 @@ export class PayrollService {
       throw new AppError("Payroll record not found", 404);
     }
 
-    return record;
+    const [recordWithPaymentHistory] = await withPaymentHistory([record], organizationId);
+    return recordWithPaymentHistory;
   }
 }
