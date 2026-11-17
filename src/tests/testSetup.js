@@ -14,10 +14,13 @@ try {
 }
 
 // -----------------------------------------------------------------------------
-// Dedicated Test Environment Loading (.env.test exclusive source)
+// Dedicated Test Environment Loading (.env.test fallback or runner-authorized URI)
 // -----------------------------------------------------------------------------
-// Purge any preexisting shell or inherited environment variables unconditionally
-// upon module load to prevent shell bypass or accidental leakage.
+// Only the disposable test runner may provide a one-run database authorization.
+const authorizedRunDatabase = process.env.TEST_MONGO_RUN_DATABASE || "";
+const injectedTestMongoUri = process.env.TEST_MONGO_URI || "";
+
+// Purge preexisting shell or inherited environment variables before loading configuration.
 delete process.env.TEST_MONGO_URI;
 delete process.env.TEST_MONGO_ALLOWED_HOSTS;
 
@@ -28,7 +31,12 @@ if (!process.env.NODE_ENV) {
 
 const envTestPath = path.resolve(process.cwd(), ".env.test");
 
-if (fs.existsSync(envTestPath)) {
+if (authorizedRunDatabase) {
+  if (!injectedTestMongoUri) {
+    throw new Error("[FATAL TEST DATABASE GUARD] Disposable test database authorization requires TEST_MONGO_URI.");
+  }
+  process.env.TEST_MONGO_URI = injectedTestMongoUri;
+} else if (fs.existsSync(envTestPath)) {
   const rawContent = fs.readFileSync(envTestPath, "utf-8");
   const testParsed = dotenv.parse(rawContent);
 
@@ -67,6 +75,7 @@ export const REGISTERED_SUITE_SUFFIXES = Object.freeze([
   "payroll_test",
   "coupon_test",
   "procurement_test",
+  "incentives_test",
 ]);
 
 /**
@@ -146,8 +155,8 @@ function parseMongoUri(uriString) {
  *    - Never logs credentials or full URI.
  * 5. Requires an explicit database name that is NOT in FORBIDDEN_APPLICATION_DB_NAMES.
  * 6. Specifically and explicitly rejects "saloon_erp", "saloon_erp_test", "saloon_erp_dev", etc.
- * 7. Requires that the database name ends with one of the REGISTERED_SUITE_SUFFIXES.
- *    Unsuffixed databases are unconditionally rejected even if they contain the word "test".
+ * 7. Requires a registered suite suffix, except when the disposable runner has authorized
+ *    the exact one-run database name.
  * 8. Checks against application MONGO_URI (if defined): rejects if the normalized host/cluster
  *    and database name target the same database as MONGO_URI.
  *
@@ -222,6 +231,34 @@ export function validateTestDatabaseUri(uriString) {
     }
   }
 
+  if (authorizedRunDatabase) {
+    if (
+      !/^incentives_test_[a-z0-9]+_[a-f0-9]{12}$/i.test(authorizedRunDatabase) ||
+      normalizedDb !== authorizedRunDatabase.toLowerCase()
+    ) {
+      throw new Error(
+        "[FATAL TEST DATABASE GUARD] URI must target the exact explicitly authorized disposable test database."
+      );
+    }
+
+    const appUri = (() => {
+      const appEnvPath = path.resolve(process.cwd(), ".env");
+      const fileUri = fs.existsSync(appEnvPath)
+        ? dotenv.parse(fs.readFileSync(appEnvPath, "utf-8")).MONGO_URI
+        : "";
+      return fileUri || process.env.MONGO_URI || "";
+    })();
+
+    if (appUri) {
+      const appDbName = parseMongoUri(appUri).dbName.toLowerCase();
+      if (appDbName === normalizedDb) {
+        throw new Error(
+          "[FATAL TEST DATABASE GUARD] Disposable test database cannot use the application database name."
+        );
+      }
+    }
+  }
+
   // 4. Must contain "test" in the database name
   if (!/test/i.test(dbName)) {
     throw new Error(
@@ -234,7 +271,7 @@ export function validateTestDatabaseUri(uriString) {
     return normalizedDb.endsWith(`_${suffix}`) || normalizedDb === suffix;
   });
 
-  if (!matchesRegisteredSuffix) {
+  if (!authorizedRunDatabase && !matchesRegisteredSuffix) {
     throw new Error(
       `🚨 [FATAL TEST DATABASE GUARD] Database name '${dbName}' is not a recognized isolated suite database. ` +
       `Every test database must end with a registered suite suffix (e.g. '_billing_test'). Unsuffixed databases are strictly forbidden.`
@@ -301,6 +338,11 @@ export function getIsolatedTestMongoUri(suiteSuffix) {
     throw new Error(
       `🚨 [FATAL TEST DATABASE GUARD] Invalid suiteSuffix '${cleanSuffix}'. Must be one of the registered test suites: ${REGISTERED_SUITE_SUFFIXES.join(", ")}`
     );
+  }
+
+  if (authorizedRunDatabase) {
+    validateTestDatabaseUri(baseTestUri);
+    return baseTestUri;
   }
 
   // Parse the base TEST_MONGO_URI
