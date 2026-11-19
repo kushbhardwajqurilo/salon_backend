@@ -109,6 +109,21 @@ router.patch(
   membershipController.reactivateBeneficiaryMembership
 );
 
+router.post(
+  "/:id/beneficiaries",
+  requireOrganizationScope,
+  authorize("memberships.configure"),
+  validate(membershipValidation.addBeneficiaryToMembershipSchema),
+  membershipController.addBeneficiaryToMembership
+);
+
+router.get(
+  "/:id/purchase-group",
+  requireOrganizationScope,
+  authorize("memberships.view"),
+  membershipController.getMembershipPurchaseGroup
+);
+
 // ==========================================
 // 3. Customer Active Benefit Lookup
 // ==========================================

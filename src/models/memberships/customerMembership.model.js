@@ -50,10 +50,35 @@ const customerMembershipSchema = new mongoose.Schema(
       tier: { type: String, default: "Standard" },
       price: { type: Number, required: true },
       validityMonths: { type: Number, required: true },
+      maxBeneficiaries: { type: Number, default: 1, min: 1 },
       benefits: {
         serviceDiscountPercentage: { type: Number, default: 0 },
         productDiscountPercentage: { type: Number, default: 0 },
         complimentaryPerks: { type: [String], default: [] },
+        eligibleServiceCategoryIds: [
+          {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "ServiceCategory",
+          },
+        ],
+        eligibleServiceIds: [
+          {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Service",
+          },
+        ],
+        excludedServiceCategoryIds: [
+          {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "ServiceCategory",
+          },
+        ],
+        excludedServiceIds: [
+          {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Service",
+          },
+        ],
       },
     },
     status: {

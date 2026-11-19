@@ -192,6 +192,39 @@ export const reactivateBeneficiaryMembership = async (req, res, next) => {
   }
 };
 
+export const addBeneficiaryToMembership = async (req, res, next) => {
+  try {
+    const newBeneficiary = await membershipService.addBeneficiaryToMembership(
+      req.params.id,
+      req.body,
+      req.user.organizationId,
+      req.user._id
+    );
+    res.status(201).json({
+      success: true,
+      message: "Beneficiary added to membership successfully",
+      data: newBeneficiary,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMembershipPurchaseGroup = async (req, res, next) => {
+  try {
+    const group = await membershipService.getMembershipPurchaseGroup(
+      req.params.id,
+      req.user.organizationId
+    );
+    res.status(200).json({
+      success: true,
+      data: group,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getMembershipReports = async (req, res, next) => {
   try {
     const stats = await membershipService.getMembershipReports(

@@ -448,4 +448,121 @@ describe("Multi-Beneficiary Membership Purchase & Lifecycle Integration", () => 
     expect(memberCRecord.planSnapshot.benefits.serviceDiscountPercentage).toBe(10);
     expect(memberCRecord.planSnapshot.benefits.complimentaryPerks).toContain("Free Standard Drink");
   });
+
+  it("9. Post-sale Add Beneficiary respects maxCapacity, rejects exceeding capacity, and prevents duplicate members", async () => {
+    // Create a plan with maxBeneficiaries = 3
+    const threeMemberPlan = await membershipService.createPlan(
+      {
+        name: "Triple Privilege Family Pass",
+        price: 3000,
+        validityMonths: 12,
+        tier: "Gold",
+        maxBeneficiaries: 3,
+        benefits: {
+          serviceDiscountPercentage: 20,
+        },
+      },
+      orgId,
+      cashierUserId
+    );
+
+    // Initial purchase with 1 beneficiary (beneficiaryBId)
+    const initialInvoice = await billingService.createUnifiedInvoice(
+      {
+        branchId,
+        customerId: payerId,
+        membershipLines: [
+          {
+            membershipPlanId: threeMemberPlan._id,
+            payerCustomerId: payerId,
+            beneficiaryCustomerIds: [beneficiaryBId],
+            quantity: 1,
+          },
+        ],
+      },
+      orgId,
+      cashierUserId
+    );
+
+    await billingService.finalizeInvoice(initialInvoice._id, {}, orgId, branchId, cashierUserId);
+    await billingService.recordPayment(
+      initialInvoice._id,
+      { amount: initialInvoice.payableAmount, paymentMethod: "card" },
+      orgId,
+      branchId,
+      cashierUserId
+    );
+
+    const firstMembership = await CustomerMembership.findOne({
+      organizationId: orgId,
+      customerId: beneficiaryBId,
+      invoiceId: initialInvoice._id,
+    });
+    expect(firstMembership).toBeDefined();
+
+    // Check initial purchase group: 1 of 3 enrolled
+    let group = await membershipService.getMembershipPurchaseGroup(firstMembership._id, orgId);
+    expect(group.maxBeneficiaries).toBe(3);
+    expect(group.enrolledCount).toBe(1);
+    expect(group.availableSlots).toBe(2);
+    expect(group.isCapacityReached).toBe(false);
+
+    // Add 2nd member (beneficiaryCId)
+    const secondMembership = await membershipService.addBeneficiaryToMembership(
+      firstMembership._id,
+      {
+        customerId: beneficiaryCId,
+        benefitsOverride: { serviceDiscountPercentage: 15 },
+      },
+      orgId,
+      cashierUserId
+    );
+    expect(secondMembership._id).toBeDefined();
+    expect(secondMembership.status).toBe("active");
+    expect(secondMembership.membershipPurchaseId.toString()).toBe(firstMembership.membershipPurchaseId.toString());
+    expect(secondMembership.planSnapshot.benefits.serviceDiscountPercentage).toBe(15);
+
+    // Re-attempting to add 2nd member again must be rejected as duplicate
+    await expect(
+      membershipService.addBeneficiaryToMembership(
+        firstMembership._id,
+        { customerId: beneficiaryCId },
+        orgId,
+        cashierUserId
+      )
+    ).rejects.toThrow("Customer is already an enrolled beneficiary of this membership");
+
+    // Add 3rd member (payerId as 3rd beneficiary)
+    const thirdMembership = await membershipService.addBeneficiaryToMembership(
+      firstMembership._id,
+      { customerId: payerId },
+      orgId,
+      cashierUserId
+    );
+    expect(thirdMembership._id).toBeDefined();
+
+    // Group capacity should now be 3 of 3 (Full)
+    group = await membershipService.getMembershipPurchaseGroup(firstMembership._id, orgId);
+    expect(group.enrolledCount).toBe(3);
+    expect(group.availableSlots).toBe(0);
+    expect(group.isCapacityReached).toBe(true);
+
+    // Attempting to add 4th member must be rejected transactionally
+    const extraCustomer = await Customer.create({
+      organizationId: orgId,
+      homeBranchId: branchId,
+      name: "Extra Candidate",
+      phone: `99999${Date.now().toString().slice(-5)}`,
+      gender: "female",
+    });
+
+    await expect(
+      membershipService.addBeneficiaryToMembership(
+        firstMembership._id,
+        { customerId: extraCustomer._id },
+        orgId,
+        cashierUserId
+      )
+    ).rejects.toThrow(/Membership capacity reached/);
+  });
 });

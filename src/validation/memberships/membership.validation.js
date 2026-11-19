@@ -107,3 +107,23 @@ export const cancelBeneficiaryMembershipSchema = z.object({
     reason: z.string().trim().min(3, "Reason must be at least 3 characters").max(500),
   }),
 });
+
+export const addBeneficiaryToMembershipSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+  }),
+  body: z.object({
+    customerId: objectIdSchema,
+    benefitsOverride: z
+      .object({
+        serviceDiscountPercentage: z.coerce.number().min(0).max(100).optional(),
+        productDiscountPercentage: z.coerce.number().min(0).max(100).optional(),
+        eligibleServiceCategoryIds: z.array(objectIdSchema).optional(),
+        eligibleServiceIds: z.array(objectIdSchema).optional(),
+        excludedServiceCategoryIds: z.array(objectIdSchema).optional(),
+        excludedServiceIds: z.array(objectIdSchema).optional(),
+        complimentaryPerks: z.array(z.string().trim()).optional(),
+      })
+      .optional(),
+  }),
+});

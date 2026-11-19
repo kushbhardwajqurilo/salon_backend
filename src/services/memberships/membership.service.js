@@ -3,6 +3,7 @@ import { MembershipPlan } from "../../models/memberships/membershipPlan.model.js
 import { CustomerMembership } from "../../models/memberships/customerMembership.model.js";
 import { Customer } from "../../models/customers/customer.model.js";
 import { AppError } from "../../utils/errors.js";
+import { runInTransaction } from "../../utils/transaction.js";
 
 class MembershipService {
   /**
@@ -569,6 +570,174 @@ class MembershipService {
       payer,
       beneficiaries,
       targetBeneficiaryIds: uniqueIds,
+    };
+  }
+
+  /**
+   * 10. ADD BENEFICIARY TO EXISTING MEMBERSHIP PURCHASE
+   * Transactionally adds a new beneficiary member to an existing membership purchase group,
+   * provided current active/enrolled beneficiaries have not reached plan maxBeneficiaries.
+   */
+  async addBeneficiaryToMembership(
+    existingMembershipId,
+    { customerId, benefitsOverride },
+    organizationId,
+    userId
+  ) {
+    return await runInTransaction(async (session) => {
+      // 1. Load reference membership
+      const referenceMembership = await CustomerMembership.findOne({
+        _id: existingMembershipId,
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (!referenceMembership) {
+        throw new AppError("Reference customer membership not found", 404);
+      }
+
+      if (["cancelled", "expired"].includes(referenceMembership.status)) {
+        throw new AppError(
+          `Cannot add members to a membership with status '${referenceMembership.status}'`,
+          400
+        );
+      }
+
+      // 2. Fetch all memberships sharing this membershipPurchaseId
+      const purchaseId = referenceMembership.membershipPurchaseId;
+      const enrolledMembers = await CustomerMembership.find({
+        organizationId,
+        membershipPurchaseId: purchaseId,
+        isDeleted: false,
+        status: { $in: ["active", "pending_payment", "suspended"] },
+      }).session(session);
+
+      // 3. Resolve max capacity from planSnapshot or original plan
+      let maxCapacity = referenceMembership.planSnapshot?.maxBeneficiaries;
+      if (!maxCapacity) {
+        const originalPlan = await MembershipPlan.findById(
+          referenceMembership.membershipPlanId
+        ).session(session);
+        maxCapacity = originalPlan?.maxBeneficiaries || 1;
+      }
+
+      // Check capacity
+      if (enrolledMembers.length >= maxCapacity) {
+        throw new AppError(
+          `Membership capacity reached (${enrolledMembers.length} of ${maxCapacity} members). Cannot add more beneficiaries.`,
+          400
+        );
+      }
+
+      // 4. Validate candidate customer exists in organization
+      const candidateCustomer = await Customer.findOne({
+        _id: customerId,
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (!candidateCustomer) {
+        throw new AppError("Customer to add not found in organization", 404);
+      }
+
+      // 5. Prevent duplicate customer within the same membership purchase
+      const alreadyEnrolled = enrolledMembers.some(
+        (m) => m.customerId.toString() === customerId.toString()
+      );
+      if (alreadyEnrolled) {
+        throw new AppError(
+          "Customer is already an enrolled beneficiary of this membership",
+          400
+        );
+      }
+
+      // 6. Inherit planSnapshot, dates, branches and payer from reference membership
+      const newIndex = enrolledMembers.length + 1;
+      const memCode = `MEM-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}-${newIndex}`;
+
+      const effectiveBenefits = benefitsOverride
+        ? {
+            ...referenceMembership.planSnapshot.benefits,
+            ...benefitsOverride,
+          }
+        : referenceMembership.planSnapshot.benefits;
+
+      const newBeneficiaryMembership = new CustomerMembership({
+        organizationId,
+        customerId: candidateCustomer._id,
+        payerCustomerId: referenceMembership.payerCustomerId,
+        membershipPurchaseId: purchaseId,
+        membershipPlanId: referenceMembership.membershipPlanId,
+        attribution: referenceMembership.attribution || {},
+        membershipCode: memCode,
+        planSnapshot: {
+          name: referenceMembership.planSnapshot.name,
+          tier: referenceMembership.planSnapshot.tier || "Standard",
+          price: referenceMembership.planSnapshot.price || 0,
+          validityMonths: referenceMembership.planSnapshot.validityMonths || 12,
+          maxBeneficiaries: maxCapacity,
+          benefits: effectiveBenefits,
+        },
+        status: referenceMembership.status, // matches primary status (active or pending_payment)
+        startDate: referenceMembership.startDate,
+        endDate: referenceMembership.endDate,
+        permittedBranchIds: referenceMembership.permittedBranchIds || [],
+        invoiceId: referenceMembership.invoiceId || null,
+        notes: `Beneficiary added to membership purchase #${purchaseId.toString().slice(-6)} by user #${userId}`,
+      });
+
+      await newBeneficiaryMembership.save({ session });
+      return newBeneficiaryMembership;
+    });
+  }
+
+  /**
+   * 11. GET MEMBERSHIP PURCHASE GROUP
+   * Returns all beneficiary customer memberships belonging to the same purchase group,
+   * along with capacity metadata.
+   */
+  async getMembershipPurchaseGroup(membershipId, organizationId) {
+    const target = await CustomerMembership.findOne({
+      _id: membershipId,
+      organizationId,
+      isDeleted: false,
+    });
+
+    if (!target) {
+      throw new AppError("Customer membership not found", 404);
+    }
+
+    const purchaseId = target.membershipPurchaseId;
+    const allMembers = await CustomerMembership.find({
+      organizationId,
+      membershipPurchaseId: purchaseId,
+      isDeleted: false,
+    })
+      .populate("customerId", "name phone email")
+      .populate("payerCustomerId", "name phone email")
+      .sort({ createdAt: 1 });
+
+    const activeOrEnrolled = allMembers.filter((m) =>
+      ["active", "pending_payment", "suspended"].includes(m.status)
+    );
+
+    let maxCapacity = target.planSnapshot?.maxBeneficiaries;
+    if (!maxCapacity) {
+      const originalPlan = await MembershipPlan.findById(target.membershipPlanId);
+      maxCapacity = originalPlan?.maxBeneficiaries || 1;
+    }
+
+    return {
+      membershipPurchaseId: purchaseId,
+      referenceMembershipId: target._id,
+      membershipPlanId: target.membershipPlanId,
+      planName: target.planSnapshot?.name,
+      tier: target.planSnapshot?.tier,
+      maxBeneficiaries: maxCapacity,
+      enrolledCount: activeOrEnrolled.length,
+      availableSlots: Math.max(0, maxCapacity - activeOrEnrolled.length),
+      isCapacityReached: activeOrEnrolled.length >= maxCapacity,
+      members: allMembers,
     };
   }
 }

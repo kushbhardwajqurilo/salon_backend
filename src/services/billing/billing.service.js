@@ -70,6 +70,64 @@ function allocatePaiseProportionally(totalPaise, weightedLines) {
   return shares.map(({ remainder, ...share }) => share);
 }
 
+/**
+ * Checks whether a given service qualifies for membership benefits based on category
+ * and specific service inclusion and exclusion lists.
+ * Rules:
+ * 1. Exclusions have absolute precedence: if serviceId or categoryId is excluded, return false.
+ * 2. If neither eligibleServiceIds nor eligibleServiceCategoryIds are specified, all services qualify.
+ * 3. If eligible lists are specified, the service must match at least one inclusion rule.
+ */
+function isServiceEligibleForMembershipBenefits(service, benefits) {
+  if (!benefits) return false;
+  const srvId = (service._id || service.serviceId || service.id)?.toString();
+  const catId = (service.categoryId?._id || service.categoryId)?.toString();
+
+  // 1. Check exclusions first (precedence)
+  if (
+    Array.isArray(benefits.excludedServiceIds) &&
+    srvId &&
+    benefits.excludedServiceIds.some((id) => (id?._id || id)?.toString() === srvId)
+  ) {
+    return false;
+  }
+  if (
+    Array.isArray(benefits.excludedServiceCategoryIds) &&
+    catId &&
+    benefits.excludedServiceCategoryIds.some((id) => (id?._id || id)?.toString() === catId)
+  ) {
+    return false;
+  }
+
+  // 2. Check inclusions
+  const hasEligibleServices =
+    Array.isArray(benefits.eligibleServiceIds) && benefits.eligibleServiceIds.length > 0;
+  const hasEligibleCats =
+    Array.isArray(benefits.eligibleServiceCategoryIds) &&
+    benefits.eligibleServiceCategoryIds.length > 0;
+
+  // Default: if no inclusions specified, all services qualify (except exclusions handled above)
+  if (!hasEligibleServices && !hasEligibleCats) return true;
+
+  if (
+    hasEligibleServices &&
+    srvId &&
+    benefits.eligibleServiceIds.some((id) => (id?._id || id)?.toString() === srvId)
+  ) {
+    return true;
+  }
+
+  if (
+    hasEligibleCats &&
+    catId &&
+    benefits.eligibleServiceCategoryIds.some((id) => (id?._id || id)?.toString() === catId)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export class BillingService {
   /**
    * Option B: Allocates discount only to uncovered, customer-payable services.
@@ -2032,15 +2090,35 @@ export class BillingService {
           inCartMembershipBenefits &&
           inCartMembershipBenefits.serviceDiscountPercentage > 0
         ) {
-          isDiscountedByMembership = true;
-          const pct = inCartMembershipBenefits.serviceDiscountPercentage;
-          membershipDiscountAmount = Number(
-            ((lineTotal * pct) / 100).toFixed(2),
-          );
-          customerPayable = Math.max(
-            0,
-            Number((customerPayable - membershipDiscountAmount).toFixed(2)),
-          );
+          // If serviceId is present, verify service and category eligibility
+          let isEligible = true;
+          if (s.serviceId) {
+            let serviceDoc = await Service.findOne({
+              _id: s.serviceId,
+              organizationId,
+            }).session(session);
+            isEligible = isServiceEligibleForMembershipBenefits(
+              serviceDoc || { _id: s.serviceId },
+              inCartMembershipBenefits,
+            );
+          } else {
+            isEligible = isServiceEligibleForMembershipBenefits(
+              { name: s.name },
+              inCartMembershipBenefits,
+            );
+          }
+
+          if (isEligible) {
+            isDiscountedByMembership = true;
+            const pct = inCartMembershipBenefits.serviceDiscountPercentage;
+            membershipDiscountAmount = Number(
+              ((lineTotal * pct) / 100).toFixed(2),
+            );
+            customerPayable = Math.max(
+              0,
+              Number((customerPayable - membershipDiscountAmount).toFixed(2)),
+            );
+          }
         }
 
         invoiceLines.push({
@@ -2272,13 +2350,19 @@ export class BillingService {
         inCartMembershipBenefits &&
         inCartMembershipBenefits.serviceDiscountPercentage > 0
       ) {
-        isDiscountedByMembership = true;
-        const pct = inCartMembershipBenefits.serviceDiscountPercentage;
-        membershipDiscountAmount = Number(((lineTotal * pct) / 100).toFixed(2));
-        customerPayable = Math.max(
-          0,
-          Number((customerPayable - membershipDiscountAmount).toFixed(2)),
+        const isEligible = isServiceEligibleForMembershipBenefits(
+          service,
+          inCartMembershipBenefits,
         );
+        if (isEligible) {
+          isDiscountedByMembership = true;
+          const pct = inCartMembershipBenefits.serviceDiscountPercentage;
+          membershipDiscountAmount = Number(((lineTotal * pct) / 100).toFixed(2));
+          customerPayable = Math.max(
+            0,
+            Number((customerPayable - membershipDiscountAmount).toFixed(2)),
+          );
+        }
       }
 
       invoiceLines.push({
@@ -5287,6 +5371,7 @@ export class BillingService {
                   tier: plan.tier || "Standard",
                   price: mLine.unitPrice,
                   validityMonths: plan.validityMonths,
+                  maxBeneficiaries: plan.maxBeneficiaries || 1,
                   benefits: effectiveBenefits,
                 },
                 status: "active",
