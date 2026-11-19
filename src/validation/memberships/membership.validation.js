@@ -35,6 +35,7 @@ export const createMembershipPlanSchema = z.object({
       allowBeneficiaryChanges: z.boolean().optional().default(true),
     }).optional(),
     permittedBranchIds: z.array(objectIdSchema).optional().default([]),
+    isCustom: z.boolean().optional().default(false),
     isActive: z.boolean().optional().default(true),
   }),
 });
@@ -79,6 +80,8 @@ export const queryMembershipPlanSchema = z.object({
     search: z.string().optional(),
     tier: z.string().optional(),
     isActive: z.enum(["true", "false"]).optional(),
+    isCustom: z.enum(["true", "false"]).optional(),
+    includeCustom: z.enum(["true", "false"]).optional(),
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(50),
   }),

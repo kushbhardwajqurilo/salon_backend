@@ -221,6 +221,7 @@ export const resolveCustomerBenefits = async (req, res, next) => {
       data: membership ? {
         hasActiveMembership: true,
         membershipId: membership._id,
+        status: membership.status,
         membershipCode: membership.membershipCode,
         planSnapshot: membership.planSnapshot,
         startDate: membership.startDate,

@@ -23,6 +23,7 @@ class MembershipService {
       benefits,
       beneficiaryPolicy,
       permittedBranchIds = [],
+      isCustom = false,
       isActive = true,
     } = data;
 
@@ -57,6 +58,7 @@ class MembershipService {
         allowBeneficiaryChanges: true,
       },
       permittedBranchIds,
+      isCustom: Boolean(isCustom),
       isActive,
       createdBy: userId,
     });
@@ -70,6 +72,12 @@ class MembershipService {
    */
   async listPlans(filter = {}, organizationId) {
     const query = { organizationId, isDeleted: false };
+    if (filter.isCustom !== undefined) {
+      query.isCustom = filter.isCustom === "true" || filter.isCustom === true;
+    } else if (filter.includeCustom !== "true" && filter.includeCustom !== true) {
+      // Default: exclude custom one-off plans from the general catalog so they don't pollute the catalog
+      query.isCustom = { $ne: true };
+    }
     if (filter.isActive !== undefined) {
       query.isActive = filter.isActive === "true" || filter.isActive === true;
     }
@@ -403,17 +411,45 @@ class MembershipService {
       query.permittedBranchIds = filter.branchId;
     }
 
-    const [totalMemberships, activeCount, expiredCount, cancelledCount, suspendedCount, plansCount] = await Promise.all([
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const [
+      totalMemberships,
+      activeCount,
+      expiredCount,
+      cancelledCount,
+      suspendedCount,
+      pendingPaymentCount,
+      soldThisMonthCount,
+      expiringSoonCount,
+      plansCount,
+    ] = await Promise.all([
       CustomerMembership.countDocuments(query),
       CustomerMembership.countDocuments({ ...query, status: "active" }),
       CustomerMembership.countDocuments({ ...query, status: "expired" }),
       CustomerMembership.countDocuments({ ...query, status: "cancelled" }),
       CustomerMembership.countDocuments({ ...query, status: "suspended" }),
-      MembershipPlan.countDocuments({ organizationId, isDeleted: false }),
+      CustomerMembership.countDocuments({ ...query, status: "pending_payment" }),
+      CustomerMembership.countDocuments({ ...query, createdAt: { $gte: startOfMonth } }),
+      CustomerMembership.countDocuments({
+        ...query,
+        status: "active",
+        endDate: { $gte: now, $lte: thirtyDaysFromNow },
+      }),
+      MembershipPlan.countDocuments({ organizationId, isDeleted: false, isCustom: { $ne: true } }),
     ]);
 
     // Unique beneficiaries count
     const uniqueBeneficiaries = await CustomerMembership.distinct("customerId", query);
+
+    // Calculate total revenue from active/paid memberships
+    const revenueAgg = await CustomerMembership.aggregate([
+      { $match: { ...query, status: { $in: ["active", "expired"] } } },
+      { $group: { _id: null, totalRevenue: { $sum: "$planSnapshot.price" } } },
+    ]);
+    const totalRevenue = revenueAgg[0]?.totalRevenue || 0;
 
     return {
       totalMemberships,
@@ -421,6 +457,10 @@ class MembershipService {
       expiredMemberships: expiredCount,
       cancelledMemberships: cancelledCount,
       suspendedMemberships: suspendedCount,
+      pendingPaymentCount,
+      soldThisMonthCount,
+      expiringSoonCount,
+      totalRevenue,
       uniqueBeneficiariesCount: uniqueBeneficiaries.length,
       activePlansCount: plansCount,
     };
@@ -434,7 +474,7 @@ class MembershipService {
     let query = CustomerMembership.findOne({
       organizationId,
       customerId,
-      status: "active",
+      status: { $in: ["active", "pending_payment"] },
       startDate: { $lte: now },
       endDate: { $gte: now },
       isDeleted: false,

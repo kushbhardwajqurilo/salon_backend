@@ -129,6 +129,11 @@ const membershipPlanSchema = new mongoose.Schema(
         ref: "Branch",
       },
     ],
+    isCustom: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     isActive: {
       type: Boolean,
       default: true,
