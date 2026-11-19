@@ -55,9 +55,23 @@ router.delete(
   membershipController.deletePlan
 );
 
+router.post(
+  "/plans/:id/duplicate",
+  requireOrganizationScope,
+  authorize("memberships.configure"),
+  membershipController.duplicatePlan
+);
+
 // ==========================================
 // 2. Customer Memberships (Purchases & Beneficiaries)
 // ==========================================
+router.get(
+  "/reports",
+  requireOrganizationScope,
+  authorize("memberships.view"),
+  membershipController.getMembershipReports
+);
+
 router.get(
   "/",
   requireOrganizationScope,
@@ -79,6 +93,20 @@ router.patch(
   authorize("memberships.configure"),
   validate(membershipValidation.cancelBeneficiaryMembershipSchema),
   membershipController.cancelBeneficiaryMembership
+);
+
+router.patch(
+  "/:id/suspend",
+  requireOrganizationScope,
+  authorize("memberships.configure"),
+  membershipController.suspendBeneficiaryMembership
+);
+
+router.patch(
+  "/:id/reactivate",
+  requireOrganizationScope,
+  authorize("memberships.configure"),
+  membershipController.reactivateBeneficiaryMembership
 );
 
 // ==========================================

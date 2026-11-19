@@ -148,6 +148,43 @@ class MembershipService {
   }
 
   /**
+   * 4b. DUPLICATE MEMBERSHIP PLAN
+   */
+  async duplicatePlan(planId, organizationId, userId) {
+    const original = await MembershipPlan.findOne({
+      _id: planId,
+      organizationId,
+      isDeleted: false,
+    });
+    if (!original) {
+      throw new AppError("Original membership plan not found", 404);
+    }
+
+    const timestamp = Date.now().toString().slice(-4);
+    const newPlan = new MembershipPlan({
+      organizationId,
+      name: `${original.name} (Copy)`,
+      code: original.code ? `${original.code}_${timestamp}` : null,
+      tier: original.tier,
+      description: original.description,
+      termsAndConditions: original.termsAndConditions,
+      price: original.price,
+      validityDuration: original.validityDuration || 12,
+      validityUnit: original.validityUnit || "months",
+      validityMonths: original.validityMonths,
+      maxBeneficiaries: original.maxBeneficiaries,
+      beneficiaryPolicy: original.beneficiaryPolicy,
+      benefits: original.benefits,
+      permittedBranchIds: original.permittedBranchIds,
+      isActive: false, // Default duplicated plan to inactive until configured
+      createdBy: userId,
+    });
+
+    await newPlan.save();
+    return newPlan;
+  }
+
+  /**
    * 5. SOFT-DELETE PLAN
    */
   async deletePlan(planId, organizationId, userId) {
@@ -262,6 +299,100 @@ class MembershipService {
 
     await membership.save();
     return membership;
+  }
+
+  /**
+   * 8b. SUSPEND BENEFICIARY MEMBERSHIP
+   */
+  async suspendBeneficiaryMembership(membershipId, { reason }, organizationId, userId) {
+    const membership = await CustomerMembership.findOne({
+      _id: membershipId,
+      organizationId,
+      isDeleted: false,
+    });
+
+    if (!membership) {
+      throw new AppError("Customer membership not found", 404);
+    }
+
+    if (membership.status !== "active") {
+      throw new AppError(`Cannot suspend membership with status '${membership.status}'. Must be active.`, 400);
+    }
+
+    membership.status = "suspended";
+    membership.suspendedAt = new Date();
+    membership.suspendedBy = userId;
+    membership.suspensionReason = reason;
+
+    await membership.save();
+    return membership;
+  }
+
+  /**
+   * 8c. REACTIVATE SUSPENDED BENEFICIARY MEMBERSHIP
+   */
+  async reactivateBeneficiaryMembership(membershipId, organizationId, userId) {
+    const membership = await CustomerMembership.findOne({
+      _id: membershipId,
+      organizationId,
+      isDeleted: false,
+    });
+
+    if (!membership) {
+      throw new AppError("Customer membership not found", 404);
+    }
+
+    if (membership.status !== "suspended") {
+      throw new AppError(`Cannot reactivate membership with status '${membership.status}'. Must be suspended.`, 400);
+    }
+
+    // Check if expiry date has passed while suspended
+    if (new Date(membership.endDate) < new Date()) {
+      membership.status = "expired";
+      await membership.save();
+      throw new AppError("Membership has expired while suspended and cannot be reactivated.", 400);
+    }
+
+    membership.status = "active";
+    membership.reactivatedAt = new Date();
+    membership.suspendedAt = null;
+    membership.suspendedBy = null;
+    membership.suspensionReason = null;
+
+    await membership.save();
+    return membership;
+  }
+
+  /**
+   * 8d. MEMBERSHIP REPORTING & ANALYTICS
+   */
+  async getMembershipReports(filter = {}, organizationId) {
+    const query = { organizationId, isDeleted: false };
+    if (filter.branchId && filter.branchId !== "all") {
+      query.permittedBranchIds = filter.branchId;
+    }
+
+    const [totalMemberships, activeCount, expiredCount, cancelledCount, suspendedCount, plansCount] = await Promise.all([
+      CustomerMembership.countDocuments(query),
+      CustomerMembership.countDocuments({ ...query, status: "active" }),
+      CustomerMembership.countDocuments({ ...query, status: "expired" }),
+      CustomerMembership.countDocuments({ ...query, status: "cancelled" }),
+      CustomerMembership.countDocuments({ ...query, status: "suspended" }),
+      MembershipPlan.countDocuments({ organizationId, isDeleted: false }),
+    ]);
+
+    // Unique beneficiaries count
+    const uniqueBeneficiaries = await CustomerMembership.distinct("customerId", query);
+
+    return {
+      totalMemberships,
+      activeMemberships: activeCount,
+      expiredMemberships: expiredCount,
+      cancelledMemberships: cancelledCount,
+      suspendedMemberships: suspendedCount,
+      uniqueBeneficiariesCount: uniqueBeneficiaries.length,
+      activePlansCount: plansCount,
+    };
   }
 
   /**

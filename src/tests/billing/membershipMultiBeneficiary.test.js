@@ -276,4 +276,52 @@ describe("Multi-Beneficiary Membership Purchase & Lifecycle Integration", () => 
     expect(charlieMembership).toBeDefined();
     expect(charlieMembership.status).toBe("active");
   });
+
+  it("6. Supports beneficiary suspension and reactivation lifecycle transitions", async () => {
+    const charlieMembership = await CustomerMembership.findOne({
+      organizationId: orgId,
+      customerId: beneficiaryCId,
+      status: "active",
+    });
+
+    // Suspend Charlie
+    await membershipService.suspendBeneficiaryMembership(
+      charlieMembership._id,
+      { reason: "Temporary travel suspension" },
+      orgId,
+      cashierUserId
+    );
+
+    const suspendedMem = await CustomerMembership.findById(charlieMembership._id);
+    expect(suspendedMem.status).toBe("suspended");
+    expect(suspendedMem.suspensionReason).toBe("Temporary travel suspension");
+
+    // Suspended customer receives NO active benefits
+    const suspendedBenefit = await membershipService.resolveActiveMembershipForCustomer(
+      beneficiaryCId,
+      branchId,
+      orgId
+    );
+    expect(suspendedBenefit).toBeNull();
+
+    // Reactivate Charlie
+    await membershipService.reactivateBeneficiaryMembership(
+      charlieMembership._id,
+      orgId,
+      cashierUserId
+    );
+
+    const reactivatedMem = await CustomerMembership.findById(charlieMembership._id);
+    expect(reactivatedMem.status).toBe("active");
+    expect(reactivatedMem.suspensionReason).toBeNull();
+  });
+
+  it("7. Duplicates membership plan safely with inactive status and decoupled unique code", async () => {
+    const duplicate = await membershipService.duplicatePlan(planId, orgId, cashierUserId);
+    expect(duplicate._id).toBeDefined();
+    expect(duplicate.name).toBe("Family Gold VIP (Copy)");
+    expect(duplicate.isActive).toBe(false);
+    expect(duplicate.maxBeneficiaries).toBe(2);
+    expect(duplicate.code).not.toBe(planId.code);
+  });
 });

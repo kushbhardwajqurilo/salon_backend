@@ -87,6 +87,23 @@ export const deletePlan = async (req, res, next) => {
   }
 };
 
+export const duplicatePlan = async (req, res, next) => {
+  try {
+    const plan = await membershipService.duplicatePlan(
+      req.params.id,
+      req.user.organizationId,
+      req.user._id
+    );
+    res.status(201).json({
+      success: true,
+      message: "Membership plan duplicated successfully",
+      data: plan,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const listCustomerMemberships = async (req, res, next) => {
   try {
     const result = await membershipService.listCustomerMemberships(
@@ -134,6 +151,56 @@ export const cancelBeneficiaryMembership = async (req, res, next) => {
       success: true,
       message: "Customer membership cancelled successfully",
       data: membership,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const suspendBeneficiaryMembership = async (req, res, next) => {
+  try {
+    const membership = await membershipService.suspendBeneficiaryMembership(
+      req.params.id,
+      req.body,
+      req.user.organizationId,
+      req.user._id
+    );
+    res.status(200).json({
+      success: true,
+      message: "Customer membership suspended successfully",
+      data: membership,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reactivateBeneficiaryMembership = async (req, res, next) => {
+  try {
+    const membership = await membershipService.reactivateBeneficiaryMembership(
+      req.params.id,
+      req.user.organizationId,
+      req.user._id
+    );
+    res.status(200).json({
+      success: true,
+      message: "Customer membership reactivated successfully",
+      data: membership,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMembershipReports = async (req, res, next) => {
+  try {
+    const stats = await membershipService.getMembershipReports(
+      req.query,
+      req.user.organizationId
+    );
+    res.status(200).json({
+      success: true,
+      data: stats,
     });
   } catch (error) {
     next(error);

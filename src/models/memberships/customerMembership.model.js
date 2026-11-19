@@ -58,10 +58,28 @@ const customerMembershipSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending_payment", "active", "expired", "cancelled"],
+      enum: ["pending_payment", "active", "suspended", "expired", "cancelled"],
       default: "pending_payment",
       required: true,
       index: true,
+    },
+    suspendedAt: {
+      type: Date,
+      default: null,
+    },
+    suspendedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    suspensionReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    reactivatedAt: {
+      type: Date,
+      default: null,
     },
     startDate: {
       type: Date,

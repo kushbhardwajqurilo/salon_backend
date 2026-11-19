@@ -27,6 +27,24 @@ const membershipBenefitsSchema = new mongoose.Schema(
         ref: "ServiceCategory",
       },
     ],
+    eligibleServiceIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Service",
+      },
+    ],
+    excludedServiceCategoryIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "ServiceCategory",
+      },
+    ],
+    excludedServiceIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Service",
+      },
+    ],
     complimentaryPerks: {
       type: [String],
       default: [],
@@ -64,10 +82,25 @@ const membershipPlanSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    termsAndConditions: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     price: {
       type: Number,
       required: true,
       min: [0, "Membership price must be non-negative"],
+    },
+    validityUnit: {
+      type: String,
+      enum: ["days", "months", "years"],
+      default: "months",
+    },
+    validityDuration: {
+      type: Number,
+      default: 12,
+      min: [1, "Validity duration must be at least 1"],
     },
     validityMonths: {
       type: Number,
@@ -78,6 +111,12 @@ const membershipPlanSchema = new mongoose.Schema(
       type: membershipBenefitsSchema,
       required: true,
       default: () => ({}),
+    },
+    beneficiaryPolicy: {
+      allowMultipleBeneficiaries: { type: Boolean, default: false },
+      maxBeneficiaries: { type: Number, default: 1, min: 1 },
+      payerMustBeBeneficiary: { type: Boolean, default: false },
+      allowBeneficiaryChanges: { type: Boolean, default: true },
     },
     maxBeneficiaries: {
       type: Number,
