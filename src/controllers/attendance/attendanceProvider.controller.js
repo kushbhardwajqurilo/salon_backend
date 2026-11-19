@@ -10,6 +10,11 @@ import {
   recordLeaveException,
   resolveBranchAttendanceConflict,
   resolveLeaveAppointmentConflict,
+  listStaffDeviceMappings,
+  getStaffDeviceMappingById,
+  createStaffDeviceMapping,
+  updateStaffDeviceMapping,
+  deactivateStaffDeviceMapping,
 } from '../../services/attendance/attendance.service.js';
 
 const trustedContext = (req) => ({
@@ -105,4 +110,48 @@ export const ingestProviderEventsController = asyncHandler(async (req, res) => {
   });
 
   res.status(200).json({ success: true, data: result });
+});
+
+export const listStaffDeviceMappingsController = asyncHandler(async (req, res) => {
+  const result = await listStaffDeviceMappings({
+    ...trustedContext(req),
+    ...req.query,
+  });
+  res.status(200).json({ success: true, data: result.mappings, pagination: result.pagination });
+});
+
+export const getStaffDeviceMappingByIdController = asyncHandler(async (req, res) => {
+  const data = await getStaffDeviceMappingById({
+    ...trustedContext(req),
+    id: req.params.id,
+  });
+  res.status(200).json({ success: true, data });
+});
+
+export const createStaffDeviceMappingController = asyncHandler(async (req, res) => {
+  const data = await createStaffDeviceMapping({
+    ...trustedContext(req),
+    actorId: req.user.id,
+    ...req.body,
+  });
+  res.status(201).json({ success: true, data, message: 'Staff device mapping created successfully.' });
+});
+
+export const updateStaffDeviceMappingController = asyncHandler(async (req, res) => {
+  const data = await updateStaffDeviceMapping({
+    ...trustedContext(req),
+    id: req.params.id,
+    actorId: req.user.id,
+    ...req.body,
+  });
+  res.status(200).json({ success: true, data, message: 'Staff device mapping updated successfully.' });
+});
+
+export const deactivateStaffDeviceMappingController = asyncHandler(async (req, res) => {
+  const data = await deactivateStaffDeviceMapping({
+    ...trustedContext(req),
+    id: req.params.id,
+    actorId: req.user.id,
+  });
+  res.status(200).json({ success: true, data, message: 'Staff device mapping deactivated successfully.' });
 });

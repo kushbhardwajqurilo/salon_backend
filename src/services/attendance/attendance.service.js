@@ -473,6 +473,362 @@ async function getProviderStatus({ organizationId, branchId }) {
   };
 }
 
+async function listStaffDeviceMappings({
+  organizationId,
+  branchId,
+  staffId,
+  provider,
+  deviceId,
+  externalEmployeeCode,
+  mappingStatus,
+  isActive,
+  search,
+  page = 1,
+  limit = 20,
+}) {
+  const query = { organizationId, branchId };
+
+  if (staffId) {
+    query.staffId = staffId;
+  }
+  if (provider) {
+    query.provider = provider.trim();
+  }
+  if (deviceId) {
+    query.deviceId = deviceId.trim();
+  }
+  if (externalEmployeeCode) {
+    query.externalEmployeeCode = externalEmployeeCode.trim();
+  }
+  if (mappingStatus) {
+    query.mappingStatus = mappingStatus;
+  }
+  if (typeof isActive === 'boolean') {
+    query.isActive = isActive;
+  }
+
+  // If a search query is provided, find matching staff IDs first or search externalEmployeeCode / deviceId
+  if (search && search.trim()) {
+    const searchRegex = new RegExp(search.trim(), 'i');
+    const matchedStaff = await Staff.find({
+      organizationId,
+      $or: [
+        { name: searchRegex },
+        { staffCode: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex },
+      ],
+    }).select('_id').lean();
+
+    const matchedStaffIds = matchedStaff.map((s) => s._id);
+
+    query.$or = [
+      { externalEmployeeCode: searchRegex },
+      { deviceId: searchRegex },
+      { provider: searchRegex },
+      { notes: searchRegex },
+      { staffId: { $in: matchedStaffIds } },
+    ];
+  }
+
+  const numericPage = Math.max(1, parseInt(page, 10) || 1);
+  const numericLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const skip = (numericPage - 1) * numericLimit;
+
+  const [mappings, total] = await Promise.all([
+    StaffDeviceMapping.find(query)
+      .populate('staffId', 'name staffCode email phone avatar role isActive')
+      .populate('createdBy', 'name staffCode')
+      .populate('updatedBy', 'name staffCode')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(numericLimit)
+      .lean(),
+    StaffDeviceMapping.countDocuments(query),
+  ]);
+
+  return {
+    mappings,
+    pagination: {
+      total,
+      page: numericPage,
+      limit: numericLimit,
+      totalPages: Math.ceil(total / numericLimit) || 1,
+    },
+  };
+}
+
+async function getStaffDeviceMappingById({ id, organizationId, branchId }) {
+  const mapping = await StaffDeviceMapping.findOne({
+    _id: id,
+    organizationId,
+    branchId,
+  })
+    .populate('staffId', 'name staffCode email phone avatar role isActive')
+    .populate('createdBy', 'name staffCode')
+    .populate('updatedBy', 'name staffCode')
+    .lean();
+
+  if (!mapping) {
+    throw new AppError('Staff device mapping not found.', 404);
+  }
+  return mapping;
+}
+
+async function createStaffDeviceMapping({
+  organizationId,
+  branchId,
+  actorId,
+  staffId,
+  provider,
+  deviceId,
+  externalEmployeeCode,
+  notes,
+  effectiveFrom,
+}) {
+  const cleanProvider = (provider || '').trim();
+  const cleanDeviceId = (deviceId || '').trim();
+  const cleanExternalCode = (externalEmployeeCode || '').trim();
+
+  if (!cleanProvider || !cleanDeviceId || !cleanExternalCode) {
+    throw new AppError('Provider, device ID, and external employee code are required.', 400);
+  }
+
+  // 1. Validate staff member belongs to the authenticated organization and is active
+  const staff = await Staff.findOne({
+    _id: staffId,
+    organizationId,
+  });
+
+  if (!staff) {
+    throw new AppError('Staff member not found in this organization.', 404);
+  }
+  if (!staff.isActive) {
+    throw new AppError('Cannot create mapping for an inactive staff member.', 400);
+  }
+
+  // 2. Validate staff member is actively assigned to the active branch
+  const staffBranch = await StaffBranch.findOne({
+    staffId,
+    branchId,
+    organizationId,
+    isActive: true,
+  });
+
+  if (!staffBranch) {
+    throw new AppError('Staff member is not actively assigned to the selected branch.', 400);
+  }
+
+  // 3. Validate provider configuration exists and is supported
+  const supportedProviders = providerRegistry.listAdapters();
+  if (!supportedProviders.includes(cleanProvider)) {
+    throw new AppError(`Unsupported attendance provider: "${cleanProvider}".`, 400);
+  }
+
+  const providerConfig = await ProviderConfiguration.findOne({
+    organizationId,
+    branchId,
+    providerName: cleanProvider,
+    isActive: true,
+  });
+
+  if (!providerConfig) {
+    throw new AppError(
+      `No active configuration found for provider "${cleanProvider}" at this branch.`,
+      400
+    );
+  }
+
+  // 4. Validate device identifier against provider configuration if deviceMappings are defined
+  if (providerConfig.deviceMappings && typeof providerConfig.deviceMappings === 'object') {
+    const configuredDevices = Object.keys(providerConfig.deviceMappings);
+    if (configuredDevices.length > 0 && !configuredDevices.includes(cleanDeviceId)) {
+      // In case deviceMappings stores values or keys, also check Object.values
+      const isConfigured =
+        configuredDevices.includes(cleanDeviceId) ||
+        Object.values(providerConfig.deviceMappings).includes(cleanDeviceId);
+      if (!isConfigured) {
+        throw new AppError(
+          `Device ID "${cleanDeviceId}" is not registered in the provider configuration for "${cleanProvider}".`,
+          400
+        );
+      }
+    }
+  }
+
+  // 5. Pre-check for duplicate active mapping to provide friendly 409 conflict
+  const existingActive = await StaffDeviceMapping.findOne({
+    organizationId,
+    branchId,
+    provider: cleanProvider,
+    deviceId: cleanDeviceId,
+    externalEmployeeCode: cleanExternalCode,
+    isActive: true,
+  });
+
+  if (existingActive) {
+    throw new AppError(
+      `An active mapping already exists for code "${cleanExternalCode}" on device "${cleanDeviceId}" with provider "${cleanProvider}". Deactivate the existing mapping before reassigning.`,
+      409
+    );
+  }
+
+  // 6. Create mapping with mappingMethod: 'admin_overriden' and safeguard with unique index
+  try {
+    const newMapping = await StaffDeviceMapping.create({
+      organizationId,
+      branchId,
+      provider: cleanProvider,
+      deviceId: cleanDeviceId,
+      externalEmployeeCode: cleanExternalCode,
+      staffId,
+      mappingStatus: 'mapped',
+      mappingMethod: 'admin_overriden',
+      isActive: true,
+      effectiveFrom: effectiveFrom ? new Date(effectiveFrom) : new Date(),
+      notes: notes ? notes.trim() : undefined,
+      createdBy: actorId,
+      updatedBy: actorId,
+    });
+
+    // 7. Durably record audit log
+    await AuditLog.create({
+      organizationId,
+      branchId,
+      actorId,
+      action: 'STAFF_DEVICE_MAPPING_CREATED',
+      entityType: 'StaffDeviceMapping',
+      entityId: newMapping._id,
+      description: `Staff device mapping created for staff ${staff.staffCode || staff.name} to external ID ${cleanExternalCode}.`,
+      metadata: {
+        staffId,
+        provider: cleanProvider,
+        deviceId: cleanDeviceId,
+        externalEmployeeCode: cleanExternalCode,
+        mappingMethod: 'admin_overriden',
+      },
+    });
+
+    return await StaffDeviceMapping.findById(newMapping._id)
+      .populate('staffId', 'name staffCode email phone avatar role isActive')
+      .populate('createdBy', 'name staffCode')
+      .lean();
+  } catch (error) {
+    // Catch MongoDB duplicate key error code 11000
+    if (error.code === 11000 || (error.name === 'MongoServerError' && error.code === 11000)) {
+      throw new AppError(
+        `A mapping conflict occurred: an active mapping already exists for code "${cleanExternalCode}" on device "${cleanDeviceId}".`,
+        409
+      );
+    }
+    throw error;
+  }
+}
+
+async function updateStaffDeviceMapping({
+  id,
+  organizationId,
+  branchId,
+  actorId,
+  notes,
+  effectiveTo,
+  mappingStatus,
+}) {
+  const mapping = await StaffDeviceMapping.findOne({
+    _id: id,
+    organizationId,
+    branchId,
+  });
+
+  if (!mapping) {
+    throw new AppError('Staff device mapping not found.', 404);
+  }
+
+  const updates = { updatedBy: actorId };
+  if (notes !== undefined) {
+    updates.notes = notes ? notes.trim() : '';
+  }
+  if (effectiveTo !== undefined) {
+    updates.effectiveTo = effectiveTo ? new Date(effectiveTo) : null;
+  }
+  if (mappingStatus !== undefined) {
+    updates.mappingStatus = mappingStatus;
+  }
+
+  const updatedMapping = await StaffDeviceMapping.findByIdAndUpdate(
+    id,
+    { $set: updates },
+    { new: true, runValidators: true }
+  )
+    .populate('staffId', 'name staffCode email phone avatar role isActive')
+    .populate('createdBy', 'name staffCode')
+    .populate('updatedBy', 'name staffCode')
+    .lean();
+
+  await AuditLog.create({
+    organizationId,
+    branchId,
+    actorId,
+    action: 'STAFF_DEVICE_MAPPING_UPDATED',
+    entityType: 'StaffDeviceMapping',
+    entityId: mapping._id,
+    description: `Staff device mapping updated for external ID ${mapping.externalEmployeeCode}.`,
+    metadata: {
+      updates,
+      externalEmployeeCode: mapping.externalEmployeeCode,
+      provider: mapping.provider,
+      deviceId: mapping.deviceId,
+    },
+  });
+
+  return updatedMapping;
+}
+
+async function deactivateStaffDeviceMapping({ id, organizationId, branchId, actorId }) {
+  const mapping = await StaffDeviceMapping.findOne({
+    _id: id,
+    organizationId,
+    branchId,
+  });
+
+  if (!mapping) {
+    throw new AppError('Staff device mapping not found.', 404);
+  }
+
+  if (!mapping.isActive) {
+    throw new AppError('Staff device mapping is already inactive.', 400);
+  }
+
+  const deactivatedAt = new Date();
+  mapping.isActive = false;
+  mapping.effectiveTo = deactivatedAt;
+  mapping.updatedBy = actorId;
+  await mapping.save();
+
+  await AuditLog.create({
+    organizationId,
+    branchId,
+    actorId,
+    action: 'STAFF_DEVICE_MAPPING_DEACTIVATED',
+    entityType: 'StaffDeviceMapping',
+    entityId: mapping._id,
+    description: `Staff device mapping deactivated for external ID ${mapping.externalEmployeeCode}. Historical punches are preserved.`,
+    metadata: {
+      staffId: mapping.staffId,
+      provider: mapping.provider,
+      deviceId: mapping.deviceId,
+      externalEmployeeCode: mapping.externalEmployeeCode,
+      effectiveTo: deactivatedAt,
+    },
+  });
+
+  return await StaffDeviceMapping.findById(mapping._id)
+    .populate('staffId', 'name staffCode email phone avatar role isActive')
+    .populate('createdBy', 'name staffCode')
+    .populate('updatedBy', 'name staffCode')
+    .lean();
+}
+
 // Attendance Service placeholder
 // Attendance Service — Salon Project Unisex Parlour ERP
 // Helper: derive branch-local date from UTC date and branch timezone
@@ -1180,4 +1536,9 @@ export {
   listBranchAttendanceConflicts,
   resolveBranchAttendanceConflict,
   getProviderStatus,
+  listStaffDeviceMappings,
+  getStaffDeviceMappingById,
+  createStaffDeviceMapping,
+  updateStaffDeviceMapping,
+  deactivateStaffDeviceMapping,
 };

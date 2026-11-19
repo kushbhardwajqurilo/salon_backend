@@ -63,6 +63,11 @@ jest.unstable_mockModule('../../services/attendance/attendance.service.js', () =
     globalThis.__attendanceCapturedInput = input;
     return { provider: input.providerName, checkpoint: input.checkpoint, results: [] };
   }),
+  listStaffDeviceMappings: jest.fn(async () => ({ mappings: [], pagination: { total: 0, page: 1, limit: 20, totalPages: 1 } })),
+  getStaffDeviceMappingById: jest.fn(async (input) => input),
+  createStaffDeviceMapping: jest.fn(async (input) => input),
+  updateStaffDeviceMapping: jest.fn(async (input) => input),
+  deactivateStaffDeviceMapping: jest.fn(async (input) => input),
 }));
 
 const { default: attendanceRouter } = await import('../../routers/attendance/attendance.router.js');
