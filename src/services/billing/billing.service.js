@@ -31,6 +31,7 @@ import { Service } from "../../models/services/service.model.js";
 import { Coupon } from "../../models/coupons/coupon.model.js";
 import { CouponUsage } from "../../models/coupons/couponUsage.model.js";
 import { CouponCustomerUsage } from "../../models/coupons/couponCustomerUsage.model.js";
+import { smsQueue } from "../../queues/client.js";
 import { logger } from "../../utils/logger.js";
 import {
   loadStaffAttributionSnapshot,
@@ -5182,6 +5183,7 @@ export class BillingService {
         const membershipLines = updatedInvoice.lines.filter(
           (l) => l.lineType === "membership" && l.membershipPlanId,
         );
+        const allCreatedMemberships = [];
         for (const mLine of membershipLines) {
           const plan = await MembershipPlan.findOne({
             _id: mLine.membershipPlanId,
@@ -5238,6 +5240,7 @@ export class BillingService {
 
               await newMembership.save({ session });
               createdMemberships.push(newMembership);
+              allCreatedMemberships.push(newMembership);
             }
 
             // Backward compatibility: link first created membership to customerMembershipId
@@ -5291,6 +5294,26 @@ export class BillingService {
         } catch (incentiveErr) {
           logger.error("Incentive settlement hook failed; rolling back invoice payment: " + incentiveErr.message);
           throw incentiveErr;
+        }
+
+        // Post-commit notification dispatch for created memberships (non-blocking)
+        if (allCreatedMemberships.length > 0) {
+          try {
+            for (const cm of allCreatedMemberships) {
+              const cust = await Customer.findById(cm.customerId).session(session).lean();
+              if (cust?.phone && smsQueue?.add) {
+                await smsQueue.add("sendMembershipActivatedSMS", {
+                  phone: cust.phone,
+                  customerName: cust.name,
+                  membershipCode: cm.membershipCode,
+                  planName: cm.planSnapshot?.name || "Salon Membership",
+                  tier: cm.planSnapshot?.tier || "Standard",
+                });
+              }
+            }
+          } catch (smsErr) {
+            logger.warn("Non-fatal SMS notification dispatch failure for memberships: " + smsErr.message);
+          }
         }
       }
 

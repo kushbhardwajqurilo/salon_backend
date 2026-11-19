@@ -14,10 +14,14 @@ class MembershipService {
       code,
       tier,
       description,
+      termsAndConditions,
       price,
       validityMonths,
+      validityUnit = "months",
+      validityDuration = 12,
       maxBeneficiaries = 1,
       benefits,
+      beneficiaryPolicy,
       permittedBranchIds = [],
       isActive = true,
     } = data;
@@ -38,11 +42,20 @@ class MembershipService {
       name,
       code: code ? code.toUpperCase() : null,
       tier: tier || "Standard",
-      description,
+      description: description || "",
+      termsAndConditions: termsAndConditions || "",
       price,
-      validityMonths,
+      validityDuration: validityDuration || validityMonths || 12,
+      validityUnit: validityUnit || "months",
+      validityMonths: validityMonths || validityDuration || 12,
       maxBeneficiaries,
       benefits: benefits || {},
+      beneficiaryPolicy: beneficiaryPolicy || {
+        allowMultipleBeneficiaries: maxBeneficiaries > 1,
+        maxBeneficiaries,
+        payerMustBeBeneficiary: false,
+        allowBeneficiaryChanges: true,
+      },
       permittedBranchIds,
       isActive,
       createdBy: userId,
@@ -135,9 +148,27 @@ class MembershipService {
     if (updates.name !== undefined) plan.name = updates.name;
     if (updates.tier !== undefined) plan.tier = updates.tier;
     if (updates.description !== undefined) plan.description = updates.description;
+    if (updates.termsAndConditions !== undefined) plan.termsAndConditions = updates.termsAndConditions;
     if (updates.price !== undefined) plan.price = updates.price;
-    if (updates.validityMonths !== undefined) plan.validityMonths = updates.validityMonths;
-    if (updates.maxBeneficiaries !== undefined) plan.maxBeneficiaries = updates.maxBeneficiaries;
+    if (updates.validityMonths !== undefined) {
+      plan.validityMonths = updates.validityMonths;
+      plan.validityDuration = updates.validityDuration || updates.validityMonths;
+    }
+    if (updates.validityUnit !== undefined) plan.validityUnit = updates.validityUnit;
+    if (updates.validityDuration !== undefined) {
+      plan.validityDuration = updates.validityDuration;
+      if (plan.validityUnit === "months") plan.validityMonths = updates.validityDuration;
+    }
+    if (updates.maxBeneficiaries !== undefined) {
+      plan.maxBeneficiaries = updates.maxBeneficiaries;
+      if (plan.beneficiaryPolicy) {
+        plan.beneficiaryPolicy.maxBeneficiaries = updates.maxBeneficiaries;
+        plan.beneficiaryPolicy.allowMultipleBeneficiaries = updates.maxBeneficiaries > 1;
+      }
+    }
+    if (updates.beneficiaryPolicy !== undefined) {
+      plan.beneficiaryPolicy = { ...plan.beneficiaryPolicy, ...updates.beneficiaryPolicy };
+    }
     if (updates.benefits !== undefined) plan.benefits = { ...plan.benefits, ...updates.benefits };
     if (updates.permittedBranchIds !== undefined) plan.permittedBranchIds = updates.permittedBranchIds;
     if (updates.isActive !== undefined) plan.isActive = updates.isActive;

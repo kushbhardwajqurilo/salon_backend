@@ -210,6 +210,14 @@ export const processSmsJob = async (job) => {
         message: `Dear ${customerName || "Valued Customer"}, your appointment ${appointmentCode} has been completed. Thank you for visiting us!`,
       });
     }
+    case "sendMembershipActivatedSMS": {
+      const { phone, customerName, membershipCode, planName, tier } = job.data;
+      if (!phone) return false;
+      return await smsService.sendSms({
+        phone,
+        message: `Dear ${customerName || "Member"}, welcome to ${planName || "our salon"} (${tier || "Standard"} tier)! Your membership ${membershipCode} is now active. Enjoy your exclusive privileges!`,
+      });
+    }
     default:
       logger.warn(`Unknown SMS job type: ${job.name}`);
       return true;
