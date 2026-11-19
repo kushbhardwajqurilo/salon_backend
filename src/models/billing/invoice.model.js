@@ -192,6 +192,25 @@ const invoiceLineSchema = new mongoose.Schema(
         ref: "Customer",
       },
     ],
+    // Per-beneficiary independent benefit configurations
+    beneficiaryOverrides: [
+      {
+        customerId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Customer",
+          required: true,
+        },
+        benefits: {
+          serviceDiscountPercentage: { type: Number, default: 0 },
+          productDiscountPercentage: { type: Number, default: 0 },
+          complimentaryPerks: { type: [String], default: [] },
+          eligibleServiceCategoryIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "ServiceCategory" }],
+          eligibleServiceIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Service" }],
+          excludedServiceCategoryIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "ServiceCategory" }],
+          excludedServiceIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Service" }],
+        },
+      },
+    ],
     payerCustomerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",

@@ -6,6 +6,8 @@ import { CustomerMembership } from "../../models/memberships/customerMembership.
 import { Customer } from "../../models/customers/customer.model.js";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Organization } from "../../models/organizations/organization.model.js";
+import { Service } from "../../models/services/service.model.js";
+import { ServiceCategory } from "../../models/services/serviceCategory.model.js";
 import { billingService } from "../../services/billing/billing.service.js";
 import { membershipService } from "../../services/memberships/membership.service.js";
 
@@ -18,6 +20,7 @@ describe("Multi-Beneficiary Membership Purchase & Lifecycle Integration", () => 
   let beneficiaryCId;
   let outsiderCustomerId;
   let planId;
+  let serviceId;
   let cashierUserId;
 
   beforeAll(async () => {
@@ -100,9 +103,31 @@ describe("Multi-Beneficiary Membership Purchase & Lifecycle Integration", () => 
       permittedBranchIds: [branchId],
     });
     planId = plan._id;
+
+    // Create a service category and registered service for checkout discount verification
+    const category = await ServiceCategory.create({
+      organizationId: orgId,
+      name: "Hair & Grooming",
+    });
+
+    const service = await Service.create({
+      organizationId: orgId,
+      name: "Hair Styling Deluxe",
+      serviceCode: `SRV_${Date.now()}`,
+      categoryId: category._id,
+      duration: 45,
+      pricing: {
+        basePrice: 1000,
+      },
+      status: "active",
+      isActive: true,
+    });
+    serviceId = service._id;
   });
 
   afterAll(async () => {
+    await Service.deleteMany({ organizationId: orgId });
+    await ServiceCategory.deleteMany({ organizationId: orgId });
     await MembershipPlan.deleteMany({ organizationId: orgId });
     await CustomerMembership.deleteMany({ organizationId: orgId });
     await Customer.deleteMany({ organizationId: orgId });
@@ -323,5 +348,104 @@ describe("Multi-Beneficiary Membership Purchase & Lifecycle Integration", () => 
     expect(duplicate.isActive).toBe(false);
     expect(duplicate.maxBeneficiaries).toBe(2);
     expect(duplicate.code).not.toBe(planId.code);
+  });
+
+  it("8. Multi-member purchase with independent beneficiary benefit overrides creates distinct benefits per member and applies correct discount during checkout", async () => {
+    // Beneficiary B gets 25% service discount override, Beneficiary C gets 10% service discount override
+    const draftInvoice = await billingService.createUnifiedInvoice(
+      {
+        branchId,
+        customerId: beneficiaryBId, // In-cart service customer is Beneficiary B
+        membershipLines: [
+          {
+            membershipPlanId: planId, // base plan has 15% discount
+            quantity: 1,
+            payerCustomerId: payerId,
+            beneficiaries: [
+              {
+                customerId: beneficiaryBId,
+                benefits: {
+                  serviceDiscountPercentage: 25,
+                  productDiscountPercentage: 15,
+                  complimentaryPerks: ["Free Deluxe Head Massage"],
+                },
+              },
+              {
+                customerId: beneficiaryCId,
+                benefits: {
+                  serviceDiscountPercentage: 10,
+                  productDiscountPercentage: 5,
+                  complimentaryPerks: ["Free Standard Drink"],
+                },
+              },
+            ],
+          },
+        ],
+        serviceLines: [
+          {
+            serviceId,
+            quantity: 1,
+          },
+        ],
+      },
+      orgId,
+      cashierUserId
+    );
+
+    expect(draftInvoice._id).toBeDefined();
+    expect(draftInvoice.lines).toHaveLength(2);
+
+    const memLine = draftInvoice.lines.find((l) => l.lineType === "membership");
+    const srvLine = draftInvoice.lines.find((l) => l.lineType === "service");
+
+    expect(memLine.beneficiaryCustomerIds).toHaveLength(2);
+    expect(memLine.beneficiaryOverrides).toHaveLength(2);
+
+    // Verify service line receives the 25% discount overridden for Beneficiary B (instead of base plan's 15%)
+    // Service basePrice is 1000 => 25% discount is 250
+    expect(srvLine.isDiscountedByMembership).toBe(true);
+    expect(srvLine.membershipDiscountAmount).toBe(250);
+    expect(srvLine.customerPayable).toBe(750);
+
+    // Finalize and pay invoice to trigger atomic activation
+    await billingService.finalizeInvoice(
+      draftInvoice._id,
+      {},
+      orgId,
+      branchId,
+      cashierUserId
+    );
+    await billingService.recordPayment(
+      draftInvoice._id,
+      {
+        amount: draftInvoice.payableAmount,
+        paymentMethod: "card",
+      },
+      orgId,
+      branchId,
+      cashierUserId
+    );
+
+    // Verify both CustomerMemberships were created with distinct benefits
+    const memberBRecord = await CustomerMembership.findOne({
+      organizationId: orgId,
+      customerId: beneficiaryBId,
+      invoiceId: draftInvoice._id,
+    });
+    const memberCRecord = await CustomerMembership.findOne({
+      organizationId: orgId,
+      customerId: beneficiaryCId,
+      invoiceId: draftInvoice._id,
+    });
+
+    expect(memberBRecord).toBeDefined();
+    expect(memberBRecord.status).toBe("active");
+    expect(memberBRecord.planSnapshot.benefits.serviceDiscountPercentage).toBe(25);
+    expect(memberBRecord.planSnapshot.benefits.complimentaryPerks).toContain("Free Deluxe Head Massage");
+
+    expect(memberCRecord).toBeDefined();
+    expect(memberCRecord.status).toBe("active");
+    expect(memberCRecord.planSnapshot.benefits.serviceDiscountPercentage).toBe(10);
+    expect(memberCRecord.planSnapshot.benefits.complimentaryPerks).toContain("Free Standard Drink");
   });
 });

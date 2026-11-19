@@ -1729,11 +1729,17 @@ export class BillingService {
         session,
       );
 
-      // Multi-beneficiary resolution & validation
+      // Multi-beneficiary resolution & validation (supports both legacy beneficiaryCustomerIds and per-beneficiary overrides)
       const payerId = memInput.payerCustomerId || targetCustomerId;
-      let targetBeneficiaries = [payerId];
-      if (Array.isArray(memInput.beneficiaryCustomerIds) && memInput.beneficiaryCustomerIds.length > 0) {
+      let targetBeneficiaries = [];
+      const beneficiaryOverridesList = Array.isArray(memInput.beneficiaries) ? memInput.beneficiaries : [];
+
+      if (beneficiaryOverridesList.length > 0) {
+        targetBeneficiaries = beneficiaryOverridesList.map((b) => b.customerId);
+      } else if (Array.isArray(memInput.beneficiaryCustomerIds) && memInput.beneficiaryCustomerIds.length > 0) {
         targetBeneficiaries = memInput.beneficiaryCustomerIds;
+      } else {
+        targetBeneficiaries = [payerId];
       }
 
       // Check unique beneficiaries
@@ -1761,12 +1767,56 @@ export class BillingService {
         throw new AppError("One or more beneficiaries not found in organization", 404);
       }
 
+      // Build structured beneficiaryOverrides array mapping each beneficiary customer to their custom benefits (or plan defaults)
+      const formattedBeneficiaryOverrides = uniqueBeneficiaryIds.map((bId) => {
+        const foundOverride = beneficiaryOverridesList.find(
+          (o) => (o.customerId?._id || o.customerId)?.toString() === bId.toString(),
+        );
+        const mergedBenefits = foundOverride?.benefits
+          ? {
+              serviceDiscountPercentage:
+                foundOverride.benefits.serviceDiscountPercentage !== undefined
+                  ? Number(foundOverride.benefits.serviceDiscountPercentage)
+                  : plan.benefits?.serviceDiscountPercentage ?? 0,
+              productDiscountPercentage:
+                foundOverride.benefits.productDiscountPercentage !== undefined
+                  ? Number(foundOverride.benefits.productDiscountPercentage)
+                  : plan.benefits?.productDiscountPercentage ?? 0,
+              eligibleServiceCategoryIds:
+                foundOverride.benefits.eligibleServiceCategoryIds ||
+                plan.benefits?.eligibleServiceCategoryIds ||
+                [],
+              eligibleServiceIds:
+                foundOverride.benefits.eligibleServiceIds ||
+                plan.benefits?.eligibleServiceIds ||
+                [],
+              excludedServiceCategoryIds:
+                foundOverride.benefits.excludedServiceCategoryIds ||
+                plan.benefits?.excludedServiceCategoryIds ||
+                [],
+              excludedServiceIds:
+                foundOverride.benefits.excludedServiceIds ||
+                plan.benefits?.excludedServiceIds ||
+                [],
+              complimentaryPerks:
+                foundOverride.benefits.complimentaryPerks ||
+                plan.benefits?.complimentaryPerks ||
+                [],
+            }
+          : { ...(plan.benefits || {}) };
+
+        return {
+          customerId: bId,
+          benefits: mergedBenefits,
+        };
+      });
+
       // Track active benefits for same-invoice benefit preview ONLY IF the target appointment/cart customer is among beneficiaries!
-      const isTargetCustomerBeneficiary = uniqueBeneficiaryIds.some(
-        (bId) => bId.toString() === targetCustomerId.toString(),
+      const matchingBeneficiaryOverride = formattedBeneficiaryOverrides.find(
+        (b) => b.customerId.toString() === targetCustomerId.toString(),
       );
-      if (isTargetCustomerBeneficiary) {
-        inCartMembershipBenefits = plan.benefits;
+      if (matchingBeneficiaryOverride) {
+        inCartMembershipBenefits = matchingBeneficiaryOverride.benefits;
       }
       inCartMembershipPurchaseLineId = new mongoose.Types.ObjectId();
 
@@ -1776,6 +1826,7 @@ export class BillingService {
         membershipPlanId: plan._id,
         payerCustomerId: payerId,
         beneficiaryCustomerIds: uniqueBeneficiaryIds,
+        beneficiaryOverrides: formattedBeneficiaryOverrides,
         attribution: { soldBy },
         membershipTierSnapshot: plan.tier || "Standard",
         name: `Membership: ${plan.name}`,
@@ -5215,6 +5266,14 @@ export class BillingService {
                 primaryMembershipCode = memCode;
               }
 
+              // Check if there is an overridden benefit configuration for this specific beneficiary
+              const overrideConfig = Array.isArray(mLine.beneficiaryOverrides)
+                ? mLine.beneficiaryOverrides.find(
+                    (o) => (o.customerId?._id || o.customerId)?.toString() === bId.toString(),
+                  )
+                : null;
+              const effectiveBenefits = overrideConfig?.benefits || plan.benefits;
+
               const newMembership = new CustomerMembership({
                 organizationId,
                 customerId: bId,
@@ -5228,7 +5287,7 @@ export class BillingService {
                   tier: plan.tier || "Standard",
                   price: mLine.unitPrice,
                   validityMonths: plan.validityMonths,
-                  benefits: plan.benefits,
+                  benefits: effectiveBenefits,
                 },
                 status: "active",
                 startDate,
