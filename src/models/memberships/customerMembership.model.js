@@ -16,6 +16,19 @@ const customerMembershipSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    payerCustomerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      default: function () {
+        return this.customerId;
+      },
+      index: true,
+    },
+    membershipPurchaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: () => new mongoose.Types.ObjectId(),
+      index: true,
+    },
     membershipPlanId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "MembershipPlan",
@@ -119,6 +132,8 @@ const customerMembershipSchema = new mongoose.Schema(
 // Indexes for tenant isolation and quick active lookup
 customerMembershipSchema.index({ organizationId: 1, membershipCode: 1 }, { unique: true });
 customerMembershipSchema.index({ organizationId: 1, customerId: 1, status: 1 });
+customerMembershipSchema.index({ organizationId: 1, payerCustomerId: 1 });
+customerMembershipSchema.index({ organizationId: 1, membershipPurchaseId: 1 });
 customerMembershipSchema.index({ organizationId: 1, endDate: 1, status: 1 });
 
 customerMembershipSchema.set("toJSON", {

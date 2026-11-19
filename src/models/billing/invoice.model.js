@@ -179,6 +179,28 @@ const invoiceLineSchema = new mongoose.Schema(
       ref: "CustomerMembership",
       default: null,
     },
+    // Multi-beneficiary membership support
+    customerMembershipIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "CustomerMembership",
+      },
+    ],
+    beneficiaryCustomerIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Customer",
+      },
+    ],
+    payerCustomerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      default: null,
+    },
+    membershipPurchaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
     membershipTierSnapshot: {
       type: String,
       default: null,
@@ -299,6 +321,18 @@ const invoiceSchema = new mongoose.Schema(
     customerMembershipId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "CustomerMembership",
+      default: null,
+      index: true,
+    },
+    // Multi-beneficiary membership references
+    customerMembershipIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "CustomerMembership",
+      },
+    ],
+    membershipPurchaseId: {
+      type: mongoose.Schema.Types.ObjectId,
       default: null,
       index: true,
     },

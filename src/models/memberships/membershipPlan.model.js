@@ -79,6 +79,11 @@ const membershipPlanSchema = new mongoose.Schema(
       required: true,
       default: () => ({}),
     },
+    maxBeneficiaries: {
+      type: Number,
+      default: 1,
+      min: [1, "Max beneficiaries must be at least 1"],
+    },
     permittedBranchIds: [
       {
         type: mongoose.Schema.Types.ObjectId,

@@ -30,6 +30,7 @@ import attendanceRouter from "./src/routers/attendance/attendance.router.js";
 import payrollRouter from "./src/routers/payroll/payroll.routes.js";
 import couponRouter from "./src/routers/coupons/coupon.routes.js";
 import incentivesRouter from "./src/routers/incentives/incentives.routes.js";
+import membershipRouter from "./src/routers/memberships/membership.routes.js";
 import uploadRouter from "./src/routers/upload.routes.js";
 import {
   apiLimiter,
@@ -163,6 +164,7 @@ app.use("/api/v1/attendance", attendanceRouter);
 app.use("/api/v1/payroll", payrollRouter);
 app.use("/api/v1/coupons", couponRouter);
 app.use("/api/v1/incentives", incentivesRouter);
+app.use("/api/v1/memberships", membershipRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/api/v1/upload", uploadRouter);
 

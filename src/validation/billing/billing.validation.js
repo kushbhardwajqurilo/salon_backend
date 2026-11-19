@@ -14,6 +14,8 @@ const invoiceProductLineInputSchema = z.object({
 const invoiceMembershipLineInputSchema = z.object({
   membershipPlanId: objectIdSchema,
   quantity: z.coerce.number().int().positive().default(1),
+  payerCustomerId: objectIdSchema.nullable().optional(),
+  beneficiaryCustomerIds: z.array(objectIdSchema).optional().default([]),
   soldByStaffId: objectIdSchema.nullable().optional(),
 });
 

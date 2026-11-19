@@ -1728,14 +1728,53 @@ export class BillingService {
         session,
       );
 
-      // Track active benefits for same-invoice benefit preview
-      inCartMembershipBenefits = plan.benefits;
+      // Multi-beneficiary resolution & validation
+      const payerId = memInput.payerCustomerId || targetCustomerId;
+      let targetBeneficiaries = [payerId];
+      if (Array.isArray(memInput.beneficiaryCustomerIds) && memInput.beneficiaryCustomerIds.length > 0) {
+        targetBeneficiaries = memInput.beneficiaryCustomerIds;
+      }
+
+      // Check unique beneficiaries
+      const uniqueBeneficiaryIds = Array.from(new Set(targetBeneficiaries.map((b) => b.toString())));
+      if (uniqueBeneficiaryIds.length !== targetBeneficiaries.length) {
+        throw new AppError("Duplicate beneficiaries detected in membership purchase line", 400);
+      }
+
+      const maxAllowed = plan.maxBeneficiaries || 1;
+      if (uniqueBeneficiaryIds.length > maxAllowed) {
+        throw new AppError(
+          `Membership plan '${plan.name}' allows at most ${maxAllowed} beneficiaries, but ${uniqueBeneficiaryIds.length} were specified`,
+          400,
+        );
+      }
+
+      // Validate all beneficiaries and payer exist within organization
+      const verifiedBeneficiaries = await Customer.find({
+        _id: { $in: uniqueBeneficiaryIds },
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (verifiedBeneficiaries.length !== uniqueBeneficiaryIds.length) {
+        throw new AppError("One or more beneficiaries not found in organization", 404);
+      }
+
+      // Track active benefits for same-invoice benefit preview ONLY IF the target appointment/cart customer is among beneficiaries!
+      const isTargetCustomerBeneficiary = uniqueBeneficiaryIds.some(
+        (bId) => bId.toString() === targetCustomerId.toString(),
+      );
+      if (isTargetCustomerBeneficiary) {
+        inCartMembershipBenefits = plan.benefits;
+      }
       inCartMembershipPurchaseLineId = new mongoose.Types.ObjectId();
 
       invoiceLines.push({
         _id: inCartMembershipPurchaseLineId,
         lineType: "membership",
         membershipPlanId: plan._id,
+        payerCustomerId: payerId,
+        beneficiaryCustomerIds: uniqueBeneficiaryIds,
         attribution: { soldBy },
         membershipTierSnapshot: plan.tier || "Standard",
         name: `Membership: ${plan.name}`,
@@ -5139,7 +5178,7 @@ export class BillingService {
           ecLine.subscriptionUsageId = existingUsage._id;
         }
 
-        // If invoice contains newly purchased membership lines, instantiate CustomerMembership atomically
+        // If invoice contains newly purchased membership lines, instantiate CustomerMembership atomically for all beneficiaries
         const membershipLines = updatedInvoice.lines.filter(
           (l) => l.lineType === "membership" && l.membershipPlanId,
         );
@@ -5154,41 +5193,76 @@ export class BillingService {
             const endDate = new Date(startDate);
             endDate.setMonth(endDate.getMonth() + plan.validityMonths);
 
-            const memCode = `MEM-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
-            const newMembership = new CustomerMembership({
-              organizationId,
-              customerId: updatedInvoice.customerId,
-              membershipPlanId: plan._id,
-              attribution: mLine.attribution || {},
-              membershipCode: memCode,
-              planSnapshot: {
-                name: plan.name,
-                tier: plan.tier || "Standard",
-                price: mLine.unitPrice,
-                validityMonths: plan.validityMonths,
-                benefits: plan.benefits,
-              },
-              status: "active",
-              startDate,
-              endDate,
-              permittedBranchIds: plan.permittedBranchIds || [],
-              invoiceId: updatedInvoice._id,
-              notes: `Activated upon payment of Invoice #${updatedInvoice.invoiceNumber}`,
-            });
+            const payerId = mLine.payerCustomerId || updatedInvoice.customerId;
+            let beneficiaryIds = [payerId];
+            if (Array.isArray(mLine.beneficiaryCustomerIds) && mLine.beneficiaryCustomerIds.length > 0) {
+              beneficiaryIds = mLine.beneficiaryCustomerIds;
+            }
 
-            await newMembership.save({ session });
-            mLine.customerMembershipId = newMembership._id;
+            const membershipPurchaseId = new mongoose.Types.ObjectId();
+            mLine.membershipPurchaseId = membershipPurchaseId;
+            updatedInvoice.membershipPurchaseId = membershipPurchaseId;
+
+            const createdMemberships = [];
+            let primaryMembershipCode = null;
+
+            for (let i = 0; i < beneficiaryIds.length; i++) {
+              const bId = beneficiaryIds[i];
+              const memCode = `MEM-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}${i > 0 ? `-${i + 1}` : ""}`;
+              if (!primaryMembershipCode) {
+                primaryMembershipCode = memCode;
+              }
+
+              const newMembership = new CustomerMembership({
+                organizationId,
+                customerId: bId,
+                payerCustomerId: payerId,
+                membershipPurchaseId,
+                membershipPlanId: plan._id,
+                attribution: mLine.attribution || {},
+                membershipCode: memCode,
+                planSnapshot: {
+                  name: plan.name,
+                  tier: plan.tier || "Standard",
+                  price: mLine.unitPrice,
+                  validityMonths: plan.validityMonths,
+                  benefits: plan.benefits,
+                },
+                status: "active",
+                startDate,
+                endDate,
+                permittedBranchIds: plan.permittedBranchIds || [],
+                invoiceId: updatedInvoice._id,
+                notes: `Activated upon payment of Invoice #${updatedInvoice.invoiceNumber}`,
+              });
+
+              await newMembership.save({ session });
+              createdMemberships.push(newMembership);
+            }
+
+            // Backward compatibility: link first created membership to customerMembershipId
+            const firstMembership = createdMemberships[0];
+            mLine.customerMembershipId = firstMembership._id;
+            mLine.customerMembershipIds = createdMemberships.map((m) => m._id);
+            updatedInvoice.customerMembershipId = firstMembership._id;
+            updatedInvoice.customerMembershipIds = createdMemberships.map((m) => m._id);
+            updatedInvoice.membershipCode = primaryMembershipCode;
+
+            // Link applied membership discount lines to the beneficiary who received the service
             for (const benefitLine of updatedInvoice.lines) {
               if (
                 benefitLine.membershipBenefitSourceLineId?.toString() ===
                 mLine._id.toString()
               ) {
-                benefitLine.appliedCustomerMembershipId = newMembership._id;
+                // Find matching membership for the customer of this invoice
+                const matchingMembership = createdMemberships.find(
+                  (m) => m.customerId.toString() === updatedInvoice.customerId.toString(),
+                ) || firstMembership;
+
+                benefitLine.appliedCustomerMembershipId = matchingMembership._id;
                 benefitLine.membershipBenefitSourceLineId = null;
               }
             }
-            updatedInvoice.customerMembershipId = newMembership._id;
-            updatedInvoice.membershipCode = memCode;
           }
         }
 
