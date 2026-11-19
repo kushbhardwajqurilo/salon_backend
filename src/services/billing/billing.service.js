@@ -3901,30 +3901,38 @@ export class BillingService {
     }
     if (invoice.status !== "draft") {
       throw new AppError(
-        "Cannot apply coupon to an invoice with status '" + invoice.status + "'. Only draft invoices may receive coupons.",
-        400
+        "Cannot apply coupon to an invoice with status '" +
+          invoice.status +
+          "'. Only draft invoices may receive coupons.",
+        400,
       );
     }
 
     // Anti-stacking: Reject if a coupon is already applied
     if (invoice.coupon && invoice.coupon.couponId) {
       throw new AppError(
-        "Invoice already has coupon '" + invoice.coupon.code + "' applied. Remove it before applying another coupon.",
-        400
+        "Invoice already has coupon '" +
+          invoice.coupon.code +
+          "' applied. Remove it before applying another coupon.",
+        400,
       );
     }
 
     // Anti-stacking: Reject if any promotional/manual discounts already exist on the invoice
     const hasInvoiceManualDiscounts =
-      Array.isArray(invoice.appliedDiscounts) && invoice.appliedDiscounts.length > 0;
+      Array.isArray(invoice.appliedDiscounts) &&
+      invoice.appliedDiscounts.length > 0;
     const hasLineManualDiscounts =
       Array.isArray(invoice.lines) &&
-      invoice.lines.some((l) => Array.isArray(l.appliedDiscounts) && l.appliedDiscounts.length > 0);
+      invoice.lines.some(
+        (l) =>
+          Array.isArray(l.appliedDiscounts) && l.appliedDiscounts.length > 0,
+      );
 
     if (hasInvoiceManualDiscounts || hasLineManualDiscounts) {
       throw new AppError(
         "Cannot apply coupon to an invoice with existing promotional or manual discounts. Stacking is not permitted.",
-        400
+        400,
       );
     }
 
@@ -3936,18 +3944,28 @@ export class BillingService {
     });
 
     if (!coupon) {
-      throw new AppError("Coupon '" + couponCode.trim() + "' was not found.", 404);
+      throw new AppError(
+        "Coupon '" + couponCode.trim() + "' was not found.",
+        404,
+      );
     }
 
     if (coupon.status !== "active") {
-      throw new AppError("Coupon '" + coupon.code + "' is currently inactive.", 400);
+      throw new AppError(
+        "Coupon '" + coupon.code + "' is currently inactive.",
+        400,
+      );
     }
 
     const now = new Date();
     if (now < coupon.validFrom) {
       throw new AppError(
-        "Coupon '" + coupon.code + "' is not valid yet (valid from " + coupon.validFrom.toISOString() + ").",
-        400
+        "Coupon '" +
+          coupon.code +
+          "' is not valid yet (valid from " +
+          coupon.validFrom.toISOString() +
+          ").",
+        400,
       );
     }
     if (now > coupon.validUntil) {
@@ -3955,30 +3973,46 @@ export class BillingService {
     }
 
     // Branch exclusion check
-    const excludedBranchIds = (coupon.excludedBranchIds || []).map((b) => b.toString());
+    const excludedBranchIds = (coupon.excludedBranchIds || []).map((b) =>
+      b.toString(),
+    );
     if (excludedBranchIds.includes(branchId.toString())) {
       throw new AppError(
-        "Coupon '" + coupon.code + "' is not valid for redemption at this branch location.",
-        400
+        "Coupon '" +
+          coupon.code +
+          "' is not valid for redemption at this branch location.",
+        400,
       );
     }
 
     // Total usage limit check (using activeUsageCount for active capacity)
-    if (coupon.totalUsageLimit !== null && coupon.totalUsageLimit !== undefined) {
+    if (
+      coupon.totalUsageLimit !== null &&
+      coupon.totalUsageLimit !== undefined
+    ) {
       if ((coupon.activeUsageCount || 0) >= coupon.totalUsageLimit) {
         throw new AppError(
-          "Coupon '" + coupon.code + "' has reached its total usage limit (" + coupon.totalUsageLimit + ").",
-          409
+          "Coupon '" +
+            coupon.code +
+            "' has reached its total usage limit (" +
+            coupon.totalUsageLimit +
+            ").",
+          409,
         );
       }
     }
 
     // Per-customer limit check
-    if (coupon.perCustomerLimit !== null && coupon.perCustomerLimit !== undefined) {
+    if (
+      coupon.perCustomerLimit !== null &&
+      coupon.perCustomerLimit !== undefined
+    ) {
       if (!invoice.customerId) {
         throw new AppError(
-          "A customer record is required to apply coupon '" + coupon.code + "' with a per-customer usage limit.",
-          400
+          "A customer record is required to apply coupon '" +
+            coupon.code +
+            "' with a per-customer usage limit.",
+          400,
         );
       }
       const custCounter = await CouponCustomerUsage.findOne({
@@ -3986,10 +4020,17 @@ export class BillingService {
         couponId: coupon._id,
         customerId: invoice.customerId,
       });
-      if (custCounter && custCounter.activeUsageCount >= coupon.perCustomerLimit) {
+      if (
+        custCounter &&
+        custCounter.activeUsageCount >= coupon.perCustomerLimit
+      ) {
         throw new AppError(
-          "Customer has reached the maximum allowed usage (" + coupon.perCustomerLimit + ") for coupon '" + coupon.code + "'.",
-          409
+          "Customer has reached the maximum allowed usage (" +
+            coupon.perCustomerLimit +
+            ") for coupon '" +
+            coupon.code +
+            "'.",
+          409,
         );
       }
     }
@@ -4011,7 +4052,7 @@ export class BillingService {
       invoice.lines,
       [couponDiscountItem],
       invoice.loyaltyDiscountAmount || 0,
-      invoice.amountPaid || 0
+      invoice.amountPaid || 0,
     );
 
     const discountAmount = financials.invoiceDiscountsTotal || 0;
@@ -4064,13 +4105,13 @@ export class BillingService {
           paymentStatus: invoice.paymentStatus,
         },
       },
-      { returnDocument: "after" }
+      { returnDocument: "after" },
     );
 
     if (!updated) {
       throw new AppError(
         "Failed to apply coupon due to a concurrent modification. Invoice may already have a coupon applied or is no longer draft.",
-        409
+        409,
       );
     }
 
@@ -4095,8 +4136,10 @@ export class BillingService {
     }
     if (invoice.status !== "draft") {
       throw new AppError(
-        "Cannot remove coupon from an invoice with status '" + invoice.status + "'. Only draft invoices may be modified.",
-        400
+        "Cannot remove coupon from an invoice with status '" +
+          invoice.status +
+          "'. Only draft invoices may be modified.",
+        400,
       );
     }
     if (!invoice.coupon || !invoice.coupon.couponId) {
@@ -4111,7 +4154,7 @@ export class BillingService {
       invoice.lines,
       [],
       invoice.loyaltyDiscountAmount || 0,
-      invoice.amountPaid || 0
+      invoice.amountPaid || 0,
     );
 
     invoice.subtotal = financials.subtotal;
@@ -4322,16 +4365,28 @@ export class BillingService {
           throw new AppError("Applied coupon record no longer exists.", 404);
         }
         if (targetCoupon.status !== "active") {
-          throw new AppError("Applied coupon '" + targetCoupon.code + "' is no longer active.", 400);
+          throw new AppError(
+            "Applied coupon '" + targetCoupon.code + "' is no longer active.",
+            400,
+          );
         }
         if (now < targetCoupon.validFrom || now > targetCoupon.validUntil) {
-          throw new AppError("Applied coupon '" + targetCoupon.code + "' has expired or is not yet valid.", 400);
+          throw new AppError(
+            "Applied coupon '" +
+              targetCoupon.code +
+              "' has expired or is not yet valid.",
+            400,
+          );
         }
-        const excludedBranchIds = (targetCoupon.excludedBranchIds || []).map((b) => b.toString());
+        const excludedBranchIds = (targetCoupon.excludedBranchIds || []).map(
+          (b) => b.toString(),
+        );
         if (excludedBranchIds.includes(branchId.toString())) {
           throw new AppError(
-            "Applied coupon '" + targetCoupon.code + "' is not valid at this branch location.",
-            400
+            "Applied coupon '" +
+              targetCoupon.code +
+              "' is not valid at this branch location.",
+            400,
           );
         }
 
@@ -4346,8 +4401,13 @@ export class BillingService {
           validUntil: { $gte: now },
         };
 
-        if (targetCoupon.totalUsageLimit !== null && targetCoupon.totalUsageLimit !== undefined) {
-          couponUpdateQuery.activeUsageCount = { $lt: targetCoupon.totalUsageLimit };
+        if (
+          targetCoupon.totalUsageLimit !== null &&
+          targetCoupon.totalUsageLimit !== undefined
+        ) {
+          couponUpdateQuery.activeUsageCount = {
+            $lt: targetCoupon.totalUsageLimit,
+          };
         }
 
         const updatedCoupon = await Coupon.findOneAndUpdate(
@@ -4356,22 +4416,29 @@ export class BillingService {
             $inc: { usageCount: 1, activeUsageCount: 1 },
             $set: { updatedBy: userId },
           },
-          { session, new: true }
+          { session, new: true },
         );
 
         if (!updatedCoupon) {
           throw new AppError(
-            "Coupon '" + targetCoupon.code + "' could not be finalized. Total usage limit reached or coupon state changed.",
-            409
+            "Coupon '" +
+              targetCoupon.code +
+              "' could not be finalized. Total usage limit reached or coupon state changed.",
+            409,
           );
         }
 
         // 2. Atomically increment customer usage count if per-customer limit exists
-        if (targetCoupon.perCustomerLimit !== null && targetCoupon.perCustomerLimit !== undefined) {
+        if (
+          targetCoupon.perCustomerLimit !== null &&
+          targetCoupon.perCustomerLimit !== undefined
+        ) {
           if (!invoice.customerId) {
             throw new AppError(
-              "A customer record is required to redeem coupon '" + targetCoupon.code + "' with a per-customer usage limit.",
-              400
+              "A customer record is required to redeem coupon '" +
+                targetCoupon.code +
+                "' with a per-customer usage limit.",
+              400,
             );
           }
 
@@ -4383,49 +4450,62 @@ export class BillingService {
 
           if (!custCounter) {
             // Atomic upsert with $setOnInsert: eliminates transaction-aborting E11000 duplicate key exception in MongoDB transactions
-            const upsertedCustCounter = await CouponCustomerUsage.findOneAndUpdate(
-              {
-                organizationId,
-                couponId,
-                customerId: invoice.customerId,
-              },
-              {
-                $inc: { activeUsageCount: 1, historicalUsageCount: 1 },
-                $setOnInsert: {
+            const upsertedCustCounter =
+              await CouponCustomerUsage.findOneAndUpdate(
+                {
                   organizationId,
                   couponId,
                   customerId: invoice.customerId,
                 },
-              },
-              {
-                session,
-                upsert: true,
-                returnDocument: "after",
-              }
-            );
+                {
+                  $inc: { activeUsageCount: 1, historicalUsageCount: 1 },
+                  $setOnInsert: {
+                    organizationId,
+                    couponId,
+                    customerId: invoice.customerId,
+                  },
+                },
+                {
+                  session,
+                  upsert: true,
+                  returnDocument: "after",
+                },
+              );
 
-            if (upsertedCustCounter.activeUsageCount > targetCoupon.perCustomerLimit) {
+            if (
+              upsertedCustCounter.activeUsageCount >
+              targetCoupon.perCustomerLimit
+            ) {
               throw new AppError(
-                "Customer has reached the limit (" + targetCoupon.perCustomerLimit + ") for coupon '" + targetCoupon.code + "'.",
-                409
+                "Customer has reached the limit (" +
+                  targetCoupon.perCustomerLimit +
+                  ") for coupon '" +
+                  targetCoupon.code +
+                  "'.",
+                409,
               );
             }
           } else {
-            const updatedCustCounter = await CouponCustomerUsage.findOneAndUpdate(
-              {
-                _id: custCounter._id,
-                activeUsageCount: { $lt: targetCoupon.perCustomerLimit },
-              },
-              {
-                $inc: { activeUsageCount: 1, historicalUsageCount: 1 },
-              },
-              { session, returnDocument: "after" }
-            );
+            const updatedCustCounter =
+              await CouponCustomerUsage.findOneAndUpdate(
+                {
+                  _id: custCounter._id,
+                  activeUsageCount: { $lt: targetCoupon.perCustomerLimit },
+                },
+                {
+                  $inc: { activeUsageCount: 1, historicalUsageCount: 1 },
+                },
+                { session, returnDocument: "after" },
+              );
 
             if (!updatedCustCounter) {
               throw new AppError(
-                "Customer has reached the limit (" + targetCoupon.perCustomerLimit + ") for coupon '" + targetCoupon.code + "'.",
-                409
+                "Customer has reached the limit (" +
+                  targetCoupon.perCustomerLimit +
+                  ") for coupon '" +
+                  targetCoupon.code +
+                  "'.",
+                409,
               );
             }
           }
@@ -4548,7 +4628,7 @@ export class BillingService {
               $inc: { activeUsageCount: -1 },
               $set: { updatedBy: userId },
             },
-            { session }
+            { session },
           );
 
           // Atomically decrement customer active usage counter
@@ -4561,7 +4641,7 @@ export class BillingService {
             {
               $inc: { activeUsageCount: -1 },
             },
-            { session }
+            { session },
           );
         }
       }

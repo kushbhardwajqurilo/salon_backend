@@ -53,7 +53,10 @@ let redisClient = null;
  * Connects to Redis ONCE at server startup.
  */
 export const connectRedis = async () => {
-  if (process.env.NODE_ENV === "test" || process.env.JEST_WORKER_ID !== undefined) {
+  if (
+    process.env.NODE_ENV === "test" ||
+    process.env.JEST_WORKER_ID !== undefined
+  ) {
     logger.info("⚙️ Skipping Redis connection in TEST mode");
     return null;
   }
@@ -71,9 +74,13 @@ export const connectRedis = async () => {
       });
 
       await redisClient.ping();
-      logger.info("⚡ [REDIS_READY] Connection verified with PING at server startup");
+      logger.info(
+        "⚡ [REDIS_READY] Connection verified with PING at server startup",
+      );
     } catch (error) {
-      logger.error(`❌ Failed to connect to Redis at server startup: ${error.message}`);
+      logger.error(
+        `❌ Failed to connect to Redis at server startup: ${error.message}`,
+      );
     }
   }
   return redisClient;
@@ -83,7 +90,11 @@ export const connectRedis = async () => {
  * Returns the single shared Redis client instance.
  */
 export const getRedisClient = () => {
-  if (!redisClient && process.env.NODE_ENV !== "test" && process.env.JEST_WORKER_ID === undefined) {
+  if (
+    !redisClient &&
+    process.env.NODE_ENV !== "test" &&
+    process.env.JEST_WORKER_ID === undefined
+  ) {
     redisClient = new Redis(redisOptions);
   }
   return redisClient;

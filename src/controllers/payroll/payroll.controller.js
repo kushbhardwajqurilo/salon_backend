@@ -83,7 +83,6 @@ export class PayrollController {
   static calculatePayroll = asyncHandler(async (req, res) => {
     const { organizationId, branchId } = req;
     const { payrollPeriodId, staffIds } = req.body;
-
     const records = await PayrollService.calculatePayroll({
       organizationId,
       payrollPeriodId,
@@ -330,3 +329,4 @@ export class PayrollController {
     res.status(200).send(pdfBuffer);
   });
 }
+

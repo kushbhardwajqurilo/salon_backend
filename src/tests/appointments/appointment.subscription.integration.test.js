@@ -659,6 +659,12 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
       });
       expect(challenge).toBeDefined();
       expect(challenge.otpHash).toHaveLength(64); // SHA-256
+      expect(challenge.subscriptionIds.map((id) => id.toString())).toEqual([
+        activeSub._id.toString(),
+      ]);
+      expect(challenge.serviceLines[0].appliedSubscriptionId.toString()).toBe(
+        activeSub._id.toString(),
+      );
 
       // Rapid request within 60s cooldown triggers 429
       const resCooldown = await request(app)

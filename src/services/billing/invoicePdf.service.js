@@ -56,18 +56,36 @@ function escapeHtml(str) {
 /**
  * Generate HTML string for the Invoice document
  */
-export function generateInvoiceHtml({ invoice, payments = [], branch = {}, appointment = {}, organization = {} }) {
+export function generateInvoiceHtml({
+  invoice,
+  payments = [],
+  branch = {},
+  appointment = {},
+  organization = {},
+}) {
   const timezone = branch?.timezone || "Asia/Kolkata";
   const isDraft = invoice.status === "draft";
   const isFinalized = invoice.status === "finalized";
   const isCancelled = invoice.status === "cancelled";
 
   // Document Title
-  const documentTitle = isFinalized ? "TAX INVOICE" : isDraft ? "DRAFT INVOICE / ESTIMATE" : "CANCELLED INVOICE";
+  const documentTitle = isFinalized
+    ? "TAX INVOICE"
+    : isDraft
+      ? "DRAFT INVOICE / ESTIMATE"
+      : "CANCELLED INVOICE";
 
   // Status Badges
-  const statusColor = isFinalized ? "#15803d" : isCancelled ? "#b91c1c" : "#b45309";
-  const statusBg = isFinalized ? "#dcfce7" : isCancelled ? "#fee2e2" : "#fef3c7";
+  const statusColor = isFinalized
+    ? "#15803d"
+    : isCancelled
+      ? "#b91c1c"
+      : "#b45309";
+  const statusBg = isFinalized
+    ? "#dcfce7"
+    : isCancelled
+      ? "#fee2e2"
+      : "#fef3c7";
 
   let paymentStatusColor = "#b45309";
   let paymentStatusBg = "#fef3c7";
@@ -83,16 +101,23 @@ export function generateInvoiceHtml({ invoice, payments = [], branch = {}, appoi
     invoice.paymentStatus === "paid"
       ? "PAID"
       : invoice.paymentStatus === "partially_paid"
-      ? "PARTIALLY PAID"
-      : "UNPAID";
+        ? "PARTIALLY PAID"
+        : "UNPAID";
 
-  const customerName = invoice.customerSnapshot?.name || invoice.customerId?.name || "Valued Customer";
-  const customerPhone = invoice.customerSnapshot?.phone || invoice.customerId?.phone || "N/A";
-  const customerEmail = invoice.customerSnapshot?.email || invoice.customerId?.email || "N/A";
+  const customerName =
+    invoice.customerSnapshot?.name ||
+    invoice.customerId?.name ||
+    "Valued Customer";
+  const customerPhone =
+    invoice.customerSnapshot?.phone || invoice.customerId?.phone || "N/A";
+  const customerEmail =
+    invoice.customerSnapshot?.email || invoice.customerId?.email || "N/A";
 
   const stylistName =
     appointment?.staffId?.name ||
-    (appointment?.staffId && typeof appointment.staffId === "object" ? appointment.staffId.name : null) ||
+    (appointment?.staffId && typeof appointment.staffId === "object"
+      ? appointment.staffId.name
+      : null) ||
     "Unassigned";
 
   // Services / Items rows
@@ -103,14 +128,14 @@ export function generateInvoiceHtml({ invoice, payments = [], branch = {}, appoi
       const subInfo = isSubscriptionItem
         ? `<div class="sub-benefit">Membership / Subscription Package</div>`
         : isCovered
-        ? `<div class="sub-benefit">100% Covered via Plan${
-            line.appliedSubscriptionId?.subscriptionCode
-              ? `: ${escapeHtml(line.appliedSubscriptionId.subscriptionCode)}`
-              : line.appliedSubscriptionId?.planId?.name
-              ? `: ${escapeHtml(line.appliedSubscriptionId.planId.name)}`
-              : ""
-          }</div>`
-        : `<span class="text-muted">—</span>`;
+          ? `<div class="sub-benefit">100% Covered via Plan${
+              line.appliedSubscriptionId?.subscriptionCode
+                ? `: ${escapeHtml(line.appliedSubscriptionId.subscriptionCode)}`
+                : line.appliedSubscriptionId?.planId?.name
+                  ? `: ${escapeHtml(line.appliedSubscriptionId.planId.name)}`
+                  : ""
+            }</div>`
+          : `<span class="text-muted">—</span>`;
 
       const detailText = isSubscriptionItem
         ? `<div class="text-sm text-muted">Qty: ${line.quantity}</div>`
@@ -419,7 +444,7 @@ export function generateInvoiceHtml({ invoice, payments = [], branch = {}, appoi
   <table class="header-table">
     <tr>
       <td>
-        <div class="company-title">Unisex Parlour</div>
+        <div class="company-title">Glam Salon</div>
         <div class="company-subtitle">
           <strong>${escapeHtml(branch.name || "Main Branch")}</strong><br/>
           ${escapeHtml(branch.address || "Salon & Spa Center")}<br/>
@@ -478,11 +503,11 @@ export function generateInvoiceHtml({ invoice, payments = [], branch = {}, appoi
                   <span class="meta-val font-mono">${escapeHtml(invoice.appointmentCode)}</span>
                 </div>`
               : invoice.subscriptionCode
-              ? `<div class="meta-row">
+                ? `<div class="meta-row">
                   <span class="meta-key">Subscription Code:</span>
                   <span class="meta-val font-mono">${escapeHtml(invoice.subscriptionCode)}</span>
                 </div>`
-              : ""
+                : ""
           }
           ${
             invoice.finalizedAt
