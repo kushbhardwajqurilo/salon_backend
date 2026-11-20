@@ -760,6 +760,29 @@ export class SubscriptionService {
     }
 
     const updated = await this.executeTransaction(async (session) => {
+      // If root permittedBranchIds is being narrowed/updated, prune any existing members whose custom permittedBranchIds
+      // now contain branches that fall outside the newly allowed root boundary.
+      if (allowedUpdates.permittedBranchIds && allowedUpdates.permittedBranchIds.length > 0) {
+        const rootSet = new Set(allowedUpdates.permittedBranchIds.map((b) => b.toString()));
+        const SubscriptionModel = this.subscriptionRepo.model || mongoose.model("Subscription");
+        const currentDoc = await SubscriptionModel.findById(id).session(session);
+        if (currentDoc && Array.isArray(currentDoc.members)) {
+          let membersPruned = false;
+          currentDoc.members.forEach((m) => {
+            if (Array.isArray(m.permittedBranchIds) && m.permittedBranchIds.length > 0) {
+              const pruned = m.permittedBranchIds.filter((b) => rootSet.has(b.toString()));
+              if (pruned.length !== m.permittedBranchIds.length) {
+                m.permittedBranchIds = pruned;
+                membersPruned = true;
+              }
+            }
+          });
+          if (membersPruned) {
+            allowedUpdates.members = currentDoc.members;
+          }
+        }
+      }
+
       const res = await this.subscriptionRepo.updateById(
         id,
         allowedUpdates,
