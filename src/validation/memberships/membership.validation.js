@@ -127,3 +127,62 @@ export const addBeneficiaryToMembershipSchema = z.object({
       .optional(),
   }),
 });
+
+export const sellMembershipSchema = z.object({
+  body: z.object({
+    planId: objectIdSchema.optional(),
+    membershipPlanId: objectIdSchema.optional(),
+    payerCustomerId: objectIdSchema,
+    beneficiaryCustomerIds: z.array(objectIdSchema).optional(),
+    beneficiaries: z
+      .array(
+        z.object({
+          customerId: objectIdSchema,
+          benefits: z
+            .object({
+              serviceDiscountPercentage: z.coerce.number().min(0).max(100).optional(),
+              productDiscountPercentage: z.coerce.number().min(0).max(100).optional(),
+              eligibleServiceCategoryIds: z.array(objectIdSchema).optional(),
+              eligibleServiceIds: z.array(objectIdSchema).optional(),
+              excludedServiceCategoryIds: z.array(objectIdSchema).optional(),
+              excludedServiceIds: z.array(objectIdSchema).optional(),
+              complimentaryPerks: z.array(z.string().trim()).optional(),
+            })
+            .optional(),
+        })
+      )
+      .optional(),
+    branchId: objectIdSchema.optional().nullable(),
+    soldByStaffId: objectIdSchema.optional().nullable(),
+    notes: z.string().trim().max(1000).optional().default(""),
+    billImmediately: z.boolean().optional().default(false),
+    customPlan: z
+      .object({
+        name: z.string().trim().min(2).max(100),
+        code: z.string().trim().min(2).max(20).toUpperCase().optional().nullable(),
+        tier: z.string().trim().default("Custom"),
+        description: z.string().trim().max(1000).default(""),
+        price: z.coerce.number().min(0),
+        validityMonths: z.coerce.number().int().min(1).default(12),
+        maxBeneficiaries: z.coerce.number().int().min(1).default(1),
+        benefits: z
+          .object({
+            serviceDiscountPercentage: z.coerce.number().min(0).max(100).default(0),
+            productDiscountPercentage: z.coerce.number().min(0).max(100).default(0),
+            eligibleServiceCategoryIds: z.array(objectIdSchema).optional().default([]),
+            eligibleServiceIds: z.array(objectIdSchema).optional().default([]),
+            excludedServiceCategoryIds: z.array(objectIdSchema).optional().default([]),
+            excludedServiceIds: z.array(objectIdSchema).optional().default([]),
+            complimentaryPerks: z.array(z.string().trim()).optional().default([]),
+          })
+          .default({}),
+        permittedBranchIds: z.array(objectIdSchema).optional().default([]),
+        isCustom: z.boolean().optional().default(true),
+        isActive: z.boolean().optional().default(true),
+      })
+      .optional(),
+  }).refine((data) => data.planId || data.membershipPlanId || data.customPlan, {
+    message: "Either planId, membershipPlanId or customPlan is required",
+    path: ["planId"],
+  }),
+});

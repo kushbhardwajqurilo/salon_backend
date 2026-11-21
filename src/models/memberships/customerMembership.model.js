@@ -156,6 +156,22 @@ const customerMembershipSchema = new mongoose.Schema(
       ref: "Invoice",
       default: null,
     },
+    // Expiry & Renewal Reminders
+    renewalReminder: {
+      status: {
+        type: String,
+        enum: ["none", "scheduled", "sent", "failed"],
+        default: "none",
+      },
+      sentAt: { type: Date, default: null },
+      failedAt: { type: Date, default: null },
+      failureReason: { type: String, default: null },
+      channel: {
+        type: String,
+        enum: ["sms", "email", "both"],
+        default: "sms",
+      },
+    },
     notes: {
       type: String,
       trim: true,
@@ -178,6 +194,7 @@ customerMembershipSchema.index({ organizationId: 1, customerId: 1, status: 1 });
 customerMembershipSchema.index({ organizationId: 1, payerCustomerId: 1 });
 customerMembershipSchema.index({ organizationId: 1, membershipPurchaseId: 1 });
 customerMembershipSchema.index({ organizationId: 1, endDate: 1, status: 1 });
+customerMembershipSchema.index({ organizationId: 1, "renewalReminder.status": 1, endDate: 1 });
 
 customerMembershipSchema.set("toJSON", {
   transform: (doc, ret) => {

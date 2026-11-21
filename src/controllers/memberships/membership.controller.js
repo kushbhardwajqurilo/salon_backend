@@ -3,10 +3,11 @@ import { AppError } from "../../utils/errors.js";
 
 export const createPlan = async (req, res, next) => {
   try {
+    const userId = req.user?._id || req.user?.id;
     const plan = await membershipService.createPlan(
       req.body,
       req.user.organizationId,
-      req.user._id
+      userId
     );
     res.status(201).json({
       success: true,
@@ -55,11 +56,12 @@ export const getPlanById = async (req, res, next) => {
 
 export const updatePlan = async (req, res, next) => {
   try {
+    const userId = req.user?._id || req.user?.id;
     const plan = await membershipService.updatePlan(
       req.params.id,
       req.body,
       req.user.organizationId,
-      req.user._id
+      userId
     );
     res.status(200).json({
       success: true,
@@ -73,10 +75,11 @@ export const updatePlan = async (req, res, next) => {
 
 export const deletePlan = async (req, res, next) => {
   try {
+    const userId = req.user?._id || req.user?.id;
     const result = await membershipService.deletePlan(
       req.params.id,
       req.user.organizationId,
-      req.user._id
+      userId
     );
     res.status(200).json({
       success: true,
@@ -89,10 +92,11 @@ export const deletePlan = async (req, res, next) => {
 
 export const duplicatePlan = async (req, res, next) => {
   try {
+    const userId = req.user?._id || req.user?.id;
     const plan = await membershipService.duplicatePlan(
       req.params.id,
       req.user.organizationId,
-      req.user._id
+      userId
     );
     res.status(201).json({
       success: true,
@@ -141,11 +145,12 @@ export const getCustomerMembershipById = async (req, res, next) => {
 
 export const cancelBeneficiaryMembership = async (req, res, next) => {
   try {
+    const userId = req.user?._id || req.user?.id;
     const membership = await membershipService.cancelBeneficiaryMembership(
       req.params.id,
       req.body,
       req.user.organizationId,
-      req.user._id
+      userId
     );
     res.status(200).json({
       success: true,
@@ -159,11 +164,12 @@ export const cancelBeneficiaryMembership = async (req, res, next) => {
 
 export const suspendBeneficiaryMembership = async (req, res, next) => {
   try {
+    const userId = req.user?._id || req.user?.id;
     const membership = await membershipService.suspendBeneficiaryMembership(
       req.params.id,
       req.body,
       req.user.organizationId,
-      req.user._id
+      userId
     );
     res.status(200).json({
       success: true,
@@ -177,10 +183,11 @@ export const suspendBeneficiaryMembership = async (req, res, next) => {
 
 export const reactivateBeneficiaryMembership = async (req, res, next) => {
   try {
+    const userId = req.user?._id || req.user?.id;
     const membership = await membershipService.reactivateBeneficiaryMembership(
       req.params.id,
       req.user.organizationId,
-      req.user._id
+      userId
     );
     res.status(200).json({
       success: true,
@@ -194,11 +201,12 @@ export const reactivateBeneficiaryMembership = async (req, res, next) => {
 
 export const addBeneficiaryToMembership = async (req, res, next) => {
   try {
+    const userId = req.user?._id || req.user?.id;
     const newBeneficiary = await membershipService.addBeneficiaryToMembership(
       req.params.id,
       req.body,
       req.user.organizationId,
-      req.user._id
+      userId
     );
     res.status(201).json({
       success: true,
@@ -264,6 +272,69 @@ export const resolveCustomerBenefits = async (req, res, next) => {
         hasActiveMembership: false,
         membershipId: null,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const sellMembership = async (req, res, next) => {
+  try {
+    const branchId =
+      req.body.branchId ||
+      req.activeBranch?._id ||
+      req.branchId ||
+      req.headers["x-branch-id"] ||
+      null;
+
+    const userId = req.user?._id || req.user?.id;
+
+    const result = await membershipService.sellMembership(
+      req.body,
+      req.user.organizationId,
+      branchId,
+      userId
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Customer membership sold successfully",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMembershipUsageHistory = async (req, res, next) => {
+  try {
+    const membershipId = req.params.id;
+    const result = await membershipService.getMembershipUsageHistory(
+      membershipId,
+      req.user.organizationId,
+      req.query
+    );
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const triggerRenewalReminder = async (req, res, next) => {
+  try {
+    const membershipId = req.params.id;
+    const result = await membershipService.triggerRenewalReminder(
+      membershipId,
+      req.user.organizationId,
+      req.body
+    );
+    res.status(200).json({
+      success: true,
+      message: "Membership renewal reminder processed",
+      data: result,
     });
   } catch (error) {
     next(error);

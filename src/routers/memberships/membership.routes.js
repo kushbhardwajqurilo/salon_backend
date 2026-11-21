@@ -3,6 +3,7 @@ import { authenticate } from "../../middleware/auth.js";
 import {
   requireBranchScope,
   requireOrganizationScope,
+  requireActiveBranch,
 } from "../../middleware/branchScope.js";
 import { authorize } from "../../middleware/rbac.js";
 import { validate } from "../../middleware/validate.js";
@@ -65,6 +66,15 @@ router.post(
 // ==========================================
 // 2. Customer Memberships (Purchases & Beneficiaries)
 // ==========================================
+router.post(
+  "/sell",
+  requireOrganizationScope,
+  requireActiveBranch,
+  authorize("memberships.sell"),
+  validate(membershipValidation.sellMembershipSchema),
+  membershipController.sellMembership
+);
+
 router.get(
   "/reports",
   requireOrganizationScope,
@@ -122,6 +132,20 @@ router.get(
   requireOrganizationScope,
   authorize("memberships.view"),
   membershipController.getMembershipPurchaseGroup
+);
+
+router.get(
+  "/:id/usage",
+  requireOrganizationScope,
+  authorize("memberships.view"),
+  membershipController.getMembershipUsageHistory
+);
+
+router.post(
+  "/:id/renewal-reminder",
+  requireOrganizationScope,
+  authorize("memberships.configure"),
+  membershipController.triggerRenewalReminder
 );
 
 // ==========================================

@@ -203,6 +203,17 @@ describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => 
     });
   });
 
+  beforeEach(async () => {
+    // Reset any state leaked from previous tests:
+    // 1. Delete customer memberships so customer doesn't have an unexpected active membership
+    await CustomerMembership.deleteMany({ organizationId: orgId });
+    // 2. Reset product stock balance so available onHand and allocated are clean
+    await StockBalance.updateOne(
+      { organizationId: orgId, branchId, productId: product._id },
+      { $set: { onHand: 100, allocated: 0, available: 100 } }
+    );
+  });
+
   afterAll(async () => {
     await PayrollPayment.deleteMany({ organizationId: orgId });
     await IncentiveRecoveryPayment.deleteMany({ organizationId: orgId });
@@ -2033,5 +2044,164 @@ describe("Unified Billing Convergence & Single Checkout Lifecycle Suite", () => 
     expect(subAfter.status).toBe("active");
     expect(subAfter.members[0].entitlements[0].remainingQuantity).toBe(1);
     expect(subAfter.members[0].entitlements[0].usedQuantity).toBe(0);
+  });
+
+  it("14. Subscription payment idempotency: duplicate submission, single quota decrement, ledger deduplication, and payload mismatch rejection", async () => {
+    const { Subscription } = await import("../../models/subscriptions/subscription.model.js");
+    const { SubscriptionUsage } = await import("../../models/subscriptions/subscriptionUsage.model.js");
+    const { Payment } = await import("../../models/billing/payment.model.js");
+
+    // 1. Create a subscription with 5 sessions
+    const sub = await Subscription.create({
+      organizationId: orgId,
+      branchId,
+      payerCustomerId: customer._id,
+      customerId: customer._id,
+      subscriptionCode: `SUB-IDEMP-${Date.now()}`,
+      planId: subPlan._id,
+      price: 1500,
+      status: "active",
+      startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      members: [
+        {
+          customerId: customer._id,
+          status: "active",
+          permittedBranchIds: [branchId],
+          entitlements: [
+            {
+              serviceId: service._id,
+              serviceName: service.name,
+              totalQuantity: 5,
+              usedQuantity: 0,
+              remainingQuantity: 5,
+            },
+          ],
+        },
+      ],
+      entitlements: [
+        {
+          serviceId: service._id,
+          serviceName: service.name,
+          totalQuantity: 5,
+          usedQuantity: 0,
+          remainingQuantity: 5,
+        },
+      ],
+    });
+
+    // 2. Create invoice with 1 covered service line (0 customer payable) + 1 retail product line (500 payable)
+    const invRes = await request(app)
+      .post("/api/v1/billing/invoices")
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send({
+        customerId: customer._id.toString(),
+        serviceLines: [
+          {
+            serviceId: service._id.toString(),
+            quantity: 1,
+            appliedSubscriptionId: sub._id.toString(),
+          },
+        ],
+        productLines: [{ productId: product._id.toString(), quantity: 1 }],
+      });
+    expect(invRes.status).toBe(201);
+    const invoiceId = invRes.body.data._id;
+    const payableAmount = invRes.body.data.payableAmount; // 500 (haircut covered 100% by sub)
+
+    // Finalize invoice
+    await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/finalize`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .send();
+
+    const paymentIdempotencyKey = `IDEMP-SUB-PAY-${Date.now()}`;
+
+    // 3. First payment submission with idempotency key
+    const payRes1 = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", paymentIdempotencyKey)
+      .send({
+        amount: payableAmount,
+        paymentMethod: "card",
+      });
+
+    expect(payRes1.status).toBe(201);
+    expect(payRes1.body.data.invoice.paymentStatus).toBe("paid");
+    expect(payRes1.body.data.invoice.amountPaid).toBe(payableAmount);
+    expect(payRes1.body.data.invoice.amountDue).toBe(0);
+
+    // Assert exactly 1 Payment document
+    const paymentsFirst = await Payment.find({ invoiceId });
+    expect(paymentsFirst).toHaveLength(1);
+
+    // Assert exactly 1 SubscriptionUsage document
+    const usagesFirst = await SubscriptionUsage.find({ subscriptionId: sub._id });
+    expect(usagesFirst).toHaveLength(1);
+    expect(usagesFirst[0].quantity).toBe(1);
+
+    // Assert remaining quota decreased exactly once (5 -> 4)
+    const subFirst = await Subscription.findById(sub._id);
+    expect(subFirst.members[0].entitlements[0].usedQuantity).toBe(1);
+    expect(subFirst.members[0].entitlements[0].remainingQuantity).toBe(4);
+
+    // 4. Duplicate submission with EXACT SAME idempotency key and payload
+    const payRes2 = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", paymentIdempotencyKey)
+      .send({
+        amount: payableAmount,
+        paymentMethod: "card",
+      });
+
+    expect([200, 201]).toContain(payRes2.status);
+    expect(payRes2.body.data.isIdempotentReplay).toBe(true);
+
+    // Assert still exactly 1 Payment document
+    const paymentsSecond = await Payment.find({ invoiceId });
+    expect(paymentsSecond).toHaveLength(1);
+
+    // Assert still exactly 1 SubscriptionUsage document
+    const usagesSecond = await SubscriptionUsage.find({ subscriptionId: sub._id });
+    expect(usagesSecond).toHaveLength(1);
+
+    // Assert remaining quota remains unchanged (still 4, not decremented twice)
+    const subSecond = await Subscription.findById(sub._id);
+    expect(subSecond.members[0].entitlements[0].usedQuantity).toBe(1);
+    expect(subSecond.members[0].entitlements[0].remainingQuantity).toBe(4);
+
+    // Assert invoice paid/due amounts are NOT double-counted
+    const invoiceSecond = await Invoice.findById(invoiceId);
+    expect(invoiceSecond.amountPaid).toBe(payableAmount);
+    expect(invoiceSecond.amountDue).toBe(0);
+    expect(invoiceSecond.paymentStatus).toBe("paid");
+
+    // 5. Reuse same idempotency key with differing payload -> must reject with 409 Conflict without mutations
+    const payResConflict = await request(app)
+      .post(`/api/v1/billing/invoices/${invoiceId}/payments`)
+      .set("Authorization", `Bearer ${userToken}`)
+      .set("X-Branch-Id", branchId.toString())
+      .set("Idempotency-Key", paymentIdempotencyKey)
+      .send({
+        amount: payableAmount,
+        paymentMethod: "cash", // Differing method from original "card"
+      });
+
+    expect(payResConflict.status).toBe(409);
+    expect(payResConflict.body.message).toMatch(/Idempotency key reuse with differing payment parameters/i);
+
+    // Assert no additional payment or usage created after rejection
+    const paymentsAfterConflict = await Payment.find({ invoiceId });
+    expect(paymentsAfterConflict).toHaveLength(1);
+    const usagesAfterConflict = await SubscriptionUsage.find({ subscriptionId: sub._id });
+    expect(usagesAfterConflict).toHaveLength(1);
+    const subAfterConflict = await Subscription.findById(sub._id);
+    expect(subAfterConflict.members[0].entitlements[0].remainingQuantity).toBe(4);
   });
 });

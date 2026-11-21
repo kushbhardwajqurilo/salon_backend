@@ -436,6 +436,7 @@ invoiceSchema.index(
 );
 invoiceSchema.index({ organizationId: 1, branchId: 1, createdAt: -1 });
 invoiceSchema.index({ organizationId: 1, customerId: 1, createdAt: -1 });
+invoiceSchema.index({ organizationId: 1, "lines.appliedCustomerMembershipId": 1, createdAt: -1 });
 invoiceSchema.index({ appointmentId: 1, status: 1 });
 invoiceSchema.index({ subscriptionId: 1, status: 1 });
 
