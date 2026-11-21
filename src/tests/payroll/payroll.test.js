@@ -387,17 +387,21 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
       // Verify financial deductions:
       // Base: 30,000, 30 days -> 1000/day
       // Allowances: 5,000
-      // Gross: 35,000
-      // Unpaid Leave: 2 days * 1000 = 2000
+      // Present: 20 days -> Payable Days: 20
+      // Prorated Base Salary: 20 * 1000 = 20,000
+      // Total Gross: 20,000 + 5,000 = 25,000
+      // Unpaid Leave (LOP): 2 days * 1000 = 2000
       // Fixed Deductions: 1000
-      // Total Deductions: 3000
-      // Net Payable: 35,000 - 3000 = 32,000
-      expect(record.calculations.grossBaseSalary).toBe(30000);
+      // Net Payable: 25,000 - 1000 = 24,000
+      expect(record.calculations.dailySalaryRate).toBe(1000);
+      expect(record.calculations.payableDays).toBe(20);
+      expect(record.calculations.proratedBaseSalary).toBe(20000);
+      expect(record.calculations.grossBaseSalary).toBe(20000);
       expect(record.calculations.totalAllowances).toBe(5000);
-      expect(record.calculations.totalGrossPay).toBe(35000);
+      expect(record.calculations.totalGrossPay).toBe(25000);
       expect(record.calculations.unpaidLeaveDeduction).toBe(2000);
       expect(record.calculations.fixedDeductions).toBe(1000);
-      expect(record.calculations.netPayable).toBe(32000);
+      expect(record.calculations.netPayable).toBe(24000);
     });
 
     it("blocks payroll when a branch attendance conflict remains pending or disputed", async () => {
@@ -532,8 +536,10 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
         (await IncentiveEvaluation.findOne({ organizationId: orgId, staffId: testStaff._id }))._id.toString(),
       );
       expect(recalculated.body.data[0].calculations.totalIncentivesInPaise).toBe(1234);
-      expect(recalculated.body.data[0].calculations.totalGrossPay).toBe(35012.34);
-      expect(recalculated.body.data[0].calculations.netPayable).toBe(32012.34);
+      // Reconciled: 21 present days -> Prorated base = 21,000 + 5000 allowances + 12.34 bonus = 26,012.34
+      // Net Payable = 26,012.34 - 1000 fixed deduction = 25,012.34
+      expect(recalculated.body.data[0].calculations.totalGrossPay).toBe(26012.34);
+      expect(recalculated.body.data[0].calculations.netPayable).toBe(25012.34);
 
       const attendanceRetry = await request(app)
         .post("/api/v1/payroll/calculate")
@@ -1528,6 +1534,235 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
       await PayrollRecord.deleteMany({ organizationId: secondOrg._id });
       await Branch.deleteOne({ _id: secondBranch._id });
       await Organization.deleteOne({ _id: secondOrg._id });
+    });
+  });
+
+  describe("5. Attendance-Driven Payroll & Employee Paid Leave Entitlement", () => {
+    it("correctly calculates November mandatory scenario: 15 present, 2 approved leave, 11 consumed of 12 entitlement", async () => {
+      // Setup staff member
+      const staffMember = await Staff.create({
+        name: "Nov Scenario Staff",
+        email: `nov-scenario-${Date.now()}@test.com`,
+        phone: `+9198${String(Date.now()).slice(-8)}`,
+        organizationId: orgId,
+        designation: "Senior Stylist",
+        staffCode: `NOV-${Date.now()}`,
+        joiningDate: new Date("2026-01-01T00:00:00.000Z"),
+        status: "active",
+      });
+
+      await StaffBranch.create({
+        staffId: staffMember._id,
+        branchId,
+        organizationId: orgId,
+        isPrimary: true,
+        isActive: true,
+      });
+
+      // Salary structure: ₹30,000 base, annual entitlement: 12 days
+      await SalaryStructure.create({
+        organizationId: orgId,
+        staffId: staffMember._id,
+        payType: "fixed_monthly",
+        baseSalary: 30000,
+        paidLeavePolicy: {
+          annualEntitlement: 12,
+          carryForwardDays: 0,
+        },
+        allowances: [],
+        deductions: [],
+        effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+        isActive: true,
+      });
+
+      // Seed 11 prior consumed paid leave days in 2026 before Nov 2026
+      await Leave.create({
+        organizationId: orgId,
+        branchId,
+        staffId: staffMember._id,
+        leaveCode: `LV-PRIOR-${Date.now()}`,
+        leaveType: "Casual Leave",
+        startDate: new Date("2026-05-01T00:00:00.000Z"),
+        endDate: new Date("2026-05-11T23:59:59.999Z"), // 11 days
+        dates: [
+          "2026-05-01", "2026-05-02", "2026-05-03", "2026-05-04", "2026-05-05",
+          "2026-05-06", "2026-05-07", "2026-05-08", "2026-05-09", "2026-05-10", "2026-05-11"
+        ],
+        reason: "Prior annual leave",
+        status: "approved",
+        submittedBy: adminUser._id,
+        submittedFor: "staff",
+      });
+
+      // Seed 15 present days in November (days 1 to 15)
+      for (let d = 1; d <= 15; d++) {
+        await Attendance.create({
+          organizationId: orgId,
+          branchId,
+          staffId: staffMember._id,
+          attendanceDate: new Date(`2026-11-${d < 10 ? "0" + d : d}T10:00:00.000Z`),
+          status: "present",
+        });
+      }
+
+      // Seed 2 approved leave days in November (Nov 16 and Nov 17)
+      await Leave.create({
+        organizationId: orgId,
+        branchId,
+        staffId: staffMember._id,
+        leaveCode: `LV-NOV-${Date.now()}`,
+        leaveType: "Sick Leave",
+        startDate: new Date("2026-11-16T00:00:00.000Z"),
+        endDate: new Date("2026-11-17T23:59:59.999Z"), // 2 days
+        dates: ["2026-11-16", "2026-11-17"],
+        reason: "Medical recovery",
+        status: "approved",
+        submittedBy: adminUser._id,
+        submittedFor: "staff",
+      });
+
+      // Days 18-30 (13 days) are absent
+
+      const period = await PayrollPeriod.findOne({ organizationId: orgId, monthYear: "2026-11" });
+
+      const res = await request(app)
+        .post("/api/v1/payroll/calculate")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          payrollPeriodId: period._id.toString(),
+          staffIds: [staffMember._id.toString()],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const rec = res.body.data[0];
+
+      // Verification against mandatory specification:
+      // Monthly salary: ₹30,000
+      // Period: 30 days -> Daily Rate = ₹1,000
+      // Annual paid leave entitlement: 12 days
+      // Previously consumed: 11 days
+      // Present: 15 days
+      // Approved leave: 2 days
+      // Expected paid leave: 1 day
+      // Expected unpaid leave: 1 day
+      // Expected payable days: 16
+      // Expected prorated base salary: ₹16,000
+      expect(rec.calculations.dailySalaryRate).toBe(1000);
+      expect(rec.attendanceSummarySnapshot.paidLeaveEntitlement).toBe(12);
+      expect(rec.attendanceSummarySnapshot.previouslyConsumedPaidLeave).toBe(11);
+      expect(rec.attendanceSummarySnapshot.presentDays).toBe(15);
+      expect(rec.attendanceSummarySnapshot.paidLeaveDays).toBe(1);
+      expect(rec.attendanceSummarySnapshot.unpaidLeaveDays).toBe(1);
+      expect(rec.attendanceSummarySnapshot.absentDays).toBe(13);
+      expect(rec.attendanceSummarySnapshot.payableDays).toBe(16);
+      expect(rec.calculations.payableDays).toBe(16);
+      expect(rec.calculations.proratedBaseSalary).toBe(16000);
+      expect(rec.calculations.grossBaseSalary).toBe(16000);
+      expect(rec.calculations.netPayable).toBe(16000);
+
+      // Clean up
+      await Leave.deleteMany({ organizationId: orgId, staffId: staffMember._id });
+      await Attendance.deleteMany({ organizationId: orgId, staffId: staffMember._id });
+      await PayrollRecord.deleteMany({ organizationId: orgId, staffId: staffMember._id });
+      await SalaryStructure.deleteMany({ organizationId: orgId, staffId: staffMember._id });
+      await StaffBranch.deleteMany({ organizationId: orgId, staffId: staffMember._id });
+      await Staff.deleteOne({ _id: staffMember._id });
+    });
+
+    it("handles half-day presence, half-day leave, and overlap reconciliation cleanly", async () => {
+      const halfStaff = await Staff.create({
+        name: "Half Day Staff",
+        email: `half-day-${Date.now()}@test.com`,
+        phone: `+9198${String(Date.now()).slice(-8)}`,
+        organizationId: orgId,
+        designation: "Barber",
+        staffCode: `HDS-${Date.now()}`,
+        joiningDate: new Date("2026-01-01T00:00:00.000Z"),
+        status: "active",
+      });
+
+      await StaffBranch.create({
+        staffId: halfStaff._id,
+        branchId,
+        organizationId: orgId,
+        isPrimary: true,
+        isActive: true,
+      });
+
+      await SalaryStructure.create({
+        organizationId: orgId,
+        staffId: halfStaff._id,
+        payType: "fixed_monthly",
+        baseSalary: 60000, // 2000/day for 30-day period
+        paidLeavePolicy: { annualEntitlement: 10, carryForwardDays: 0 },
+        allowances: [],
+        deductions: [],
+        effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+        isActive: true,
+      });
+
+      // 10 full present days
+      for (let d = 1; d <= 10; d++) {
+        await Attendance.create({
+          organizationId: orgId,
+          branchId,
+          staffId: halfStaff._id,
+          attendanceDate: new Date(`2026-11-${d < 10 ? "0" + d : d}T10:00:00.000Z`),
+          status: "present",
+        });
+      }
+
+      // 1 half-day approved leave on Nov 11
+      await Leave.create({
+        organizationId: orgId,
+        branchId,
+        staffId: halfStaff._id,
+        leaveCode: `LV-HALF-${Date.now()}`,
+        leaveType: "Personal Leave",
+        startDate: new Date("2026-11-11T00:00:00.000Z"),
+        endDate: new Date("2026-11-11T23:59:59.999Z"),
+        dates: ["2026-11-11"],
+        isPartialDay: true,
+        dayPart: "first_half",
+        reason: "Half day personal appointment",
+        status: "approved",
+        submittedBy: adminUser._id,
+        submittedFor: "staff",
+      });
+
+      const period = await PayrollPeriod.findOne({ organizationId: orgId, monthYear: "2026-11" });
+
+      const res = await request(app)
+        .post("/api/v1/payroll/calculate")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          payrollPeriodId: period._id.toString(),
+          staffIds: [halfStaff._id.toString()],
+        });
+
+      expect(res.status).toBe(200);
+      const rec = res.body.data[0];
+
+      // 10 present days + 0.5 paid leave day = 10.5 payable days
+      // Daily Rate = 60,000 / 30 = 2,000
+      // Prorated base salary = 2,000 * 10.5 = 21,000
+      expect(rec.calculations.dailySalaryRate).toBe(2000);
+      expect(rec.attendanceSummarySnapshot.presentDays).toBe(10);
+      expect(rec.attendanceSummarySnapshot.paidLeaveDays).toBe(0.5);
+      expect(rec.attendanceSummarySnapshot.payableDays).toBe(10.5);
+      expect(rec.calculations.payableDays).toBe(10.5);
+      expect(rec.calculations.proratedBaseSalary).toBe(21000);
+      expect(rec.calculations.netPayable).toBe(21000);
+
+      // Clean up
+      await Leave.deleteMany({ organizationId: orgId, staffId: halfStaff._id });
+      await Attendance.deleteMany({ organizationId: orgId, staffId: halfStaff._id });
+      await PayrollRecord.deleteMany({ organizationId: orgId, staffId: halfStaff._id });
+      await SalaryStructure.deleteMany({ organizationId: orgId, staffId: halfStaff._id });
+      await StaffBranch.deleteMany({ organizationId: orgId, staffId: halfStaff._id });
+      await Staff.deleteOne({ _id: halfStaff._id });
     });
   });
 });

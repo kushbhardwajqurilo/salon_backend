@@ -16,6 +16,7 @@ import {
   previewServiceModificationSchema,
   commitServiceModificationSchema,
   upsellSubscriptionSchema,
+  upsellMembershipSchema,
 } from "../../validation/appointments/appointment.validation.js";
 import {
   createAppointment,
@@ -32,6 +33,7 @@ import {
   previewServiceModification,
   commitServiceModification,
   upsellSubscription,
+  upsellMembership,
 } from "../../controllers/appointments/appointment.controller.js";
 import { asyncHandler } from "../../utils/errors.js";
 import { AppError } from "../../utils/errors.js";
@@ -213,6 +215,15 @@ router.post(
   validate(upsellSubscriptionSchema),
   requirePermission("subscriptions.sell"),
   upsellSubscription
+);
+
+// Mid-Appointment Membership Upsell Flow
+router.post(
+  "/:id/upsell-membership",
+  validateMutationBranch,
+  validate(upsellMembershipSchema),
+  requirePermission("memberships.sell"),
+  upsellMembership
 );
 
 export default router;

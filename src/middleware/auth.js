@@ -63,6 +63,7 @@ export const authenticate = asyncHandler(async (req, res, next) => {
     // Attach user context to request
     req.user = {
       id: user._id,
+      _id: user._id,
       email: user.email,
       role: roleName,
       organizationId: user.organizationId,

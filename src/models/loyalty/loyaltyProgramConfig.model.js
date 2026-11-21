@@ -14,13 +14,22 @@ const loyaltyProgramConfigSchema = new mongoose.Schema(
       default: false,
       required: true,
     },
-    // Earning: points awarded per earnThresholdAmount of eligible spend
-    // Default: 1 point per ₹100
-    earnPointsPerUnit: {
+    // Earning: whether subscription purchase amounts qualify for loyalty points (default: false for v1 compatibility)
+    earnOnSubscriptions: {
+      type: Boolean,
+      default: false,
+    },
+    // Earning: whether membership purchase amounts qualify for loyalty points (default: true for compatibility)
+    earnOnMembershipPurchases: {
+      type: Boolean,
+      default: true,
+    },
+    // Maximum points that can be earned per invoice (prevents excessive points on large transactions)
+    // If not set, no cap is applied
+    maxPointsPerInvoice: {
       type: Number,
-      default: 1,
       min: 0,
-      required: true,
+      default: null,
     },
     earnThresholdAmount: {
       type: Number,

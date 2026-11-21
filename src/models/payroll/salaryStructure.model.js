@@ -65,6 +65,21 @@ const salaryStructureSchema = new Schema(
       default: 0,
       min: 0,
     },
+    paidLeavePolicy: {
+      annualEntitlement: {
+        type: Number,
+        required: true,
+        min: 0,
+        max: 365,
+        default: 0,
+      },
+      carryForwardDays: {
+        type: Number,
+        min: 0,
+        max: 365,
+        default: 0,
+      },
+    },
     allowances: {
       type: [allowanceItemSchema],
       default: [],

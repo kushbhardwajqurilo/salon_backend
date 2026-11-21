@@ -35,6 +35,18 @@ const appointmentServiceSnapshotSchema = new mongoose.Schema(
       ref: "SubscriptionUsage",
       default: null,
     },
+    appliedCustomerMembershipId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CustomerMembership",
+      default: null,
+    },
+    membershipCode: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    membershipDiscountAmount: { type: Number, default: 0, min: 0 },
+    membershipDiscountPercentage: { type: Number, default: 0, min: 0 },
   },
   { _id: true },
 );

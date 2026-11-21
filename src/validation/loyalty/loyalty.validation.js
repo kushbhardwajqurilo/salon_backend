@@ -13,6 +13,9 @@ export const updateLoyaltyProgramSchema = z.object({
     redemptionRate: z.coerce.number().positive("redemptionRate must be > 0").optional(),
     minRedemptionPoints: z.coerce.number().int().min(1, "minRedemptionPoints must be an integer >= 1").optional(),
     maxRedemptionPercentage: z.coerce.number().min(1).max(100, "maxRedemptionPercentage must be between 1 and 100").optional(),
+    earnOnSubscriptions: z.boolean().optional(),
+    earnOnMembershipPurchases: z.boolean().optional(),
+    maxPointsPerInvoice: z.number().int().min(0, "maxPointsPerInvoice must be >= 0").nullable().optional(),
   }),
 });
 

@@ -91,7 +91,29 @@ export class LoyaltyService {
 
     let eligibleSpend = 0;
     for (const line of lines || []) {
-      if (!line.isCoveredBySubscription) {
+      // Rule: subscription line type inclusion controlled by config
+      const isSubscriptionLine = line.lineType === "subscription";
+      const isCoveredBySubscription = line.isCoveredBySubscription === true;
+
+      // Determine if this line should contribute to eligible spend (subscription rule)
+      const shouldIncludeSubscription = config.earnOnSubscriptions
+        ? true
+        : (!isSubscriptionLine && !isCoveredBySubscription);
+
+      // Rule: membership purchase inclusion controlled by config
+      const isMembershipLine = line.lineType === "membership";
+      const shouldIncludeMembership = config.earnOnMembershipPurchases
+        ? true
+        : false; // If earnOnMembershipPurchases is false, membership lines are excluded
+
+      // Include line if it passes BOTH rules (or either/or based on business logic)
+      // Current logic: include line if it's not a blocked subscription type AND membership is allowed
+      const shouldInclude = shouldIncludeSubscription && 
+        (line.lineType !== "membership" || shouldIncludeMembership);
+
+      // For membership lines when earnOnMembershipPurchases is true, 
+      // or non-membership lines: include if subscription rule passes
+      if (shouldInclude) {
         eligibleSpend = Number((eligibleSpend + (line.customerPayable || 0)).toFixed(2));
       }
     }
@@ -103,7 +125,14 @@ export class LoyaltyService {
     const threshold = config.earnThresholdAmount || 100;
     const pointsPerUnit = config.earnPointsPerUnit || 1;
     const units = Math.floor(eligibleSpend / threshold);
-    return Math.max(0, units * pointsPerUnit);
+    let points = Math.max(0, units * pointsPerUnit);
+
+    // Apply maxPointsPerInvoice cap if configured
+    if (config.maxPointsPerInvoice && config.maxPointsPerInvoice > 0) {
+      points = Math.min(points, config.maxPointsPerInvoice);
+    }
+
+    return points;
   }
 
   /**

@@ -22,6 +22,9 @@ import {
   loadStaffAttributionSnapshot,
   resolveStaffAttribution,
 } from "../billing/staffAttribution.service.js";
+import { MembershipPlan } from "../../models/memberships/membershipPlan.model.js";
+import { CustomerMembership } from "../../models/memberships/customerMembership.model.js";
+import { isServiceEligibleForMembershipBenefits } from "../billing/billing.service.js";
 
 const appointmentRepo = new AppointmentRepository();
 
@@ -3144,7 +3147,40 @@ export class AppointmentService {
     const initiatingFormattedProposedEnd = formatUTCToLocal(proposedEndAt, tz);
     const initiatingFormattedStart = formatUTCToLocal(startAt, tz);
 
-    const effectiveDiscount = discount !== undefined ? discount : appointment.pricing.discount;
+    // Resolve customer membership benefits for preview discount calculation
+    const { membershipService } = await import("../memberships/membership.service.js");
+    const activeMembership = await membershipService.resolveActiveMembershipForCustomer(
+      appointment.customerId,
+      branchId,
+      organizationId
+    );
+
+    let totalMembershipDiscount = 0;
+    if (activeMembership && activeMembership.planSnapshot?.benefits) {
+      const discountPct = Number(activeMembership.planSnapshot.benefits.serviceDiscountPercentage || 0);
+      if (discountPct > 0) {
+        for (const line of proposedServiceSnapshots) {
+          if (line.serviceType === "registered" && !line.appliedSubscriptionId && !line.isRedeemedViaSubscription) {
+            const dbServ = dbServices.find((ds) => ds._id.toString() === line.serviceId?.toString());
+            const isEligible = isServiceEligibleForMembershipBenefits(
+              { _id: line.serviceId, categoryId: dbServ?.categoryId },
+              activeMembership.planSnapshot.benefits
+            );
+            if (isEligible) {
+              const lineDisc = Number(((line.price * discountPct) / 100).toFixed(2));
+              line.appliedCustomerMembershipId = activeMembership._id.toString();
+              line.membershipCode = activeMembership.membershipCode;
+              line.membershipDiscountPercentage = discountPct;
+              line.membershipDiscountAmount = lineDisc;
+              totalMembershipDiscount += lineDisc;
+            }
+          }
+        }
+      }
+    }
+
+    const baseDiscount = discount !== undefined ? discount : (appointment.pricing?.discount || 0);
+    const effectiveDiscount = Number((baseDiscount + totalMembershipDiscount).toFixed(2));
     const total = Math.max(0, Number((subtotal - effectiveDiscount).toFixed(2)));
 
     const initiatingAppointmentProposal = {
@@ -3901,6 +3937,317 @@ export class AppointmentService {
         summary: {
           newlyCoveredServicesCount: newlyCoveredCount,
           appliedSubscriptionCode: subscriptionCode,
+        },
+      };
+    }, { requireTransaction: false });
+  }
+
+  /**
+   * Phase 4: Upsell Membership during an Ongoing or Scheduled Appointment
+   * Atomically enrolls customer/beneficiaries in a membership plan, creates its sale billing record,
+   * and immediately reassesses and applies eligible percentage discounts to the appointment's service lines.
+   */
+  async upsellMembership(appointmentId, upsellData, organizationId, branchId, userId) {
+    const {
+      planId = null,
+      payerCustomerId = null,
+      beneficiaryCustomerIds = [],
+      beneficiaries = [],
+      soldByStaffId = null,
+      notes = "",
+      billImmediately = true,
+      customPlan = null,
+    } = upsellData;
+
+    return await runInTransaction(async (session) => {
+      // 1. Fetch and validate appointment
+      const appointment = await Appointment.findOne({
+        _id: appointmentId,
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (!appointment) {
+        throw new AppError("Appointment not found", 404);
+      }
+
+      if (branchId && appointment.branchId.toString() !== branchId.toString()) {
+        throw new AppError("Target branchId does not match appointment branch", 400);
+      }
+
+      if (!["scheduled", "in_progress"].includes(appointment.status)) {
+        throw new AppError(
+          `Cannot upsell membership to an appointment with status '${appointment.status}'. Must be 'scheduled' or 'in_progress'.`,
+          400
+        );
+      }
+
+      const soldBy = await resolveStaffAttribution(
+        soldByStaffId,
+        organizationId,
+        appointment.branchId,
+        session,
+      );
+
+      // 2. Resolve Membership Plan (catalog plan or custom on-the-fly plan)
+      let plan = null;
+      if (customPlan) {
+        const { membershipService } = await import("../memberships/membership.service.js");
+        plan = await membershipService.createPlan(
+          {
+            ...customPlan,
+            isCustom: true,
+            permittedBranchIds: customPlan.permittedBranchIds || [appointment.branchId],
+          },
+          organizationId,
+          userId
+        );
+      } else if (planId) {
+        plan = await MembershipPlan.findOne({
+          _id: planId,
+          organizationId,
+          isActive: true,
+          isDeleted: false,
+        }).session(session);
+        if (!plan) {
+          throw new AppError("Active membership plan not found", 404);
+        }
+      } else {
+        throw new AppError("Either planId or customPlan configuration is required", 400);
+      }
+
+      // Check plan permitted branch scope
+      if (Array.isArray(plan.permittedBranchIds) && plan.permittedBranchIds.length > 0) {
+        const isPermitted = plan.permittedBranchIds.some(
+          (b) => b.toString() === appointment.branchId.toString()
+        );
+        if (!isPermitted) {
+          throw new AppError(
+            `Membership plan '${plan.name}' is not permitted at branch '${appointment.branchId}'`,
+            403
+          );
+        }
+      }
+
+      // 3. Resolve & validate payer and beneficiaries
+      const effectivePayerId = payerCustomerId || appointment.customerId;
+      const payer = await Customer.findOne({
+        _id: effectivePayerId,
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (!payer || payer.status !== "active") {
+        throw new AppError("Payer customer not found or inactive in organization", 400);
+      }
+
+      let targetBeneficiaryIds = [];
+      const beneficiaryOverridesList = Array.isArray(beneficiaries) ? beneficiaries : [];
+      if (beneficiaryOverridesList.length > 0) {
+        targetBeneficiaryIds = beneficiaryOverridesList.map((b) => b.customerId);
+      } else if (Array.isArray(beneficiaryCustomerIds) && beneficiaryCustomerIds.length > 0) {
+        targetBeneficiaryIds = beneficiaryCustomerIds;
+      } else {
+        targetBeneficiaryIds = [effectivePayerId];
+      }
+
+      const uniqueBeneficiaryIds = Array.from(new Set(targetBeneficiaryIds.map((b) => b.toString())));
+      if (uniqueBeneficiaryIds.length !== targetBeneficiaryIds.length) {
+        throw new AppError("Duplicate beneficiaries detected in membership upsell", 400);
+      }
+
+      const maxAllowed = plan.maxBeneficiaries || 1;
+      if (uniqueBeneficiaryIds.length > maxAllowed) {
+        throw new AppError(
+          `Membership plan '${plan.name}' allows at most ${maxAllowed} beneficiaries, but ${uniqueBeneficiaryIds.length} were specified`,
+          400
+        );
+      }
+
+      const verifiedBeneficiaries = await Customer.find({
+        _id: { $in: uniqueBeneficiaryIds },
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (verifiedBeneficiaries.length !== uniqueBeneficiaryIds.length) {
+        throw new AppError("One or more beneficiaries not found in organization", 404);
+      }
+
+      // 4. Calculate validity dates and generate sequence code
+      const startDate = new Date();
+      const endDate = new Date(startDate);
+      endDate.setMonth(endDate.getMonth() + (plan.validityMonths || 12));
+
+      const sequenceKey = `MEM_${organizationId.toString()}`;
+      const seq = await Sequence.findOneAndUpdate(
+        { key: sequenceKey },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true, session }
+      );
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
+      const num = String(seq.seq).padStart(4, "0");
+      const baseMembershipCode = `MEM-${yyyy}${mm}${dd}-${num}`;
+
+      // Status policy:
+      // If billImmediately and price > 0, invoice is generated and starts as "pending_payment"
+      // Eligible benefits apply immediately, even while in "pending_payment".
+      const initialStatus = billImmediately && Number(plan.price) > 0 ? "pending_payment" : "active";
+      const membershipPurchaseId = new mongoose.Types.ObjectId();
+      const createdMemberships = [];
+
+      for (let i = 0; i < uniqueBeneficiaryIds.length; i++) {
+        const bId = uniqueBeneficiaryIds[i];
+        const memCode = uniqueBeneficiaryIds.length === 1 ? baseMembershipCode : `${baseMembershipCode}-${i + 1}`;
+        const overrideConfig = beneficiaryOverridesList.find(
+          (o) => (o.customerId?._id || o.customerId)?.toString() === bId.toString()
+        );
+        const effectiveBenefits = overrideConfig?.benefits || plan.benefits;
+
+        const newMembership = new CustomerMembership({
+          organizationId,
+          customerId: bId,
+          payerCustomerId: effectivePayerId,
+          membershipPurchaseId,
+          membershipPlanId: plan._id,
+          attribution: { soldBy },
+          membershipCode: memCode,
+          planSnapshot: {
+            name: plan.name,
+            tier: plan.tier || "Standard",
+            price: Number(plan.price),
+            validityMonths: plan.validityMonths || 12,
+            maxBeneficiaries: plan.maxBeneficiaries || 1,
+            benefits: effectiveBenefits,
+          },
+          status: initialStatus,
+          startDate,
+          endDate,
+          permittedBranchIds: plan.permittedBranchIds || [],
+          notes: notes || `Upsold during appointment ${appointment.appointmentCode}`,
+        });
+
+        await newMembership.save({ session });
+        createdMemberships.push(newMembership);
+      }
+
+      // 5. Generate unified invoice if billImmediately is true
+      let invoice = null;
+      if (billImmediately) {
+        const { billingService } = await import("../billing/billing.service.js");
+        invoice = await billingService.createUnifiedInvoice(
+          {
+            customerId: effectivePayerId,
+            branchId: appointment.branchId,
+            membershipLines: [
+              {
+                membershipPlanId: plan._id,
+                unitPrice: Number(plan.price),
+                payerCustomerId: effectivePayerId,
+                beneficiaryCustomerIds: uniqueBeneficiaryIds,
+                beneficiaries: beneficiaryOverridesList,
+                soldByStaffId: soldBy?.staffId,
+                customerMembershipId: createdMemberships[0]._id,
+                customerMembershipIds: createdMemberships.map((m) => m._id),
+              },
+            ],
+            notes: notes || `Membership upsold during appointment ${appointment.appointmentCode}`,
+          },
+          organizationId,
+          userId,
+          session
+        );
+
+        for (const cm of createdMemberships) {
+          cm.invoiceId = invoice._id;
+          await cm.save({ session });
+        }
+      }
+
+      // 6. Immediate benefit application: Reassess appointment services if appointment's customer is a beneficiary
+      const targetCustomerMembership = createdMemberships.find(
+        (m) => m.customerId.toString() === appointment.customerId.toString()
+      );
+
+      let newlyDiscountedServicesCount = 0;
+      let totalMembershipDiscount = 0;
+
+      if (targetCustomerMembership && ["active", "pending_payment"].includes(targetCustomerMembership.status)) {
+        const benefits = targetCustomerMembership.planSnapshot?.benefits;
+        const discountPct = Number(benefits?.serviceDiscountPercentage || 0);
+
+        if (discountPct > 0) {
+          const serviceIds = (appointment.services || []).map((l) => l.serviceId).filter(Boolean);
+          const dbServices = serviceIds.length > 0 ? await Service.find({ _id: { $in: serviceIds }, organizationId }).session(session) : [];
+
+          for (const line of appointment.services || []) {
+            if (!line.isRedeemedViaSubscription && !line.appliedSubscriptionId) {
+              const dbServ = dbServices.find((ds) => ds._id.toString() === line.serviceId?.toString());
+              const isEligible = isServiceEligibleForMembershipBenefits(
+                { serviceId: line.serviceId, categoryId: dbServ?.categoryId },
+                benefits
+              );
+              if (isEligible) {
+                const lineDiscount = Number(((line.price * discountPct) / 100).toFixed(2));
+                line.appliedCustomerMembershipId = targetCustomerMembership._id;
+                line.membershipCode = targetCustomerMembership.membershipCode;
+                line.membershipDiscountPercentage = discountPct;
+                line.membershipDiscountAmount = lineDiscount;
+                newlyDiscountedServicesCount++;
+                totalMembershipDiscount += lineDiscount;
+              }
+            }
+          }
+        }
+      }
+
+      if (newlyDiscountedServicesCount > 0) {
+        const subtotal = (appointment.services || []).reduce((acc, s) => acc + (s.price || 0), 0);
+        const discount = Number(((appointment.pricing?.discount || 0) + totalMembershipDiscount).toFixed(2));
+        const total = Math.max(0, Number((subtotal - discount).toFixed(2)));
+        appointment.pricing = {
+          subtotal: Number(subtotal.toFixed(2)),
+          discount,
+          total,
+        };
+        await appointment.save({ session });
+      }
+
+      // 7. Audit log
+      const auditLog = new AuditLog({
+        organizationId,
+        branchId: appointment.branchId,
+        actorId: userId,
+        action: AUDIT_ACTIONS.MEMBERSHIP_CREATED,
+        entityType: "CustomerMembership",
+        entityId: createdMemberships[0]._id,
+        description: `Membership ${createdMemberships[0].membershipCode} upsold during appointment ${appointment.appointmentCode} for customer ${payer.name}`,
+        metadata: {
+          appointmentId: appointment._id,
+          appointmentCode: appointment.appointmentCode,
+          membershipCode: createdMemberships[0].membershipCode,
+          membershipPurchaseId,
+          beneficiaryCount: createdMemberships.length,
+          price: plan.price,
+          newlyDiscountedServicesCount,
+          totalMembershipDiscount,
+          invoiceId: invoice?._id || null,
+        },
+      });
+      await auditLog.save({ session });
+
+      return {
+        customerMembership: createdMemberships[0],
+        customerMemberships: createdMemberships,
+        invoice,
+        appointment,
+        summary: {
+          appliedMembershipCode: createdMemberships[0].membershipCode,
+          newlyDiscountedServicesCount,
+          totalMembershipDiscount,
         },
       };
     }, { requireTransaction: false });

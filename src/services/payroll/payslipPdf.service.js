@@ -222,8 +222,9 @@ export function generatePayslipHtml(record) {
     <div class="info-block">
       <h4>Attendance & Leave Summary</h4>
       <div class="info-item"><span class="info-label">Total Days:</span> <span class="info-val">${att.totalDaysInMonth || 0}</span></div>
-      <div class="info-item"><span class="info-label">Eligible Days:</span> <span class="info-val">${att.eligibleDays || 0}</span></div>
+      <div class="info-item"><span class="info-label">Payable Days:</span> <span class="info-val" style="font-weight: bold; color: #16a34a;">${att.payableDays != null ? att.payableDays : (att.presentDays || 0)}</span></div>
       <div class="info-item"><span class="info-label">Present Days:</span> <span class="info-val" style="color: #16a34a;">${att.presentDays || 0}</span></div>
+      <div class="info-item"><span class="info-label">Paid Leaves:</span> <span class="info-val" style="color: #2563eb;">${att.paidLeaveDays || 0}</span></div>
       <div class="info-item"><span class="info-label">Unpaid Leaves:</span> <span class="info-val" style="color: #dc2626;">${att.unpaidLeaveDays || 0}</span></div>
     </div>
   </div>

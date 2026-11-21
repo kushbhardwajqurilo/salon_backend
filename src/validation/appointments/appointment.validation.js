@@ -268,3 +268,32 @@ export const upsellSubscriptionSchema = z.object({
   }),
 });
 
+export const upsellMembershipSchema = z.object({
+  body: z.object({
+    branchId: objectIdSchema.optional(),
+    planId: objectIdSchema.optional().nullable(),
+    payerCustomerId: objectIdSchema.optional().nullable(),
+    beneficiaryCustomerIds: z.array(objectIdSchema).optional().default([]),
+    beneficiaries: z
+      .array(
+        z.object({
+          customerId: objectIdSchema,
+          benefits: z.record(z.any()).optional(),
+        })
+      )
+      .optional(),
+    soldByStaffId: objectIdSchema.optional().nullable(),
+    notes: z.string().trim().max(1000).optional().default(""),
+    billImmediately: z.boolean().optional().default(true),
+    customPlan: z
+      .object({
+        name: z.string().trim().min(1, "Plan name is required"),
+        price: z.number().min(0, "Price must be non-negative"),
+        validityMonths: z.number().int().min(1).default(12),
+        maxBeneficiaries: z.number().int().min(1).default(1),
+        benefits: z.record(z.any()).optional(),
+      })
+      .optional(),
+  }),
+});
+
