@@ -133,6 +133,10 @@ const payrollRecordSchema = new Schema(
       payType: { type: String, required: true },
       baseSalary: { type: Number, required: true },
       hourlyRate: { type: Number, default: 0 },
+      paidLeavePolicy: {
+        annualEntitlement: { type: Number, default: 0 },
+        carryForwardDays: { type: Number, default: 0 },
+      },
       allowances: [
         {
           name: { type: String, required: true },
@@ -154,9 +158,12 @@ const payrollRecordSchema = new Schema(
       earlyDepartureDays: { type: Number, default: 0 },
       incompleteDays: { type: Number, default: 0 },
       unresolvedConflicts: { type: Number, default: 0 },
+      paidLeaveEntitlement: { type: Number, default: 0 },
+      previouslyConsumedPaidLeave: { type: Number, default: 0 },
       paidLeaveDays: { type: Number, default: 0 },
       unpaidLeaveDays: { type: Number, default: 0 },
       absentDays: { type: Number, default: 0 },
+      payableDays: { type: Number, default: 0 },
       sourceAttendanceRecordIds: [{ type: Schema.Types.ObjectId, ref: "Attendance" }],
       sourceLeaveRecordIds: [{ type: Schema.Types.ObjectId, ref: "Leave" }],
     },
@@ -213,6 +220,9 @@ const payrollRecordSchema = new Schema(
     },
     calculations: {
       prorationFactor: { type: Number, required: true },
+      dailySalaryRate: { type: Number, default: 0 },
+      payableDays: { type: Number, default: 0 },
+      proratedBaseSalary: { type: Number, default: 0 },
       grossBaseSalary: { type: Number, required: true },
       totalAllowances: { type: Number, required: true },
       totalGrossPay: { type: Number, required: true },

@@ -264,3 +264,21 @@ export const upsellSubscription = asyncHandler(async (req, res) => {
     result,
   );
 });
+
+export const upsellMembership = asyncHandler(async (req, res) => {
+  const branchId =
+    req.body?.branchId || req.branchId || req.headers["x-branch-id"];
+  const result = await appointmentService.upsellMembership(
+    req.params.id,
+    req.body,
+    req.organizationId,
+    branchId,
+    req.user?.id || req.user?._id,
+  );
+  return sendResponse(
+    res,
+    201,
+    "Membership upsold successfully during appointment",
+    result,
+  );
+});

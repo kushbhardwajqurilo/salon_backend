@@ -152,6 +152,34 @@ const subscriptionSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    // Historical audit ledger of all invoices issued for this subscription
+    invoiceHistory: [
+      {
+        invoiceId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Invoice",
+          required: true,
+        },
+        invoiceNumber: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        status: {
+          type: String,
+          enum: ["draft", "finalized", "cancelled"],
+          default: "draft",
+        },
+        issuedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        cancelledAt: {
+          type: Date,
+          default: null,
+        },
+      },
+    ],
     notes: {
       type: String,
       default: "",

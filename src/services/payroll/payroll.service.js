@@ -231,6 +231,7 @@ export class PayrollService {
     payType,
     baseSalary,
     hourlyRate,
+    paidLeavePolicy,
     allowances,
     deductions,
     effectiveFrom,
@@ -290,6 +291,10 @@ export class PayrollService {
       payType,
       baseSalary,
       hourlyRate: hourlyRate || 0,
+      paidLeavePolicy: {
+        annualEntitlement: Number(paidLeavePolicy?.annualEntitlement || 0),
+        carryForwardDays: Number(paidLeavePolicy?.carryForwardDays || 0),
+      },
       allowances: allowances || [],
       deductions: deductions || [],
       effectiveFrom: fromDate,
@@ -586,7 +591,13 @@ export class PayrollService {
       let incompleteDays = 0;
       let unresolvedConflicts = branchAttendanceConflicts.length;
 
+      // Map of attendance by YYYY-MM-DD
+      const attendanceMap = new Map();
+
       for (const att of attendanceRecords) {
+        const attDateKey = new Date(att.attendanceDate).toISOString().slice(0, 10);
+        attendanceMap.set(attDateKey, att);
+
         if (att.status === "present") presentDays++;
         else if (att.status === "late") {
           presentDays++;
@@ -603,7 +614,62 @@ export class PayrollService {
         }
       }
 
-      // 5. Ingest Leaves for Period
+      // 5. Ingest Leaves for Period & Entitlement Consumption
+      // Fetch leave entitlement from effective salary structure
+      const annualEntitlement = Number(salaryStructure.paidLeavePolicy?.annualEntitlement || 0);
+      const carryForwardDays = Number(salaryStructure.paidLeavePolicy?.carryForwardDays || 0);
+      const totalEntitlement = annualEntitlement + carryForwardDays;
+
+      // Determine Leave Year boundary (Calendar year of the period: Jan 1 to Dec 31)
+      const periodYear = period.year;
+      const leaveYearStart = new Date(Date.UTC(periodYear, 0, 1, 0, 0, 0, 0));
+      const leaveYearEnd = new Date(Date.UTC(periodYear, 11, 31, 23, 59, 59, 999));
+
+      // Fetch all approved leaves for this staff in this leave year prior to the current period's start date
+      const priorApprovedLeaves = await Leave.find({
+        organizationId,
+        staffId: staff._id,
+        status: "approved",
+        isDeleted: false,
+        startDate: { $gte: leaveYearStart, $lt: period.startDate },
+      }).sort({ startDate: 1 });
+
+      let previouslyConsumedPaidLeave = 0;
+      for (const priorLeave of priorApprovedLeaves) {
+        const isExplicitUnpaid =
+          priorLeave.isUnpaid === true ||
+          (typeof priorLeave.leaveType === "string" &&
+            (priorLeave.leaveType.toLowerCase().includes("unpaid") ||
+              priorLeave.leaveType.toLowerCase().includes("lop")));
+
+        if (!isExplicitUnpaid) {
+          let count = priorLeave.dates?.length || 0;
+          if (count === 0) {
+            const startMidnight = Date.UTC(
+              new Date(priorLeave.startDate).getUTCFullYear(),
+              new Date(priorLeave.startDate).getUTCMonth(),
+              new Date(priorLeave.startDate).getUTCDate()
+            );
+            const endMidnight = Date.UTC(
+              new Date(priorLeave.endDate).getUTCFullYear(),
+              new Date(priorLeave.endDate).getUTCMonth(),
+              new Date(priorLeave.endDate).getUTCDate()
+            );
+            count = Math.floor((endMidnight - startMidnight) / (1000 * 60 * 60 * 24)) + 1;
+          }
+          if (priorLeave.isPartialDay === true) {
+            count = 0.5;
+          }
+
+          // Consume up to total entitlement
+          const allocatable = Math.min(count, Math.max(0, totalEntitlement - previouslyConsumedPaidLeave));
+          previouslyConsumedPaidLeave += allocatable;
+        }
+      }
+
+      // Remaining entitlement available for current period
+      let remainingEntitlement = Math.max(0, totalEntitlement - previouslyConsumedPaidLeave);
+
       const leaveRecords = await Leave.find({
         organizationId,
         staffId: staff._id,
@@ -611,34 +677,63 @@ export class PayrollService {
         startDate: { $lte: period.endDate },
         endDate: { $gte: period.startDate },
         isDeleted: false,
-      });
+      }).sort({ startDate: 1 });
 
       let paidLeaveDays = 0;
       let unpaidLeaveDays = 0;
 
       for (const leave of leaveRecords) {
-        // Count overlapping calendar days within this month
-        const leaveStart = new Date(Math.max(new Date(leave.startDate), period.startDate));
-        const leaveEnd = new Date(Math.min(new Date(leave.endDate), period.endDate));
-        const leaveStartMidnight = Date.UTC(leaveStart.getUTCFullYear(), leaveStart.getUTCMonth(), leaveStart.getUTCDate());
-        const leaveEndMidnight = Date.UTC(leaveEnd.getUTCFullYear(), leaveEnd.getUTCMonth(), leaveEnd.getUTCDate());
-        let dayCount = Math.floor((leaveEndMidnight - leaveStartMidnight) / (1000 * 60 * 60 * 24)) + 1;
+        // Enumerate discrete dates within this payroll period
+        const lStart = new Date(Math.max(new Date(leave.startDate).getTime(), period.startDate.getTime()));
+        const lEnd = new Date(Math.min(new Date(leave.endDate).getTime(), period.endDate.getTime()));
 
-        // Honor partial-day (half-day) leave semantics from Leave model
-        if (leave.isPartialDay === true) {
-          dayCount = 0.5;
+        const discreteDates = [];
+        const curDate = new Date(Date.UTC(lStart.getUTCFullYear(), lStart.getUTCMonth(), lStart.getUTCDate()));
+        const endDateUtc = new Date(Date.UTC(lEnd.getUTCFullYear(), lEnd.getUTCMonth(), lEnd.getUTCDate()));
+
+        while (curDate <= endDateUtc) {
+          discreteDates.push(curDate.toISOString().slice(0, 10));
+          curDate.setUTCDate(curDate.getUTCDate() + 1);
         }
 
-        const isUnpaid =
+        const isExplicitUnpaid =
           leave.isUnpaid === true ||
           (typeof leave.leaveType === "string" &&
             (leave.leaveType.toLowerCase().includes("unpaid") ||
               leave.leaveType.toLowerCase().includes("lop")));
 
-        if (isUnpaid) {
-          unpaidLeaveDays += dayCount;
-        } else {
-          paidLeaveDays += dayCount;
+        for (const dateKey of discreteDates) {
+          // Check if employee has attendance on the same date to avoid double counting
+          const attOnDate = attendanceMap.get(dateKey);
+          let leaveDayWeight = leave.isPartialDay === true ? 0.5 : 1.0;
+
+          if (attOnDate && ["present", "late", "early_departure"].includes(attOnDate.status)) {
+            // Already counted present for full day; cannot double-claim full day as paid leave
+            // If leave is half-day and present is half-day, capped at 1.0 total
+            if (leaveDayWeight >= 1.0) {
+              continue; // Skip double counting full presence + full leave on same day
+            }
+          }
+
+          if (isExplicitUnpaid) {
+            unpaidLeaveDays += leaveDayWeight;
+          } else {
+            // Check remaining paid entitlement
+            if (remainingEntitlement >= leaveDayWeight) {
+              paidLeaveDays += leaveDayWeight;
+              remainingEntitlement -= leaveDayWeight;
+            } else if (remainingEntitlement > 0) {
+              // Partial exhaustion (e.g. 0.5 paid, 0.5 unpaid)
+              const paidPart = remainingEntitlement;
+              const unpaidPart = leaveDayWeight - remainingEntitlement;
+              paidLeaveDays += paidPart;
+              unpaidLeaveDays += unpaidPart;
+              remainingEntitlement = 0;
+            } else {
+              // Entitlement exhausted -> becomes unpaid leave
+              unpaidLeaveDays += leaveDayWeight;
+            }
+          }
         }
       }
 
@@ -657,9 +752,16 @@ export class PayrollService {
 
       const approvalBlocked = approvalBlockReasons.length > 0;
 
-      // 7. Financial Calculations (Calendar-day proration)
+      // 7. Financial Calculations (Attendance-driven salary calculation)
+      // Daily Rate = Monthly Base Salary / Authoritative Payroll Period Denominator (period.totalDays)
       const dailyBaseRate = salaryStructure.baseSalary / period.totalDays;
-      const grossBaseSalary = Number((dailyBaseRate * eligibleDays).toFixed(2));
+
+      // Payable Days = Verified Present Days + Eligible Approved Paid Leave Days
+      const payableDays = Number((presentDays + paidLeaveDays).toFixed(2));
+      const proratedBaseSalary = Number((dailyBaseRate * payableDays).toFixed(2));
+
+      // For backward compatibility and historical snapshots, grossBaseSalary represents payable base
+      const grossBaseSalary = proratedBaseSalary;
 
       const totalAllowances = Number(
         salaryStructure.allowances
@@ -669,7 +771,7 @@ export class PayrollService {
 
       const totalGrossPay = Number((grossBaseSalary + totalAllowances).toFixed(2));
 
-      // Unpaid leave deduction
+      // Unpaid leave deduction (informational audit figure)
       const unpaidLeaveDeduction = Number(
         (dailyBaseRate * unpaidLeaveDays).toFixed(2)
       );
@@ -680,9 +782,7 @@ export class PayrollService {
           .toFixed(2)
       );
 
-      const totalDeductions = Number(
-        (unpaidLeaveDeduction + fixedDeductions).toFixed(2)
-      );
+      const totalDeductions = Number(fixedDeductions.toFixed(2));
 
       const netPayable = Math.max(0, Number((totalGrossPay - totalDeductions).toFixed(2)));
 
@@ -728,6 +828,10 @@ export class PayrollService {
           payType: salaryStructure.payType,
           baseSalary: salaryStructure.baseSalary,
           hourlyRate: salaryStructure.hourlyRate,
+          paidLeavePolicy: {
+            annualEntitlement,
+            carryForwardDays,
+          },
           allowances: salaryStructure.allowances,
           deductions: salaryStructure.deductions,
         },
@@ -739,12 +843,15 @@ export class PayrollService {
           earlyDepartureDays,
           incompleteDays,
           unresolvedConflicts,
+          paidLeaveEntitlement: totalEntitlement,
+          previouslyConsumedPaidLeave,
           paidLeaveDays,
           unpaidLeaveDays,
           absentDays: Math.max(
             0,
             eligibleDays - (presentDays + paidLeaveDays + unpaidLeaveDays)
           ),
+          payableDays,
           sourceAttendanceRecordIds: attendanceRecords.map((a) => a._id),
           sourceLeaveRecordIds: leaveRecords.map((l) => l._id),
         },
@@ -759,6 +866,9 @@ export class PayrollService {
         incentiveLedgerAmountInPaise,
         calculations: {
           prorationFactor,
+          dailySalaryRate: Number(dailyBaseRate.toFixed(4)),
+          payableDays,
+          proratedBaseSalary,
           grossBaseSalary,
           totalAllowances,
           totalGrossPay: finalTotalGrossPay,

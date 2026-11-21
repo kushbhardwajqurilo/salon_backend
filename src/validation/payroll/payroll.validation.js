@@ -14,6 +14,13 @@ export const createSalaryStructureSchema = z.object({
     payType: z.enum(["fixed_monthly", "hourly"]).default("fixed_monthly"),
     baseSalary: z.number().min(0, "Base salary must be at least 0"),
     hourlyRate: z.number().min(0).default(0),
+    paidLeavePolicy: z
+      .object({
+        annualEntitlement: z.number().min(0, "Annual entitlement must be at least 0").max(365),
+        carryForwardDays: z.number().min(0).max(365).optional().default(0),
+      })
+      .optional()
+      .default({ annualEntitlement: 0, carryForwardDays: 0 }),
     allowances: z.array(allowanceDeductionSchema).default([]),
     deductions: z.array(allowanceDeductionSchema).default([]),
     effectiveFrom: z.preprocess(

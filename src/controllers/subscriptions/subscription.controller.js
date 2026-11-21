@@ -27,6 +27,7 @@ export const createSubscription = asyncHandler(async (req, res) => {
   const payload = {
     ...req.body,
     branchId: req.branchId || req.body?.branchId,
+    billImmediately: req.body?.billImmediately !== undefined ? req.body.billImmediately : true,
   };
   const result = await subscriptionService.createSubscription(
     payload,

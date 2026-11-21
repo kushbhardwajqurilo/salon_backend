@@ -172,7 +172,9 @@ describe("Phase 2: Unified Billing Engine & Same-Appointment Upsell Suite", () =
       branchId,
       productId: retailProduct._id,
       onHand: 10,
+      onHandRetail: 10,
       allocated: 0,
+      allocatedRetail: 0,
       lastMovementAt: new Date(),
     });
 

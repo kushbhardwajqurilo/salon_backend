@@ -509,10 +509,29 @@ export class SubscriptionService {
     ];
 
     if (isInvoiced === "false" || isInvoiced === false) {
+      // Find any invoices for this org that are currently active (draft or finalized)
+      const InvoiceModel = mongoose.model("Invoice");
+      const activeInvoices = await InvoiceModel.find({
+        organizationId,
+        subscriptionId: { $ne: null },
+        status: { $in: ["draft", "finalized"] },
+        isDeleted: false,
+      }).select("subscriptionId");
+
+      const activeSubIdsWithInvoices = activeInvoices
+        .map((inv) => inv.subscriptionId)
+        .filter(Boolean);
+
       conditions.push({
-        $or: [
-          { invoiceId: null },
-          { invoiceId: { $exists: false } },
+        $and: [
+          {
+            $or: [
+              { invoiceId: null },
+              { invoiceId: { $exists: false } },
+              { _id: { $nin: activeSubIdsWithInvoices } },
+            ],
+          },
+          { _id: { $nin: activeSubIdsWithInvoices } },
         ],
       });
     } else if (isInvoiced === "true" || isInvoiced === true) {

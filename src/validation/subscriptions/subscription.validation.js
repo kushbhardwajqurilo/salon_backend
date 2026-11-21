@@ -43,7 +43,7 @@ export const createSubscriptionSchema = z.object({
       planId: objectIdSchema.optional().nullable(),
       soldByStaffId: objectIdSchema.optional().nullable(),
       notes: z.string().trim().max(1000).optional().default(""),
-      billImmediately: z.boolean().optional().default(false),
+      billImmediately: z.boolean().optional().default(true),
       branchId: objectIdSchema.optional().nullable(),
       renewedByStaffId: objectIdSchema.optional().nullable(),
     })

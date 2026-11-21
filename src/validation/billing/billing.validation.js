@@ -27,13 +27,19 @@ const beneficiaryOverrideInputSchema = z.object({
 });
 
 const invoiceMembershipLineInputSchema = z.object({
-  membershipPlanId: objectIdSchema,
+  membershipPlanId: objectIdSchema.optional(),
+  customerMembershipId: objectIdSchema.optional(),
+  customerMembershipIds: z.array(objectIdSchema).optional(),
+  membershipPurchaseId: objectIdSchema.optional(),
   quantity: z.coerce.number().int().positive().default(1),
   payerCustomerId: objectIdSchema.nullable().optional(),
   beneficiaryCustomerIds: z.array(objectIdSchema).optional().default([]),
   beneficiaries: z.array(beneficiaryOverrideInputSchema).optional().default([]),
   soldByStaffId: objectIdSchema.nullable().optional(),
-});
+}).refine(
+  (data) => Boolean(data.membershipPlanId || data.customerMembershipId || data.membershipPurchaseId),
+  { message: "Either membershipPlanId or customerMembershipId / membershipPurchaseId must be provided" }
+);
 
 const invoiceSubscriptionLineInputSchema = z.object({
   planId: objectIdSchema,
