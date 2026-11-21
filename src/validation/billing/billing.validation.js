@@ -11,9 +11,27 @@ const invoiceProductLineInputSchema = z.object({
   soldByStaffId: objectIdSchema.nullable().optional(),
 });
 
+const membershipBenefitsInputSchema = z.object({
+  serviceDiscountPercentage: z.coerce.number().min(0).max(100).optional(),
+  productDiscountPercentage: z.coerce.number().min(0).max(100).optional(),
+  eligibleServiceCategoryIds: z.array(objectIdSchema).optional().default([]),
+  eligibleServiceIds: z.array(objectIdSchema).optional().default([]),
+  excludedServiceCategoryIds: z.array(objectIdSchema).optional().default([]),
+  excludedServiceIds: z.array(objectIdSchema).optional().default([]),
+  complimentaryPerks: z.array(z.string().trim()).optional().default([]),
+});
+
+const beneficiaryOverrideInputSchema = z.object({
+  customerId: objectIdSchema,
+  benefits: membershipBenefitsInputSchema.optional(),
+});
+
 const invoiceMembershipLineInputSchema = z.object({
   membershipPlanId: objectIdSchema,
   quantity: z.coerce.number().int().positive().default(1),
+  payerCustomerId: objectIdSchema.nullable().optional(),
+  beneficiaryCustomerIds: z.array(objectIdSchema).optional().default([]),
+  beneficiaries: z.array(beneficiaryOverrideInputSchema).optional().default([]),
   soldByStaffId: objectIdSchema.nullable().optional(),
 });
 

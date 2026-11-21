@@ -16,6 +16,19 @@ const customerMembershipSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    payerCustomerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      default: function () {
+        return this.customerId;
+      },
+      index: true,
+    },
+    membershipPurchaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: () => new mongoose.Types.ObjectId(),
+      index: true,
+    },
     membershipPlanId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "MembershipPlan",
@@ -37,18 +50,61 @@ const customerMembershipSchema = new mongoose.Schema(
       tier: { type: String, default: "Standard" },
       price: { type: Number, required: true },
       validityMonths: { type: Number, required: true },
+      maxBeneficiaries: { type: Number, default: 1, min: 1 },
       benefits: {
         serviceDiscountPercentage: { type: Number, default: 0 },
         productDiscountPercentage: { type: Number, default: 0 },
         complimentaryPerks: { type: [String], default: [] },
+        eligibleServiceCategoryIds: [
+          {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "ServiceCategory",
+          },
+        ],
+        eligibleServiceIds: [
+          {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Service",
+          },
+        ],
+        excludedServiceCategoryIds: [
+          {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "ServiceCategory",
+          },
+        ],
+        excludedServiceIds: [
+          {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Service",
+          },
+        ],
       },
     },
     status: {
       type: String,
-      enum: ["pending_payment", "active", "expired", "cancelled"],
+      enum: ["pending_payment", "active", "suspended", "expired", "cancelled"],
       default: "pending_payment",
       required: true,
       index: true,
+    },
+    suspendedAt: {
+      type: Date,
+      default: null,
+    },
+    suspendedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    suspensionReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    reactivatedAt: {
+      type: Date,
+      default: null,
     },
     startDate: {
       type: Date,
@@ -100,6 +156,22 @@ const customerMembershipSchema = new mongoose.Schema(
       ref: "Invoice",
       default: null,
     },
+    // Expiry & Renewal Reminders
+    renewalReminder: {
+      status: {
+        type: String,
+        enum: ["none", "scheduled", "sent", "failed"],
+        default: "none",
+      },
+      sentAt: { type: Date, default: null },
+      failedAt: { type: Date, default: null },
+      failureReason: { type: String, default: null },
+      channel: {
+        type: String,
+        enum: ["sms", "email", "both"],
+        default: "sms",
+      },
+    },
     notes: {
       type: String,
       trim: true,
@@ -119,7 +191,10 @@ const customerMembershipSchema = new mongoose.Schema(
 // Indexes for tenant isolation and quick active lookup
 customerMembershipSchema.index({ organizationId: 1, membershipCode: 1 }, { unique: true });
 customerMembershipSchema.index({ organizationId: 1, customerId: 1, status: 1 });
+customerMembershipSchema.index({ organizationId: 1, payerCustomerId: 1 });
+customerMembershipSchema.index({ organizationId: 1, membershipPurchaseId: 1 });
 customerMembershipSchema.index({ organizationId: 1, endDate: 1, status: 1 });
+customerMembershipSchema.index({ organizationId: 1, "renewalReminder.status": 1, endDate: 1 });
 
 customerMembershipSchema.set("toJSON", {
   transform: (doc, ret) => {

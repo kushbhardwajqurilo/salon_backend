@@ -31,6 +31,7 @@ import { Service } from "../../models/services/service.model.js";
 import { Coupon } from "../../models/coupons/coupon.model.js";
 import { CouponUsage } from "../../models/coupons/couponUsage.model.js";
 import { CouponCustomerUsage } from "../../models/coupons/couponCustomerUsage.model.js";
+import { smsQueue } from "../../queues/client.js";
 import { logger } from "../../utils/logger.js";
 import {
   loadStaffAttributionSnapshot,
@@ -42,7 +43,8 @@ function allocatePaiseProportionally(totalPaise, weightedLines) {
     throw new AppError("Refund total must be integer paise", 400);
   }
   const totalWeight = weightedLines.reduce((sum, line) => sum + line.weight, 0);
-  if (totalWeight <= 0) return weightedLines.map((line) => ({ ...line, paise: 0 }));
+  if (totalWeight <= 0)
+    return weightedLines.map((line) => ({ ...line, paise: 0 }));
 
   let allocated = 0;
   const shares = weightedLines.map((line) => {
@@ -67,6 +69,78 @@ function allocatePaiseProportionally(totalPaise, weightedLines) {
   }
 
   return shares.map(({ remainder, ...share }) => share);
+}
+
+/**
+ * Checks whether a given service qualifies for membership benefits based on category
+ * and specific service inclusion and exclusion lists.
+ * Rules:
+ * 1. Exclusions have absolute precedence: if serviceId or categoryId is excluded, return false.
+ * 2. If neither eligibleServiceIds nor eligibleServiceCategoryIds are specified, all services qualify.
+ * 3. If eligible lists are specified, the service must match at least one inclusion rule.
+ */
+export function isServiceEligibleForMembershipBenefits(service, benefits) {
+  if (!benefits) return false;
+  const srvId = (
+    service.serviceId?._id ||
+    service.serviceId ||
+    service._id ||
+    service.id
+  )?.toString();
+  const catId = (service.categoryId?._id || service.categoryId)?.toString();
+
+  // 1. Check exclusions first (precedence)
+  if (
+    Array.isArray(benefits.excludedServiceIds) &&
+    srvId &&
+    benefits.excludedServiceIds.some(
+      (id) => (id?._id || id)?.toString() === srvId,
+    )
+  ) {
+    return false;
+  }
+  if (
+    Array.isArray(benefits.excludedServiceCategoryIds) &&
+    catId &&
+    benefits.excludedServiceCategoryIds.some(
+      (id) => (id?._id || id)?.toString() === catId,
+    )
+  ) {
+    return false;
+  }
+
+  // 2. Check inclusions
+  const hasEligibleServices =
+    Array.isArray(benefits.eligibleServiceIds) &&
+    benefits.eligibleServiceIds.length > 0;
+  const hasEligibleCats =
+    Array.isArray(benefits.eligibleServiceCategoryIds) &&
+    benefits.eligibleServiceCategoryIds.length > 0;
+
+  // Default: if no inclusions specified, all services qualify (except exclusions handled above)
+  if (!hasEligibleServices && !hasEligibleCats) return true;
+
+  if (
+    hasEligibleServices &&
+    srvId &&
+    benefits.eligibleServiceIds.some(
+      (id) => (id?._id || id)?.toString() === srvId,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    hasEligibleCats &&
+    catId &&
+    benefits.eligibleServiceCategoryIds.some(
+      (id) => (id?._id || id)?.toString() === catId,
+    )
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export class BillingService {
@@ -482,12 +556,11 @@ export class BillingService {
       );
     }
 
-    const appointmentPerformerAttribution =
-      await loadStaffAttributionSnapshot(
-        appointment.staffId,
-        organizationId,
-        session,
-      );
+    const appointmentPerformerAttribution = await loadStaffAttributionSnapshot(
+      appointment.staffId,
+      organizationId,
+      session,
+    );
 
     // Check for existing active (non-cancelled) invoice for this appointment
     const existingActiveInvoice = await Invoice.findOne({
@@ -828,7 +901,17 @@ export class BillingService {
             : subscriptionId;
         const updateQuery = Subscription.updateOne(
           { _id: subIdToLink, organizationId },
-          { $set: { invoiceId: invoiceDoc._id } },
+          {
+            $set: { invoiceId: invoiceDoc._id },
+            $push: {
+              invoiceHistory: {
+                invoiceId: invoiceDoc._id,
+                invoiceNumber: invoiceDoc.invoiceNumber,
+                status: invoiceDoc.status || "draft",
+                issuedAt: new Date(),
+              },
+            },
+          },
         );
         if (session) {
           await updateQuery.session(session);
@@ -1127,7 +1210,17 @@ export class BillingService {
             : subscriptionId;
         const updateQuery = Subscription.updateOne(
           { _id: subIdToLink, organizationId },
-          { $set: { invoiceId: invoiceDoc._id } },
+          {
+            $set: { invoiceId: invoiceDoc._id },
+            $push: {
+              invoiceHistory: {
+                invoiceId: invoiceDoc._id,
+                invoiceNumber: invoiceDoc.invoiceNumber,
+                status: invoiceDoc.status || "draft",
+                issuedAt: new Date(),
+              },
+            },
+          },
         );
         if (session) {
           await updateQuery.session(session);
@@ -1155,8 +1248,18 @@ export class BillingService {
       throw err;
     }
 
-    // Link invoiceId to subscription document
+    // Link invoiceId and record in invoiceHistory for subscription document
     subscription.invoiceId = invoiceDoc._id;
+    if (!Array.isArray(subscription.invoiceHistory)) {
+      subscription.invoiceHistory = [];
+    }
+    subscription.invoiceHistory.push({
+      invoiceId: invoiceDoc._id,
+      invoiceNumber: invoiceDoc.invoiceNumber,
+      status: "draft",
+      issuedAt: new Date(),
+    });
+
     if (session) {
       await subscription.save({ session });
     } else {
@@ -1367,7 +1470,17 @@ export class BillingService {
             : subscriptionId;
         const updateQuery = Subscription.updateOne(
           { _id: subIdToLink, organizationId },
-          { $set: { invoiceId: invoiceDoc._id } },
+          {
+            $set: { invoiceId: invoiceDoc._id },
+            $push: {
+              invoiceHistory: {
+                invoiceId: invoiceDoc._id,
+                invoiceNumber: invoiceDoc.invoiceNumber,
+                status: invoiceDoc.status || "draft",
+                issuedAt: new Date(),
+              },
+            },
+          },
         );
         if (session) {
           await updateQuery.session(session);
@@ -1487,12 +1600,11 @@ export class BillingService {
         );
       }
 
-      appointmentPerformerAttribution =
-        await loadStaffAttributionSnapshot(
-          appointment.staffId,
-          organizationId,
-          session,
-        );
+      appointmentPerformerAttribution = await loadStaffAttributionSnapshot(
+        appointment.staffId,
+        organizationId,
+        session,
+      );
 
       // Check existing active invoice
       const existingActiveInvoice = await Invoice.findOne({
@@ -1689,18 +1801,83 @@ export class BillingService {
     let existingActiveMembership = null;
 
     for (const memInput of normalizedMemInputs) {
-      const plan = await MembershipPlan.findOne({
-        _id: memInput.membershipPlanId,
-        organizationId,
-        isActive: true,
-        isDeleted: false,
-      }).session(session);
+      let plan = null;
+      let existingGroupMemberships = [];
+      let isExistingPendingMembership = false;
 
-      if (!plan) {
-        throw new AppError(
-          `Active membership plan not found: ${memInput.membershipPlanId}`,
-          404,
-        );
+      // Check if this is an existing pending membership awaiting payment
+      if (memInput.customerMembershipId || memInput.membershipPurchaseId) {
+        const queryFilter = {
+          organizationId,
+          isDeleted: false,
+        };
+        if (memInput.customerMembershipId) {
+          queryFilter._id = memInput.customerMembershipId;
+        } else if (memInput.membershipPurchaseId) {
+          queryFilter.membershipPurchaseId = memInput.membershipPurchaseId;
+        }
+
+        const targetCm =
+          await CustomerMembership.findOne(queryFilter).session(session);
+        if (!targetCm) {
+          throw new AppError("Pending customer membership not found", 404);
+        }
+
+        if (targetCm.status !== "pending_payment") {
+          throw new AppError(
+            `Customer membership ${targetCm.membershipCode} is already ${targetCm.status} and cannot be invoiced again`,
+            400,
+          );
+        }
+
+        // Load all sibling beneficiary memberships under the same purchase group
+        existingGroupMemberships = await CustomerMembership.find({
+          membershipPurchaseId: targetCm.membershipPurchaseId,
+          organizationId,
+          isDeleted: false,
+        }).session(session);
+
+        if (existingGroupMemberships.length === 0) {
+          existingGroupMemberships = [targetCm];
+        }
+
+        // Verify plan either from membershipPlanId or planSnapshot
+        if (targetCm.membershipPlanId) {
+          plan = await MembershipPlan.findOne({
+            _id: targetCm.membershipPlanId,
+            organizationId,
+          }).session(session);
+        }
+
+        // If plan record was archived or deleted, fallback to the immutable planSnapshot stored on enrollment
+        if (!plan) {
+          plan = {
+            _id: targetCm.membershipPlanId,
+            name: targetCm.planSnapshot?.name || "Membership Plan",
+            tier: targetCm.planSnapshot?.tier || "Standard",
+            price: targetCm.planSnapshot?.price || 0,
+            validityMonths: targetCm.planSnapshot?.validityMonths || 12,
+            maxBeneficiaries: targetCm.planSnapshot?.maxBeneficiaries || 1,
+            benefits: targetCm.planSnapshot?.benefits || {},
+            permittedBranchIds: targetCm.permittedBranchIds || [],
+          };
+        }
+
+        isExistingPendingMembership = true;
+      } else {
+        plan = await MembershipPlan.findOne({
+          _id: memInput.membershipPlanId,
+          organizationId,
+          isActive: true,
+          isDeleted: false,
+        }).session(session);
+
+        if (!plan) {
+          throw new AppError(
+            `Active membership plan not found: ${memInput.membershipPlanId}`,
+            404,
+          );
+        }
       }
 
       if (
@@ -1728,14 +1905,156 @@ export class BillingService {
         session,
       );
 
-      // Track active benefits for same-invoice benefit preview
-      inCartMembershipBenefits = plan.benefits;
+      // Multi-beneficiary resolution & validation (supports both legacy beneficiaryCustomerIds and per-beneficiary overrides)
+      let payerId = memInput.payerCustomerId || targetCustomerId;
+      let targetBeneficiaries = [];
+      const beneficiaryOverridesList = Array.isArray(memInput.beneficiaries)
+        ? memInput.beneficiaries
+        : [];
+
+      if (isExistingPendingMembership && existingGroupMemberships.length > 0) {
+        payerId = existingGroupMemberships[0].payerCustomerId || payerId;
+        targetBeneficiaries = existingGroupMemberships.map((m) =>
+          m.customerId.toString(),
+        );
+      } else if (beneficiaryOverridesList.length > 0) {
+        targetBeneficiaries = beneficiaryOverridesList.map((b) => b.customerId);
+      } else if (
+        Array.isArray(memInput.beneficiaryCustomerIds) &&
+        memInput.beneficiaryCustomerIds.length > 0
+      ) {
+        targetBeneficiaries = memInput.beneficiaryCustomerIds;
+      } else {
+        targetBeneficiaries = [payerId];
+      }
+
+      // Check unique beneficiaries
+      const uniqueBeneficiaryIds = Array.from(
+        new Set(targetBeneficiaries.map((b) => b.toString())),
+      );
+      if (uniqueBeneficiaryIds.length !== targetBeneficiaries.length) {
+        throw new AppError(
+          "Duplicate beneficiaries detected in membership purchase line",
+          400,
+        );
+      }
+
+      const maxAllowed = plan.maxBeneficiaries || 1;
+      if (uniqueBeneficiaryIds.length > maxAllowed) {
+        throw new AppError(
+          `Membership plan '${plan.name}' allows at most ${maxAllowed} beneficiaries, but ${uniqueBeneficiaryIds.length} were specified`,
+          400,
+        );
+      }
+
+      // Validate all beneficiaries and payer exist within organization
+      const verifiedBeneficiaries = await Customer.find({
+        _id: { $in: uniqueBeneficiaryIds },
+        organizationId,
+        isDeleted: false,
+      }).session(session);
+
+      if (verifiedBeneficiaries.length !== uniqueBeneficiaryIds.length) {
+        throw new AppError(
+          "One or more beneficiaries not found in organization",
+          404,
+        );
+      }
+
+      // Build structured beneficiaryOverrides array mapping each beneficiary customer to their custom benefits (or plan defaults)
+      const formattedBeneficiaryOverrides = uniqueBeneficiaryIds.map((bId) => {
+        if (isExistingPendingMembership) {
+          const matchingCm = existingGroupMemberships.find(
+            (m) => m.customerId.toString() === bId.toString(),
+          );
+          if (matchingCm?.planSnapshot?.benefits) {
+            return {
+              customerId: bId,
+              benefits: matchingCm.planSnapshot.benefits,
+            };
+          }
+        }
+
+        const foundOverride = beneficiaryOverridesList.find(
+          (o) =>
+            (o.customerId?._id || o.customerId)?.toString() === bId.toString(),
+        );
+        const mergedBenefits = foundOverride?.benefits
+          ? {
+              serviceDiscountPercentage:
+                foundOverride.benefits.serviceDiscountPercentage !== undefined
+                  ? Number(foundOverride.benefits.serviceDiscountPercentage)
+                  : (plan.benefits?.serviceDiscountPercentage ?? 0),
+              productDiscountPercentage:
+                foundOverride.benefits.productDiscountPercentage !== undefined
+                  ? Number(foundOverride.benefits.productDiscountPercentage)
+                  : (plan.benefits?.productDiscountPercentage ?? 0),
+              eligibleServiceCategoryIds:
+                foundOverride.benefits.eligibleServiceCategoryIds ||
+                plan.benefits?.eligibleServiceCategoryIds ||
+                [],
+              eligibleServiceIds:
+                foundOverride.benefits.eligibleServiceIds ||
+                plan.benefits?.eligibleServiceIds ||
+                [],
+              excludedServiceCategoryIds:
+                foundOverride.benefits.excludedServiceCategoryIds ||
+                plan.benefits?.excludedServiceCategoryIds ||
+                [],
+              excludedServiceIds:
+                foundOverride.benefits.excludedServiceIds ||
+                plan.benefits?.excludedServiceIds ||
+                [],
+              complimentaryPerks:
+                foundOverride.benefits.complimentaryPerks ||
+                plan.benefits?.complimentaryPerks ||
+                [],
+            }
+          : typeof plan.benefits?.toObject === "function"
+            ? plan.benefits.toObject()
+            : plan.benefits
+              ? { ...plan.benefits }
+              : {};
+
+        return {
+          customerId: bId,
+          benefits: mergedBenefits,
+        };
+      });
+
+      // Track active benefits for same-invoice benefit preview ONLY IF the target appointment/cart customer is among beneficiaries!
+      const matchingBeneficiaryOverride = formattedBeneficiaryOverrides.find(
+        (b) => b.customerId.toString() === targetCustomerId.toString(),
+      );
+      if (matchingBeneficiaryOverride) {
+        inCartMembershipBenefits = matchingBeneficiaryOverride.benefits;
+      }
       inCartMembershipPurchaseLineId = new mongoose.Types.ObjectId();
+
+      const resolvedCmId = isExistingPendingMembership
+        ? existingGroupMemberships[0]?._id
+        : memInput.customerMembershipId || null;
+      const resolvedCmIds = isExistingPendingMembership
+        ? existingGroupMemberships.map((m) => m._id)
+        : Array.isArray(memInput.customerMembershipIds)
+          ? memInput.customerMembershipIds
+          : memInput.customerMembershipId
+            ? [memInput.customerMembershipId]
+            : [];
+      const resolvedPurchaseId = isExistingPendingMembership
+        ? existingGroupMemberships[0]?.membershipPurchaseId
+        : memInput.membershipPurchaseId || null;
 
       invoiceLines.push({
         _id: inCartMembershipPurchaseLineId,
         lineType: "membership",
         membershipPlanId: plan._id,
+        payerCustomerId: payerId,
+        beneficiaryCustomerIds: uniqueBeneficiaryIds,
+        beneficiaryOverrides: formattedBeneficiaryOverrides,
+        customerMembershipId: resolvedCmId,
+        customerMembershipIds: resolvedCmIds,
+        membershipPurchaseId: resolvedPurchaseId,
         attribution: { soldBy },
         membershipTierSnapshot: plan.tier || "Standard",
         name: `Membership: ${plan.name}`,
@@ -1750,22 +2069,48 @@ export class BillingService {
       });
     }
 
-    // Also check if customer already has an existing active membership (outside this cart)
+    // Also check if customer already has an existing active or pending_payment membership (outside this cart)
     if (!inCartMembershipBenefits) {
-      existingActiveMembership = await CustomerMembership.findOne({
+      const now = new Date(Date.now());
+      const candidateCmQuery = {
         organizationId,
         customerId: targetCustomerId,
-        status: "active",
-        endDate: { $gte: new Date() },
+        status: { $in: ["active", "pending_payment"] },
+        startDate: { $lte: now },
+        endDate: { $gte: now },
         isDeleted: false,
-      }).session(session);
+      };
 
-      if (
-        existingActiveMembership &&
-        existingActiveMembership.planSnapshot?.benefits
-      ) {
-        inCartMembershipBenefits =
-          existingActiveMembership.planSnapshot.benefits;
+      if (branchId) {
+        candidateCmQuery.$or = [
+          { permittedBranchIds: { $exists: false } },
+          { permittedBranchIds: { $size: 0 } },
+          { permittedBranchIds: branchId },
+        ];
+      }
+
+      let cmFindQuery = CustomerMembership.find(candidateCmQuery).sort({
+        status: 1, // 'active' prioritized over 'pending_payment'
+        "planSnapshot.benefits.serviceDiscountPercentage": -1,
+        createdAt: -1,
+      });
+
+      if (session) cmFindQuery = cmFindQuery.session(session);
+      const candidateMemberships = await cmFindQuery;
+
+      for (const cm of candidateMemberships) {
+        const permitted =
+          !Array.isArray(cm.permittedBranchIds) ||
+          cm.permittedBranchIds.length === 0 ||
+          cm.permittedBranchIds.some(
+            (b) => b.toString() === branchId.toString(),
+          );
+
+        if (permitted && cm.planSnapshot?.benefits) {
+          existingActiveMembership = cm;
+          inCartMembershipBenefits = cm.planSnapshot.benefits;
+          break;
+        }
       }
     }
 
@@ -1941,15 +2286,35 @@ export class BillingService {
           inCartMembershipBenefits &&
           inCartMembershipBenefits.serviceDiscountPercentage > 0
         ) {
-          isDiscountedByMembership = true;
-          const pct = inCartMembershipBenefits.serviceDiscountPercentage;
-          membershipDiscountAmount = Number(
-            ((lineTotal * pct) / 100).toFixed(2),
-          );
-          customerPayable = Math.max(
-            0,
-            Number((customerPayable - membershipDiscountAmount).toFixed(2)),
-          );
+          // If serviceId is present, verify service and category eligibility
+          let isEligible = true;
+          if (s.serviceId) {
+            let serviceDoc = await Service.findOne({
+              _id: s.serviceId,
+              organizationId,
+            }).session(session);
+            isEligible = isServiceEligibleForMembershipBenefits(
+              serviceDoc || { _id: s.serviceId },
+              inCartMembershipBenefits,
+            );
+          } else {
+            isEligible = isServiceEligibleForMembershipBenefits(
+              { name: s.name },
+              inCartMembershipBenefits,
+            );
+          }
+
+          if (isEligible) {
+            isDiscountedByMembership = true;
+            const pct = inCartMembershipBenefits.serviceDiscountPercentage;
+            membershipDiscountAmount = Number(
+              ((lineTotal * pct) / 100).toFixed(2),
+            );
+            customerPayable = Math.max(
+              0,
+              Number((customerPayable - membershipDiscountAmount).toFixed(2)),
+            );
+          }
         }
 
         invoiceLines.push({
@@ -2181,13 +2546,21 @@ export class BillingService {
         inCartMembershipBenefits &&
         inCartMembershipBenefits.serviceDiscountPercentage > 0
       ) {
-        isDiscountedByMembership = true;
-        const pct = inCartMembershipBenefits.serviceDiscountPercentage;
-        membershipDiscountAmount = Number(((lineTotal * pct) / 100).toFixed(2));
-        customerPayable = Math.max(
-          0,
-          Number((customerPayable - membershipDiscountAmount).toFixed(2)),
+        const isEligible = isServiceEligibleForMembershipBenefits(
+          service,
+          inCartMembershipBenefits,
         );
+        if (isEligible) {
+          isDiscountedByMembership = true;
+          const pct = inCartMembershipBenefits.serviceDiscountPercentage;
+          membershipDiscountAmount = Number(
+            ((lineTotal * pct) / 100).toFixed(2),
+          );
+          customerPayable = Math.max(
+            0,
+            Number((customerPayable - membershipDiscountAmount).toFixed(2)),
+          );
+        }
       }
 
       invoiceLines.push({
@@ -2476,12 +2849,165 @@ export class BillingService {
             : subscriptionId;
         const updateQuery = Subscription.updateOne(
           { _id: subIdToLink, organizationId },
-          { $set: { invoiceId: invoiceDoc._id } },
+          {
+            $set: { invoiceId: invoiceDoc._id },
+            $push: {
+              invoiceHistory: {
+                invoiceId: invoiceDoc._id,
+                invoiceNumber: invoiceDoc.invoiceNumber,
+                status: invoiceDoc.status || "draft",
+                issuedAt: new Date(),
+              },
+            },
+          },
         );
         if (session) {
           await updateQuery.session(session);
         } else {
           await updateQuery;
+        }
+      }
+
+      // If this invoice contains membership lines with pre-instantiated memberships, link them to invoiceDoc
+      let didInstantiateMemberships = false;
+      for (const l of invoiceDoc.lines || []) {
+        if (l.lineType === "membership" && l.customerMembershipId) {
+          if (!invoiceDoc.customerMembershipId) {
+            invoiceDoc.customerMembershipId = l.customerMembershipId;
+            invoiceDoc.customerMembershipIds = l.customerMembershipIds || [
+              l.customerMembershipId,
+            ];
+            if (l.membershipPurchaseId) {
+              invoiceDoc.membershipPurchaseId = l.membershipPurchaseId;
+            }
+            didInstantiateMemberships = true;
+          }
+
+          // Ensure pre-existing CustomerMembership records link back to this invoiceDoc
+          const targetIds = [
+            l.customerMembershipId,
+            ...(Array.isArray(l.customerMembershipIds)
+              ? l.customerMembershipIds
+              : []),
+          ];
+          const updateCmQuery = CustomerMembership.updateMany(
+            {
+              _id: { $in: targetIds },
+              organizationId,
+              isDeleted: false,
+            },
+            {
+              $set: {
+                invoiceId: invoiceDoc._id,
+                notes: `Linked to Invoice #${invoiceDoc.invoiceNumber} (Pending Payment)`,
+              },
+            },
+          );
+          if (session) {
+            await updateCmQuery.session(session);
+          } else {
+            await updateCmQuery;
+          }
+        }
+      }
+
+      // If this invoice contains membership lines that don't have customerMembershipId yet, instantiate them in pending_payment status!
+      const mLinesToInstantiate = (invoiceDoc.lines || []).filter(
+        (l) =>
+          l.lineType === "membership" &&
+          l.membershipPlanId &&
+          !l.customerMembershipId,
+      );
+      for (const mLine of mLinesToInstantiate) {
+        let planQuery = MembershipPlan.findOne({
+          _id: mLine.membershipPlanId,
+          organizationId,
+        });
+        if (session) planQuery = planQuery.session(session);
+        const plan = await planQuery.exec();
+
+        if (plan) {
+          const startDate = new Date();
+          const endDate = new Date(startDate);
+          endDate.setMonth(endDate.getMonth() + (plan.validityMonths || 12));
+
+          const payerId = mLine.payerCustomerId || invoiceDoc.customerId;
+          let beneficiaryIds = [payerId];
+          if (
+            Array.isArray(mLine.beneficiaryCustomerIds) &&
+            mLine.beneficiaryCustomerIds.length > 0
+          ) {
+            beneficiaryIds = mLine.beneficiaryCustomerIds;
+          }
+
+          const membershipPurchaseId = new mongoose.Types.ObjectId();
+          mLine.membershipPurchaseId = membershipPurchaseId;
+          invoiceDoc.membershipPurchaseId = membershipPurchaseId;
+
+          const createdMemberships = [];
+          for (let i = 0; i < beneficiaryIds.length; i++) {
+            const bId = beneficiaryIds[i];
+            const memCode = `MEM-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}${i > 0 ? `-${i + 1}` : ""}`;
+            const overrideConfig = Array.isArray(mLine.beneficiaryOverrides)
+              ? mLine.beneficiaryOverrides.find(
+                  (o) =>
+                    (o.customerId?._id || o.customerId)?.toString() ===
+                    bId.toString(),
+                )
+              : null;
+            const effectiveBenefits = overrideConfig?.benefits || plan.benefits;
+
+            const newMembership = new CustomerMembership({
+              organizationId,
+              customerId: bId,
+              payerCustomerId: payerId,
+              membershipPurchaseId,
+              membershipPlanId: plan._id,
+              attribution: mLine.attribution || {},
+              membershipCode: memCode,
+              planSnapshot: {
+                name: plan.name,
+                tier: plan.tier || "Standard",
+                price: mLine.unitPrice,
+                validityMonths: plan.validityMonths || 12,
+                maxBeneficiaries: plan.maxBeneficiaries || 1,
+                benefits: effectiveBenefits,
+              },
+              status: "pending_payment",
+              startDate,
+              endDate,
+              permittedBranchIds: plan.permittedBranchIds || [],
+              invoiceId: invoiceDoc._id,
+              notes: `Created via Invoice #${invoiceDoc.invoiceNumber} (Pending Payment)`,
+            });
+
+            if (session) {
+              await newMembership.save({ session });
+            } else {
+              await newMembership.save();
+            }
+            createdMemberships.push(newMembership);
+          }
+
+          if (createdMemberships.length > 0) {
+            const firstMembership = createdMemberships[0];
+            mLine.customerMembershipId = firstMembership._id;
+            mLine.customerMembershipIds = createdMemberships.map((m) => m._id);
+            invoiceDoc.customerMembershipId = firstMembership._id;
+            invoiceDoc.customerMembershipIds = createdMemberships.map(
+              (m) => m._id,
+            );
+            invoiceDoc.membershipCode = firstMembership.membershipCode;
+            didInstantiateMemberships = true;
+          }
+        }
+      }
+
+      if (didInstantiateMemberships) {
+        if (session) {
+          await invoiceDoc.save({ session });
+        } else {
+          await invoiceDoc.save();
         }
       }
     } catch (err) {
@@ -2730,7 +3256,10 @@ export class BillingService {
         throw new AppError("Invoice not found", 404);
       }
       if (invoice.branchId.toString() !== branchId.toString()) {
-        throw new AppError("Target branchId does not match invoice branch", 400);
+        throw new AppError(
+          "Target branchId does not match invoice branch",
+          400,
+        );
       }
       if (invoice.status !== "draft") {
         throw new AppError(
@@ -2747,7 +3276,10 @@ export class BillingService {
         sourceRole === "seller" &&
         !["product", "membership", "subscription"].includes(line.lineType)
       ) {
-        throw new AppError("Seller attribution is not valid for this line", 400);
+        throw new AppError(
+          "Seller attribution is not valid for this line",
+          400,
+        );
       }
       if (
         sourceRole === "renewal_handler" &&
@@ -4352,7 +4884,7 @@ export class BillingService {
       // If a coupon was applied to this invoice, atomically commit usage and ledger entry
       if (invoice.coupon && invoice.coupon.couponId) {
         const couponId = invoice.coupon.couponId;
-        const now = new Date();
+        const now = new Date(Date.now());
 
         // Revalidate coupon conditions at finalization
         const targetCoupon = await Coupon.findOne({
@@ -4605,6 +5137,51 @@ export class BillingService {
       invoice.cancelledAt = new Date();
       invoice.cancelledBy = userId;
       invoice.cancellationReason = reason;
+
+      // Unlink invoice from any associated standalone subscription and record in invoiceHistory
+      if (invoice.subscriptionId) {
+        const subToUpdate = await Subscription.findOne({
+          _id: invoice.subscriptionId,
+          organizationId,
+        }).session(session);
+
+        if (subToUpdate) {
+          // If the subscription's current active invoice is this cancelled invoice, clear invoiceId
+          if (
+            subToUpdate.invoiceId &&
+            subToUpdate.invoiceId.toString() === invoice._id.toString()
+          ) {
+            subToUpdate.invoiceId = null;
+          }
+
+          // Update or push into subscription.invoiceHistory
+          if (!Array.isArray(subToUpdate.invoiceHistory)) {
+            subToUpdate.invoiceHistory = [];
+          }
+
+          const existingHistoryIdx = subToUpdate.invoiceHistory.findIndex(
+            (entry) =>
+              entry.invoiceId &&
+              entry.invoiceId.toString() === invoice._id.toString(),
+          );
+
+          if (existingHistoryIdx !== -1) {
+            subToUpdate.invoiceHistory[existingHistoryIdx].status = "cancelled";
+            subToUpdate.invoiceHistory[existingHistoryIdx].cancelledAt =
+              new Date();
+          } else {
+            subToUpdate.invoiceHistory.push({
+              invoiceId: invoice._id,
+              invoiceNumber: invoice.invoiceNumber,
+              status: "cancelled",
+              issuedAt: invoice.createdAt || new Date(),
+              cancelledAt: new Date(),
+            });
+          }
+
+          await subToUpdate.save({ session });
+        }
+      }
 
       // If a coupon was consumed on this invoice, atomically reverse active capacity and update ledger
       if (invoice.coupon && invoice.coupon.couponId) {
@@ -5219,11 +5796,79 @@ export class BillingService {
           ecLine.subscriptionUsageId = existingUsage._id;
         }
 
-        // If invoice contains newly purchased membership lines, instantiate CustomerMembership atomically
+        // If invoice contains newly purchased membership lines, instantiate CustomerMembership atomically for all beneficiaries
         const membershipLines = updatedInvoice.lines.filter(
           (l) => l.lineType === "membership" && l.membershipPlanId,
         );
+        const allCreatedMemberships = [];
         for (const mLine of membershipLines) {
+          // Check if memberships were already instantiated in pending_payment state (e.g. during standalone sell, appointment upsell or unified invoice draft creation)
+          const candidateQueryIds = [];
+          if (mLine.customerMembershipId)
+            candidateQueryIds.push(mLine.customerMembershipId);
+          if (Array.isArray(mLine.customerMembershipIds)) {
+            candidateQueryIds.push(...mLine.customerMembershipIds);
+          }
+          const candidatePurchaseIds = [];
+          if (mLine.membershipPurchaseId)
+            candidatePurchaseIds.push(mLine.membershipPurchaseId);
+          if (updatedInvoice.membershipPurchaseId)
+            candidatePurchaseIds.push(updatedInvoice.membershipPurchaseId);
+
+          const existingMemberships = await CustomerMembership.find({
+            organizationId,
+            $or: [
+              ...(candidateQueryIds.length > 0
+                ? [{ _id: { $in: candidateQueryIds } }]
+                : []),
+              ...(candidatePurchaseIds.length > 0
+                ? [{ membershipPurchaseId: { $in: candidatePurchaseIds } }]
+                : []),
+              { invoiceId: updatedInvoice._id },
+            ],
+            isDeleted: false,
+          }).session(session);
+
+          if (existingMemberships.length > 0) {
+            for (const em of existingMemberships) {
+              if (em.status === "pending_payment") {
+                em.status = "active";
+                em.notes =
+                  (em.notes ? em.notes + "; " : "") +
+                  `Activated upon payment of Invoice #${updatedInvoice.invoiceNumber}`;
+                await em.save({ session });
+              }
+            }
+            const firstMembership = existingMemberships[0];
+            mLine.customerMembershipId = firstMembership._id;
+            mLine.customerMembershipIds = existingMemberships.map((m) => m._id);
+            updatedInvoice.customerMembershipId = firstMembership._id;
+            updatedInvoice.customerMembershipIds = existingMemberships.map(
+              (m) => m._id,
+            );
+            updatedInvoice.membershipCode = firstMembership.membershipCode;
+            allCreatedMemberships.push(...existingMemberships);
+
+            // Link applied membership discount lines to the beneficiary who received the service
+            for (const benefitLine of updatedInvoice.lines) {
+              if (
+                benefitLine.membershipBenefitSourceLineId?.toString() ===
+                mLine._id.toString()
+              ) {
+                const matchingMembership =
+                  existingMemberships.find(
+                    (m) =>
+                      m.customerId.toString() ===
+                      updatedInvoice.customerId.toString(),
+                  ) || firstMembership;
+                benefitLine.appliedCustomerMembershipId =
+                  matchingMembership._id;
+                benefitLine.membershipBenefitSourceLineId = null;
+              }
+            }
+            continue;
+          }
+
           const plan = await MembershipPlan.findOne({
             _id: mLine.membershipPlanId,
             organizationId,
@@ -5234,41 +5879,98 @@ export class BillingService {
             const endDate = new Date(startDate);
             endDate.setMonth(endDate.getMonth() + plan.validityMonths);
 
-            const memCode = `MEM-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
-            const newMembership = new CustomerMembership({
-              organizationId,
-              customerId: updatedInvoice.customerId,
-              membershipPlanId: plan._id,
-              attribution: mLine.attribution || {},
-              membershipCode: memCode,
-              planSnapshot: {
-                name: plan.name,
-                tier: plan.tier || "Standard",
-                price: mLine.unitPrice,
-                validityMonths: plan.validityMonths,
-                benefits: plan.benefits,
-              },
-              status: "active",
-              startDate,
-              endDate,
-              permittedBranchIds: plan.permittedBranchIds || [],
-              invoiceId: updatedInvoice._id,
-              notes: `Activated upon payment of Invoice #${updatedInvoice.invoiceNumber}`,
-            });
+            const payerId = mLine.payerCustomerId || updatedInvoice.customerId;
+            let beneficiaryIds = [payerId];
+            if (
+              Array.isArray(mLine.beneficiaryCustomerIds) &&
+              mLine.beneficiaryCustomerIds.length > 0
+            ) {
+              beneficiaryIds = mLine.beneficiaryCustomerIds;
+            }
 
-            await newMembership.save({ session });
-            mLine.customerMembershipId = newMembership._id;
+            const membershipPurchaseId = new mongoose.Types.ObjectId();
+            mLine.membershipPurchaseId = membershipPurchaseId;
+            updatedInvoice.membershipPurchaseId = membershipPurchaseId;
+
+            const createdMemberships = [];
+            let primaryMembershipCode = null;
+
+            for (let i = 0; i < beneficiaryIds.length; i++) {
+              const bId = beneficiaryIds[i];
+              const memCode = `MEM-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}${i > 0 ? `-${i + 1}` : ""}`;
+              if (!primaryMembershipCode) {
+                primaryMembershipCode = memCode;
+              }
+
+              // Check if there is an overridden benefit configuration for this specific beneficiary
+              const overrideConfig = Array.isArray(mLine.beneficiaryOverrides)
+                ? mLine.beneficiaryOverrides.find(
+                    (o) =>
+                      (o.customerId?._id || o.customerId)?.toString() ===
+                      bId.toString(),
+                  )
+                : null;
+              const effectiveBenefits =
+                overrideConfig?.benefits || plan.benefits;
+
+              const newMembership = new CustomerMembership({
+                organizationId,
+                customerId: bId,
+                payerCustomerId: payerId,
+                membershipPurchaseId,
+                membershipPlanId: plan._id,
+                attribution: mLine.attribution || {},
+                membershipCode: memCode,
+                planSnapshot: {
+                  name: plan.name,
+                  tier: plan.tier || "Standard",
+                  price: mLine.unitPrice,
+                  validityMonths: plan.validityMonths,
+                  maxBeneficiaries: plan.maxBeneficiaries || 1,
+                  benefits: effectiveBenefits,
+                },
+                status: "active",
+                startDate,
+                endDate,
+                permittedBranchIds: plan.permittedBranchIds || [],
+                invoiceId: updatedInvoice._id,
+                notes: `Activated upon payment of Invoice #${updatedInvoice.invoiceNumber}`,
+              });
+
+              await newMembership.save({ session });
+              createdMemberships.push(newMembership);
+              allCreatedMemberships.push(newMembership);
+            }
+
+            // Backward compatibility: link first created membership to customerMembershipId
+            const firstMembership = createdMemberships[0];
+            mLine.customerMembershipId = firstMembership._id;
+            mLine.customerMembershipIds = createdMemberships.map((m) => m._id);
+            updatedInvoice.customerMembershipId = firstMembership._id;
+            updatedInvoice.customerMembershipIds = createdMemberships.map(
+              (m) => m._id,
+            );
+            updatedInvoice.membershipCode = primaryMembershipCode;
+
+            // Link applied membership discount lines to the beneficiary who received the service
             for (const benefitLine of updatedInvoice.lines) {
               if (
                 benefitLine.membershipBenefitSourceLineId?.toString() ===
                 mLine._id.toString()
               ) {
-                benefitLine.appliedCustomerMembershipId = newMembership._id;
+                // Find matching membership for the customer of this invoice
+                const matchingMembership =
+                  createdMemberships.find(
+                    (m) =>
+                      m.customerId.toString() ===
+                      updatedInvoice.customerId.toString(),
+                  ) || firstMembership;
+
+                benefitLine.appliedCustomerMembershipId =
+                  matchingMembership._id;
                 benefitLine.membershipBenefitSourceLineId = null;
               }
             }
-            updatedInvoice.customerMembershipId = newMembership._id;
-            updatedInvoice.membershipCode = memCode;
           }
         }
 
@@ -5295,8 +5997,36 @@ export class BillingService {
             userId,
           });
         } catch (incentiveErr) {
-          logger.error("Incentive settlement hook failed; rolling back invoice payment: " + incentiveErr.message);
+          logger.error(
+            "Incentive settlement hook failed; rolling back invoice payment: " +
+              incentiveErr.message,
+          );
           throw incentiveErr;
+        }
+
+        // Post-commit notification dispatch for created memberships (non-blocking)
+        if (allCreatedMemberships.length > 0) {
+          try {
+            for (const cm of allCreatedMemberships) {
+              const cust = await Customer.findById(cm.customerId)
+                .session(session)
+                .lean();
+              if (cust?.phone && smsQueue?.add) {
+                await smsQueue.add("sendMembershipActivatedSMS", {
+                  phone: cust.phone,
+                  customerName: cust.name,
+                  membershipCode: cm.membershipCode,
+                  planName: cm.planSnapshot?.name || "Salon Membership",
+                  tier: cm.planSnapshot?.tier || "Standard",
+                });
+              }
+            }
+          } catch (smsErr) {
+            logger.warn(
+              "Non-fatal SMS notification dispatch failure for memberships: " +
+                smsErr.message,
+            );
+          }
         }
       }
 
@@ -5904,12 +6634,17 @@ export class BillingService {
   ) {
     const { lineId, refundPaymentMethod = "cash", reason } = payload;
     if (!idempotencyKey || idempotencyKey.length > 200) {
-      throw new AppError("A valid Idempotency-Key header is required for membership refunds", 400);
+      throw new AppError(
+        "A valid Idempotency-Key header is required for membership refunds",
+        400,
+      );
     }
 
     const requestPayloadHash = crypto
       .createHash("sha256")
-      .update(JSON.stringify({ lineId: String(lineId), refundPaymentMethod, reason }))
+      .update(
+        JSON.stringify({ lineId: String(lineId), refundPaymentMethod, reason }),
+      )
       .digest("hex");
     const refundPaymentKey = `MEMBERSHIP_REFUND:${invoiceId}:${idempotencyKey}`;
 
@@ -5921,7 +6656,10 @@ export class BillingService {
       }).session(session);
       if (!invoice) throw new AppError("Invoice not found", 404);
       if (invoice.branchId.toString() !== branchId.toString()) {
-        throw new AppError("Target branchId does not match invoice branch", 400);
+        throw new AppError(
+          "Target branchId does not match invoice branch",
+          400,
+        );
       }
 
       const existingPayment = await Payment.findOne({
@@ -5935,7 +6673,10 @@ export class BillingService {
           existingPayment.requestPayloadHash !== requestPayloadHash ||
           existingPayment.invoiceId.toString() !== invoice._id.toString()
         ) {
-          throw new AppError("Idempotency key was already used for a different membership refund", 409);
+          throw new AppError(
+            "Idempotency key was already used for a different membership refund",
+            409,
+          );
         }
         const refundEvent = await InvoiceSettlementEvent.findOne({
           organizationId,
@@ -5952,20 +6693,36 @@ export class BillingService {
       }
 
       if (invoice.status !== "finalized" || invoice.paymentStatus !== "paid") {
-        throw new AppError("Only fully paid, finalized membership invoices can be refunded", 400);
+        throw new AppError(
+          "Only fully paid, finalized membership invoices can be refunded",
+          400,
+        );
       }
       if (invoice.loyaltyDiscountAmount > 0) {
-        throw new AppError("Membership refund is blocked because loyalty discount allocation is not verifiable", 409);
+        throw new AppError(
+          "Membership refund is blocked because loyalty discount allocation is not verifiable",
+          409,
+        );
       }
 
       const line = invoice.lines.find(
         (item) => item._id?.toString() === String(lineId),
       );
-      if (!line || line.lineType !== "membership" || Number(line.quantity) !== 1) {
-        throw new AppError("A single membership invoice line is required for refund", 400);
+      if (
+        !line ||
+        line.lineType !== "membership" ||
+        Number(line.quantity) !== 1
+      ) {
+        throw new AppError(
+          "A single membership invoice line is required for refund",
+          400,
+        );
       }
       if (!line.customerMembershipId) {
-        throw new AppError("Membership issuance record is missing for this invoice line", 409);
+        throw new AppError(
+          "Membership issuance record is missing for this invoice line",
+          409,
+        );
       }
 
       const membership = await CustomerMembership.findOne({
@@ -5975,7 +6732,10 @@ export class BillingService {
         isDeleted: false,
       }).session(session);
       if (!membership || !["active", "expired"].includes(membership.status)) {
-        throw new AppError("Membership is not eligible for an unused-membership refund", 409);
+        throw new AppError(
+          "Membership is not eligible for an unused-membership refund",
+          409,
+        );
       }
 
       const benefitUse = await Invoice.exists({
@@ -5988,7 +6748,10 @@ export class BillingService {
         ],
       }).session(session);
       if (benefitUse) {
-        throw new AppError("Membership has been used or reserved on another invoice and cannot be refunded", 409);
+        throw new AppError(
+          "Membership has been used or reserved on another invoice and cannot be refunded",
+          409,
+        );
       }
 
       const netAmountPaise = Math.round(
@@ -6000,23 +6763,25 @@ export class BillingService {
       const refundAmount = netAmountPaise / 100;
       const paymentNumber = await this.generatePaymentNumber(organizationId);
       const refundPayment = await Payment.create(
-        [{
-          organizationId,
-          branchId,
-          invoiceId: invoice._id,
-          customerId: invoice.customerId,
-          paymentNumber,
-          amount: -refundAmount,
-          method: refundPaymentMethod,
-          type: "refund",
-          status: "completed",
-          referenceNote: `Unused membership refund recorded: ${reason}`,
-          recordedBy: userId,
-          paymentDate: new Date(),
-          idempotencyKey: refundPaymentKey,
-          requestPayloadHash,
-          isManualRefundRecord: true,
-        }],
+        [
+          {
+            organizationId,
+            branchId,
+            invoiceId: invoice._id,
+            customerId: invoice.customerId,
+            paymentNumber,
+            amount: -refundAmount,
+            method: refundPaymentMethod,
+            type: "refund",
+            status: "completed",
+            referenceNote: `Unused membership refund recorded: ${reason}`,
+            recordedBy: userId,
+            paymentDate: new Date(),
+            idempotencyKey: refundPaymentKey,
+            requestPayloadHash,
+            isManualRefundRecord: true,
+          },
+        ],
         { session },
       );
 
@@ -6028,20 +6793,23 @@ export class BillingService {
       await membership.save({ session });
 
       line.returnedQuantity = Number(line.quantity);
-      const { refundEvent } = await settlementFulfillmentEventService.handlePurchaseRefundProcessed({
-        invoice,
-        refundPayment: refundPayment[0],
-        refundAllocations: [{
-          lineItemId: line._id.toString(),
-          refundAmountInPaise: netAmountPaise,
-        }],
-        customerMembershipId: membership._id,
-        reason,
-        organizationId,
-        branchId,
-        userId,
-        session,
-      });
+      const { refundEvent } =
+        await settlementFulfillmentEventService.handlePurchaseRefundProcessed({
+          invoice,
+          refundPayment: refundPayment[0],
+          refundAllocations: [
+            {
+              lineItemId: line._id.toString(),
+              refundAmountInPaise: netAmountPaise,
+            },
+          ],
+          customerMembershipId: membership._id,
+          reason,
+          organizationId,
+          branchId,
+          userId,
+          session,
+        });
 
       const grossLineAmount = Number(line.lineTotal || 0);
       const lineDiscountAmount = Math.max(
@@ -6054,11 +6822,15 @@ export class BillingService {
       );
       invoice.discountTotal = Math.max(
         0,
-        Number((Number(invoice.discountTotal || 0) - lineDiscountAmount).toFixed(2)),
+        Number(
+          (Number(invoice.discountTotal || 0) - lineDiscountAmount).toFixed(2),
+        ),
       );
       invoice.grossPayable = Math.max(
         0,
-        Number((Number(invoice.grossPayable || 0) - grossLineAmount).toFixed(2)),
+        Number(
+          (Number(invoice.grossPayable || 0) - grossLineAmount).toFixed(2),
+        ),
       );
       invoice.payableAmount = Math.max(
         0,
@@ -6072,7 +6844,10 @@ export class BillingService {
         0,
         Number((invoice.payableAmount - invoice.amountPaid).toFixed(2)),
       );
-      invoice.paymentStatus = this.derivePaymentStatus(invoice.amountPaid, invoice.amountDue);
+      invoice.paymentStatus = this.derivePaymentStatus(
+        invoice.amountPaid,
+        invoice.amountDue,
+      );
       await invoice.save({ session });
 
       await new AuditLog({
@@ -6082,7 +6857,8 @@ export class BillingService {
         action: AUDIT_ACTIONS.INVOICE_RETURN_PROCESSED,
         entityType: "Invoice",
         entityId: invoice._id,
-        description: "Unused membership refund recorded and membership cancelled",
+        description:
+          "Unused membership refund recorded and membership cancelled",
         metadata: {
           invoiceId: invoice._id,
           lineId: line._id,
@@ -6114,7 +6890,10 @@ export class BillingService {
         existingPayment.requestPayloadHash !== requestPayloadHash ||
         existingPayment.invoiceId.toString() !== String(invoiceId)
       ) {
-        throw new AppError("Idempotency key was already used for a different membership refund", 409);
+        throw new AppError(
+          "Idempotency key was already used for a different membership refund",
+          409,
+        );
       }
       const [invoice, refundEvent] = await Promise.all([
         Invoice.findOne({ _id: invoiceId, organizationId, isDeleted: false }),
@@ -6144,7 +6923,10 @@ export class BillingService {
   ) {
     const { items = [], refundPaymentMethod = "cash", reason } = payload;
     if (!idempotencyKey || idempotencyKey.length > 200) {
-      throw new AppError("A valid Idempotency-Key header is required for invoice returns", 400);
+      throw new AppError(
+        "A valid Idempotency-Key header is required for invoice returns",
+        400,
+      );
     }
 
     const normalizedItems = items
@@ -6156,12 +6938,20 @@ export class BillingService {
         restockReason: item.restockReason || "",
       }))
       .sort((a, b) => a.lineId.localeCompare(b.lineId));
-    if (new Set(normalizedItems.map((item) => item.lineId)).size !== normalizedItems.length) {
-      throw new AppError("A return request cannot contain the same invoice line more than once", 400);
+    if (
+      new Set(normalizedItems.map((item) => item.lineId)).size !==
+      normalizedItems.length
+    ) {
+      throw new AppError(
+        "A return request cannot contain the same invoice line more than once",
+        400,
+      );
     }
     const requestPayloadHash = crypto
       .createHash("sha256")
-      .update(JSON.stringify({ items: normalizedItems, refundPaymentMethod, reason }))
+      .update(
+        JSON.stringify({ items: normalizedItems, refundPaymentMethod, reason }),
+      )
       .digest("hex");
     const returnEventKey = `RETURN:INV:${invoiceId}:KEY:${idempotencyKey}`;
     const refundPaymentKey = `INVOICE_RETURN:${invoiceId}:${idempotencyKey}`;
@@ -6189,7 +6979,10 @@ export class BillingService {
       }).session(session);
       if (existingReturn) {
         if (existingReturn.requestPayloadHash !== requestPayloadHash) {
-          throw new AppError("Idempotency key was already used for a different return request", 409);
+          throw new AppError(
+            "Idempotency key was already used for a different return request",
+            409,
+          );
         }
         const [refundPayment, restockedMovements] = await Promise.all([
           Payment.findOne({
@@ -6202,15 +6995,20 @@ export class BillingService {
           }).session(session),
         ]);
         if (!refundPayment) {
-          throw new AppError("The recorded return is missing its refund payment", 500);
+          throw new AppError(
+            "The recorded return is missing its refund payment",
+            500,
+          );
         }
         return {
           invoice,
           totalRefundAmount:
-            Number(existingReturn.refundAllocations.reduce(
-              (sum, allocation) => sum + allocation.refundAmountInPaise,
-              0,
-            )) / 100,
+            Number(
+              existingReturn.refundAllocations.reduce(
+                (sum, allocation) => sum + allocation.refundAmountInPaise,
+                0,
+              ),
+            ) / 100,
           refundPayment,
           restockedMovements,
           isIdempotentReplay: true,
@@ -6221,15 +7019,6 @@ export class BillingService {
         throw new AppError(
           `Cannot process return on invoice with status '${invoice.status}'. Must be 'finalized'.`,
           400,
-        );
-      }
-      if (Number(invoice.amountPaid || 0) <= 0) {
-        throw new AppError("Only paid invoice items can be returned", 400);
-      }
-      if (Number(invoice.loyaltyDiscountAmount || 0) > 0) {
-        throw new AppError(
-          "Product returns require line-allocated discounts; this invoice has an unallocated loyalty discount",
-          409,
         );
       }
 
@@ -6319,10 +7108,13 @@ export class BillingService {
           nextReturnedQuantity: nextReturnedUnits / 1000,
           weight: refundDuePaise,
           refundDuePaise,
-          grossReturnPaise:
-            cumulativeGrossPaise - previouslyReturnedGrossPaise,
+          grossReturnPaise: cumulativeGrossPaise - previouslyReturnedGrossPaise,
         };
       });
+
+      if (Number(invoice.amountPaid || 0) <= 0) {
+        throw new AppError("Only paid invoice items can be returned", 400);
+      }
 
       const totalRefundDuePaise = preparedReturns.reduce(
         (sum, item) => sum + item.refundDuePaise,
@@ -6334,7 +7126,10 @@ export class BillingService {
       );
       const actualRefundPaise = Math.min(amountPaidPaise, totalRefundDuePaise);
       if (actualRefundPaise <= 0) {
-        throw new AppError("No paid, refundable value remains for the selected items", 409);
+        throw new AppError(
+          "No paid, refundable value remains for the selected items",
+          409,
+        );
       }
       const refundAllocations = allocatePaiseProportionally(
         actualRefundPaise,
@@ -6403,23 +7198,35 @@ export class BillingService {
       );
       invoice.subtotal = Math.max(
         0,
-        Number((Number(invoice.subtotal || 0) - returnedGrossAmount).toFixed(2)),
+        Number(
+          (Number(invoice.subtotal || 0) - returnedGrossAmount).toFixed(2),
+        ),
       );
       invoice.discountTotal = Math.max(
         0,
-        Number((Number(invoice.discountTotal || 0) - returnedDiscountAmount).toFixed(2)),
+        Number(
+          (Number(invoice.discountTotal || 0) - returnedDiscountAmount).toFixed(
+            2,
+          ),
+        ),
       );
       invoice.grossPayable = Math.max(
         0,
-        Number((Number(invoice.grossPayable || 0) - returnedGrossAmount).toFixed(2)),
+        Number(
+          (Number(invoice.grossPayable || 0) - returnedGrossAmount).toFixed(2),
+        ),
       );
       invoice.payableAmount = Math.max(
         0,
-        Number((Number(invoice.payableAmount || 0) - refundDueAmount).toFixed(2)),
+        Number(
+          (Number(invoice.payableAmount || 0) - refundDueAmount).toFixed(2),
+        ),
       );
       invoice.amountPaid = Math.max(
         0,
-        Number((Number(invoice.amountPaid || 0) - actualRefundAmount).toFixed(2)),
+        Number(
+          (Number(invoice.amountPaid || 0) - actualRefundAmount).toFixed(2),
+        ),
       );
       invoice.amountDue = Math.max(
         0,
@@ -6488,11 +7295,15 @@ export class BillingService {
               refundDueInPaise: item.refundDuePaise,
               refundAmountInPaise:
                 refundAllocations.find(
-                  (allocation) => allocation.lineItemId.toString() === item.line._id.toString(),
+                  (allocation) =>
+                    allocation.lineItemId.toString() ===
+                    item.line._id.toString(),
                 )?.paise || 0,
             })),
             requestPayloadHash,
-            restockedMovementIds: restockedMovements.map((movement) => movement._id),
+            restockedMovementIds: restockedMovements.map(
+              (movement) => movement._id,
+            ),
             reason,
             recordedBy: userId,
             idempotencyKey: returnEventKey,

@@ -179,6 +179,47 @@ const invoiceLineSchema = new mongoose.Schema(
       ref: "CustomerMembership",
       default: null,
     },
+    // Multi-beneficiary membership support
+    customerMembershipIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "CustomerMembership",
+      },
+    ],
+    beneficiaryCustomerIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Customer",
+      },
+    ],
+    // Per-beneficiary independent benefit configurations
+    beneficiaryOverrides: [
+      {
+        customerId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Customer",
+          required: true,
+        },
+        benefits: {
+          serviceDiscountPercentage: { type: Number, default: 0 },
+          productDiscountPercentage: { type: Number, default: 0 },
+          complimentaryPerks: { type: [String], default: [] },
+          eligibleServiceCategoryIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "ServiceCategory" }],
+          eligibleServiceIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Service" }],
+          excludedServiceCategoryIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "ServiceCategory" }],
+          excludedServiceIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Service" }],
+        },
+      },
+    ],
+    payerCustomerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      default: null,
+    },
+    membershipPurchaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
     membershipTierSnapshot: {
       type: String,
       default: null,
@@ -302,6 +343,18 @@ const invoiceSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    // Multi-beneficiary membership references
+    customerMembershipIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "CustomerMembership",
+      },
+    ],
+    membershipPurchaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
     membershipCode: { type: String, default: null, trim: true },
 
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer", required: true, index: true },
@@ -383,6 +436,7 @@ invoiceSchema.index(
 );
 invoiceSchema.index({ organizationId: 1, branchId: 1, createdAt: -1 });
 invoiceSchema.index({ organizationId: 1, customerId: 1, createdAt: -1 });
+invoiceSchema.index({ organizationId: 1, "lines.appliedCustomerMembershipId": 1, createdAt: -1 });
 invoiceSchema.index({ appointmentId: 1, status: 1 });
 invoiceSchema.index({ subscriptionId: 1, status: 1 });
 

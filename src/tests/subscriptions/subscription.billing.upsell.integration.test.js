@@ -847,7 +847,7 @@ describe("Phase 6 — Subscription Billing, POS Sales, Auto-Coverage & Upsell In
         startTime: "12:00",
         endTime: "13:00",
         bookingType: "walk_in",
-        status: "completed",
+        status: "in_progress",
         services: [{
           type: "registered",
           serviceType: "registered",
