@@ -104,6 +104,9 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
     const organizationId = req.user?.organizationId;
 
     const permissions = await resolveRolePermissions(roleName, organizationId);
+    if (req.user) {
+      req.user.permissions = permissions;
+    }
 
     // Support single permission string or array/rest permissions (any-of matching)
     const requiredList = Array.isArray(requiredPermission)
@@ -149,6 +152,9 @@ export const requireAllPermissions = (requiredPermissions) => {
     const organizationId = req.user?.organizationId;
 
     const permissions = await resolveRolePermissions(roleName, organizationId);
+    if (req.user) {
+      req.user.permissions = permissions;
+    }
 
     const requiredList = Array.isArray(requiredPermissions)
       ? requiredPermissions
@@ -176,6 +182,9 @@ export const requirePermission = (requiredPermission) => {
     const organizationId = req.user?.organizationId;
 
     const permissions = await resolveRolePermissions(roleName, organizationId);
+    if (req.user) {
+      req.user.permissions = permissions;
+    }
 
     const requiredList = Array.isArray(requiredPermission)
       ? requiredPermission

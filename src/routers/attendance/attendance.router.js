@@ -10,9 +10,14 @@ import {
   updateStaffDeviceMappingSchema,
 } from '../../validation/attendance/staffDeviceMapping.validation.js';
 import {
+  recordStaffPunchSchema,
+  monthlyMusterRollSchema,
+} from '../../validation/attendance/attendance.validation.js';
+import {
   adjustAttendanceRecordController,
   createStaffDeviceMappingController,
   deactivateStaffDeviceMappingController,
+  getMonthlyMusterRollController,
   getProviderStatusController,
   getStaffAttendanceDetailController,
   getStaffDeviceMappingByIdController,
@@ -22,6 +27,7 @@ import {
   listLeaveAppointmentConflictsController,
   listStaffDeviceMappingsController,
   recordLeaveExceptionController,
+  recordStaffPunchController,
   resolveBranchAttendanceConflictController,
   resolveLeaveAppointmentConflictController,
   updateStaffDeviceMappingController,
@@ -30,6 +36,8 @@ import {
 const router = Router();
 
 router.use(authenticate);
+router.post('/punch', requireActiveBranch, authorize('attendance.punch'), validate(recordStaffPunchSchema), recordStaffPunchController);
+router.get('/monthly-summary', requireActiveBranch, authorize('attendance.view'), validate(monthlyMusterRollSchema), getMonthlyMusterRollController);
 router.get('/records', requireActiveBranch, authorize('attendance.view'), listAttendanceRecordsController);
 router.get('/staff/:staffId', requireActiveBranch, authorize('attendance.view'), getStaffAttendanceDetailController);
 router.get('/branch-conflicts', requireActiveBranch, authorize('attendance.view'), listBranchAttendanceConflictsController);

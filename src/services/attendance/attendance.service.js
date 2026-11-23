@@ -1456,7 +1456,33 @@ async function reconcileAttendanceStatusFromPunches({
   const businessDayPunches = punches
     .filter((punch) => deriveBusinessDate(punch.punchAt, branchTimezone) === attendanceDate)
     .sort((left, right) => new Date(left.punchAt) - new Date(right.punchAt));
-  const status = deriveStatus(businessDayPunches);
+  // Optional schedule lookup from branch operating hours
+  let scheduleOptions = { timezone: branchTimezone };
+  try {
+    const branch = await Branch.findById(branchId).select('operatingHours bufferMinutes timezone').lean();
+    if (branch?.operatingHours) {
+      const punchDateObj = new Date(`${attendanceDate}T12:00:00.000Z`);
+      const dayName = new Intl.DateTimeFormat('en-US', {
+        timeZone: branch.timezone || branchTimezone,
+        weekday: 'long',
+      }).format(punchDateObj).toLowerCase();
+      const dayHours = branch.operatingHours instanceof Map
+        ? branch.operatingHours.get(dayName)
+        : branch.operatingHours[dayName];
+      if (dayHours?.isOpen && dayHours?.openTime && dayHours?.closeTime) {
+        scheduleOptions = {
+          scheduledOpenTime: dayHours.openTime,
+          scheduledCloseTime: dayHours.closeTime,
+          timezone: branch.timezone || branchTimezone,
+          graceMinutes: branch.bufferMinutes || 15,
+        };
+      }
+    }
+  } catch {
+    // Graceful fallback to default derivation
+  }
+
+  const status = deriveStatus(businessDayPunches, scheduleOptions);
 
   const updated = await Attendance.findOneAndUpdate(
     {
@@ -1467,7 +1493,9 @@ async function reconcileAttendanceStatusFromPunches({
       isDeleted: { $ne: true },
       isReconciled: { $ne: true },
       conflictType: { $in: ['none', null] },
-      status: status === 'present' ? { $in: ['incomplete', 'present'] } : 'incomplete',
+      status: ['present', 'late', 'early_departure'].includes(status)
+        ? { $in: ['incomplete', 'present', 'late', 'early_departure'] }
+        : 'incomplete',
     },
     { $set: { status } },
     { new: true, runValidators: true },
@@ -1496,17 +1524,73 @@ function getScheduledHours(branch) {
   return branch.operatingHours;
 }
 
-// Payroll treats present, late, and early-departure records as one attended day.
-function deriveStatus(punches) {
+// Derive attendance status considering optional schedule/operating hours and grace period
+function deriveStatus(punches, options = {}) {
   if (!Array.isArray(punches)) {
     throw new AppError('Punches must be provided as an array.', 400);
   }
   let hasCheckIn = false;
+  let firstIn = null;
+  let lastOut = null;
+
   for (const punch of punches) {
-    if (punch.punchType === 'in') hasCheckIn = true;
-    else if (punch.punchType === 'out' && hasCheckIn) return 'present';
+    if (punch.punchType === 'in') {
+      hasCheckIn = true;
+      if (!firstIn) firstIn = new Date(punch.punchAt);
+    } else if (punch.punchType === 'out' && hasCheckIn) {
+      lastOut = new Date(punch.punchAt);
+    }
   }
-  return 'incomplete';
+
+  if (!hasCheckIn || !lastOut) {
+    return 'incomplete';
+  }
+
+  // Check if schedule / operating hours comparison is applicable
+  const { scheduledOpenTime, scheduledCloseTime, timezone = 'Asia/Kolkata', graceMinutes = 15 } = options;
+  if (scheduledOpenTime && firstIn) {
+    try {
+      const punchTimeStr = new Intl.DateTimeFormat('en-GB', {
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(firstIn);
+      const [inH, inM] = punchTimeStr.split(':').map(Number);
+      const [schH, schM] = scheduledOpenTime.split(':').map(Number);
+      const punchMinutes = inH * 60 + inM;
+      const scheduledMinutes = schH * 60 + schM;
+
+      if (punchMinutes > scheduledMinutes + graceMinutes) {
+        return 'late';
+      }
+    } catch {
+      // Fallback to present if timezone formatting encounters unexpected input
+    }
+  }
+
+  if (scheduledCloseTime && lastOut) {
+    try {
+      const punchTimeStr = new Intl.DateTimeFormat('en-GB', {
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(lastOut);
+      const [outH, outM] = punchTimeStr.split(':').map(Number);
+      const [closeH, closeM] = scheduledCloseTime.split(':').map(Number);
+      const punchMinutes = outH * 60 + outM;
+      const scheduledMinutes = closeH * 60 + closeM;
+
+      if (punchMinutes < scheduledMinutes - graceMinutes) {
+        return 'early_departure';
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
+  return 'present';
 }
 
 // Basic punch ingestion schema validation
@@ -1521,6 +1605,423 @@ function validatePunchPayload(payload) {
 // Provider-independent biometric attendance service
 // Handles ingestion, computation, reconciliation and adjustment
 
+/**
+ * Record a direct web/mobile punch for staff member.
+ * Validates staff identity, branch assignment, prevents consecutive duplicate punches,
+ * and durably claims attendance via atomic findOneAndUpdate.
+ */
+async function recordStaffPunch({
+  organizationId,
+  branchId,
+  staffId,
+  punchType,
+  actorId,
+  notes,
+}) {
+  if (!['in', 'out'].includes(punchType)) {
+    throw new AppError('Punch type must be "in" or "out".', 400);
+  }
+
+  const branch = await getActiveBranch(organizationId, branchId);
+  const branchTimezone = branch.timezone || 'Asia/Kolkata';
+
+  // Verify staff active and assigned to branch
+  const staff = await Staff.findOne({
+    _id: staffId,
+    organizationId,
+    isDeleted: { $ne: true },
+    status: 'active',
+  });
+  if (!staff) {
+    throw new AppError('Active staff member was not found.', 404);
+  }
+
+  const staffBranch = await StaffBranch.findOne({
+    organizationId,
+    branchId,
+    staffId,
+    isActive: true,
+  });
+  if (!staffBranch) {
+    throw new AppError('Staff member is not assigned to this branch.', 403);
+  }
+
+  const now = new Date();
+  const attendanceDate = deriveBusinessDate(now, branchTimezone);
+  const dayStart = new Date(`${attendanceDate}T00:00:00.000Z`);
+
+  // Query recent punches for this staff member today
+  const existingPunches = await AttendancePunch.find({
+    organizationId,
+    staffId,
+    punchAt: {
+      $gte: new Date(dayStart.getTime() - 24 * 60 * 60 * 1000),
+      $lt: new Date(dayStart.getTime() + 48 * 60 * 60 * 1000),
+    },
+    isDeleted: { $ne: true },
+  }).sort({ punchAt: 1 }).lean();
+
+  const businessDayPunches = existingPunches.filter(
+    (p) => deriveBusinessDate(p.punchAt, branchTimezone) === attendanceDate
+  );
+
+  const lastPunch = businessDayPunches[businessDayPunches.length - 1];
+
+  // Prevent consecutive duplicate punches
+  if (punchType === 'in') {
+    if (lastPunch && lastPunch.punchType === 'in') {
+      throw new AppError('Staff is already clocked in. Clock out before clocking in again.', 400);
+    }
+  } else if (punchType === 'out') {
+    if (!lastPunch || lastPunch.punchType !== 'in') {
+      throw new AppError('Cannot clock out without an active clock-in.', 400);
+    }
+  }
+
+  // Create punch record
+  const punch = new AttendancePunch({
+    organizationId,
+    branchId,
+    staffId,
+    punchType,
+    punchAt: now,
+    provider: 'web_punch',
+    deviceSource: 'web_app',
+    deviceId: 'web_portal',
+    mappingStatus: 'mapped',
+    rawPayload: { actorId, notes },
+  });
+  await punch.save();
+
+  // Atomically claim attendance record
+  const claimResult = await Attendance.claimAttendanceRecord({
+    organizationId,
+    staffId,
+    branchId,
+    attendanceDate,
+    punchType,
+  });
+
+  await ensureAttendanceClaimDurable(claimResult, {
+    organizationId,
+    staffId,
+    branchId,
+    attendanceDate,
+    punchAt: now,
+    punchType,
+    punchId: punch._id,
+  });
+
+  if (!claimResult.success) {
+    throw new AppError('Attendance record is claimed by another branch.', 409);
+  }
+
+  if (claimResult.success) {
+    await reconcileAttendanceStatusFromPunches({
+      organizationId,
+      branchId,
+      staffId,
+      attendanceDate,
+      branchTimezone,
+      attendanceRecord: claimResult.attendanceRecord,
+    });
+  }
+
+  // Fetch updated record
+  const updatedRecord = await Attendance.findOne({
+    organizationId,
+    staffId,
+    attendanceDate: new Date(`${attendanceDate}T00:00:00.000Z`),
+    isDeleted: { $ne: true },
+  }).lean();
+
+  await AuditLog.create({
+    organizationId,
+    branchId,
+    actorId,
+    action: punchType === 'in' ? 'STAFF_PUNCH_IN' : 'STAFF_PUNCH_OUT',
+    entityType: 'Attendance',
+    entityId: updatedRecord?._id || punch._id,
+    description: `Staff member ${staff.name} clocked ${punchType} via web portal.`,
+    metadata: { staffId, punchType, attendanceDate, punchId: punch._id, notes },
+  });
+
+  return {
+    punch,
+    attendanceRecord: updatedRecord,
+    attendanceDate,
+    status: updatedRecord?.status || 'incomplete',
+    attendanceClaim: claimResult.success ? 'claimed' : 'cross_branch',
+  };
+}
+
+/**
+ * Monthly Muster Roll Summary
+ * Aggregates branch attendance by monthYear for all branch staff members.
+ * Includes present, late, early_departure, incomplete, approved leaves, and absence.
+ */
+async function getMonthlyMusterRoll({
+  organizationId,
+  branchId,
+  monthYear,
+  search,
+  statusFilter,
+  accessibleBranchIds = null,
+}) {
+  if (!monthYear || !/^\d{4}-\d{2}$/.test(monthYear)) {
+    throw new AppError('monthYear in YYYY-MM format is required.', 400);
+  }
+
+  const [yearStr, monthStr] = monthYear.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+
+  const totalDaysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const startDateStr = `${monthYear}-01`;
+  const endDateStr = `${monthYear}-${String(totalDaysInMonth).padStart(2, '0')}`;
+  const startDate = new Date(`${startDateStr}T00:00:00.000Z`);
+  const endDate = new Date(`${endDateStr}T23:59:59.999Z`);
+
+  // Branch scoping & timezone resolution
+  let branchFilter = {};
+  let targetBranch = null;
+  if (branchId && branchId !== 'all') {
+    branchFilter = { branchId };
+    targetBranch = await Branch.findOne({ _id: branchId, organizationId }).select('timezone').lean();
+  } else if (Array.isArray(accessibleBranchIds) && accessibleBranchIds.length > 0) {
+    branchFilter = { branchId: { $in: accessibleBranchIds } };
+  }
+
+  const branchTimezone = targetBranch?.timezone || 'Asia/Kolkata';
+
+  // Find staff assigned to targeted branches
+  const staffBranchQuery = {
+    organizationId,
+    isActive: true,
+    ...branchFilter,
+  };
+  const staffLinks = await StaffBranch.find(staffBranchQuery).select('staffId branchId').lean();
+  const staffIds = [...new Set(staffLinks.map((l) => l.staffId.toString()))];
+
+  const staffQuery = {
+    _id: { $in: staffIds },
+    organizationId,
+    isDeleted: { $ne: true },
+    status: 'active',
+  };
+
+  if (search?.trim()) {
+    const matcher = new RegExp(escapeRegex(search.trim()), 'i');
+    staffQuery.$or = [
+      { name: matcher },
+      { email: matcher },
+      { staffCode: matcher },
+      { designation: matcher },
+    ];
+  }
+
+  const staffMembers = await Staff.find(staffQuery)
+    .select('name staffCode email designation joiningDate')
+    .sort({ name: 1 })
+    .lean();
+
+  const activeStaffIds = staffMembers.map((s) => s._id);
+
+  // Fetch all attendance records in the month for these staff members
+  const attendanceQuery = {
+    organizationId,
+    staffId: { $in: activeStaffIds },
+    attendanceDate: { $gte: startDate, $lte: endDate },
+    isDeleted: { $ne: true },
+    ...branchFilter,
+  };
+  const attendanceRecords = await Attendance.find(attendanceQuery).lean();
+
+  // Fetch approved leaves in this month
+  const leaves = await Leave.find({
+    organizationId,
+    staffId: { $in: activeStaffIds },
+    status: 'approved',
+    isDeleted: { $ne: true },
+    startDate: { $lte: endDate },
+    endDate: { $gte: startDate },
+  }).lean();
+
+  // Group attendance by staffId -> dateStr -> record
+  const attByStaff = new Map();
+  for (const att of attendanceRecords) {
+    const sId = att.staffId.toString();
+    if (!attByStaff.has(sId)) attByStaff.set(sId, new Map());
+    const dateKey = new Date(att.attendanceDate).toISOString().slice(0, 10);
+    attByStaff.get(sId).set(dateKey, att);
+  }
+
+  // Pre-generate list of dates in the month
+  const datesInMonth = [];
+  for (let d = 1; d <= totalDaysInMonth; d++) {
+    datesInMonth.push(`${monthYear}-${String(d).padStart(2, '0')}`);
+  }
+
+  // Today in branch timezone for accurate local absence bounding
+  const currentBranchLocalToday = deriveBusinessDate(new Date(), branchTimezone);
+
+  const staffSummaries = [];
+  const consolidatedTotals = {
+    totalStaff: staffMembers.length,
+    presentDays: 0,
+    lateDays: 0,
+    earlyDepartureDays: 0,
+    incompleteDays: 0,
+    approvedPaidLeaveDays: 0,
+    approvedUnpaidLeaveDays: 0,
+    absentDays: 0,
+    totalWorkingDaysEvaluated: 0,
+  };
+
+  for (const staff of staffMembers) {
+    const sId = staff._id.toString();
+    const staffAttMap = attByStaff.get(sId) || new Map();
+    const staffLeaves = leaves.filter((l) => l.staffId.toString() === sId);
+
+    let presentCount = 0;
+    let lateCount = 0;
+    let earlyCount = 0;
+    let incompleteCount = 0;
+    let paidLeaveCount = 0;
+    let unpaidLeaveCount = 0;
+    let absentCount = 0;
+    let eligibleDays = 0;
+
+    const dailyBreakdown = {};
+
+    for (const dateStr of datesInMonth) {
+      // Check joining date
+      const joiningDateStr = staff.joiningDate
+        ? new Date(staff.joiningDate).toISOString().slice(0, 10)
+        : '1970-01-01';
+      if (dateStr < joiningDateStr) {
+        dailyBreakdown[dateStr] = { status: 'not_joined', date: dateStr };
+        continue;
+      }
+
+      eligibleDays++;
+      const att = staffAttMap.get(dateStr);
+
+      // Check leave on this date
+      const activeLeave = staffLeaves.find((l) => {
+        if (Array.isArray(l.dates) && l.dates.length > 0) {
+          return l.dates.includes(dateStr);
+        }
+        const s = new Date(l.startDate).toISOString().slice(0, 10);
+        const e = new Date(l.endDate).toISOString().slice(0, 10);
+        return dateStr >= s && dateStr <= e;
+      });
+
+      if (att) {
+        dailyBreakdown[dateStr] = {
+          status: att.status,
+          date: dateStr,
+          attendanceId: att._id,
+          isReconciled: att.isReconciled,
+        };
+        if (att.status === 'present') {
+          presentCount++;
+        } else if (att.status === 'late') {
+          presentCount++;
+          lateCount++;
+        } else if (att.status === 'early_departure') {
+          presentCount++;
+          earlyCount++;
+        } else if (att.status === 'incomplete') {
+          incompleteCount++;
+        }
+      } else if (activeLeave) {
+        const isUnpaid =
+          activeLeave.isUnpaid === true ||
+          (typeof activeLeave.leaveType === 'string' &&
+            activeLeave.leaveType.toLowerCase().includes('unpaid'));
+        if (isUnpaid) {
+          unpaidLeaveCount++;
+          dailyBreakdown[dateStr] = {
+            status: 'unpaid_leave',
+            date: dateStr,
+            leaveId: activeLeave._id,
+          };
+        } else {
+          paidLeaveCount++;
+          dailyBreakdown[dateStr] = {
+            status: 'paid_leave',
+            date: dateStr,
+            leaveId: activeLeave._id,
+          };
+        }
+      } else if (dateStr < currentBranchLocalToday) {
+        // Day has fully elapsed with no attendance and no leave -> absent
+        absentCount++;
+        dailyBreakdown[dateStr] = { status: 'absent', date: dateStr };
+      } else {
+        // Today without attendance yet or future day -> scheduled (not absent)
+        dailyBreakdown[dateStr] = { status: 'scheduled', date: dateStr };
+      }
+    }
+
+    const summary = {
+      staff: {
+        _id: staff._id,
+        name: staff.name,
+        staffCode: staff.staffCode,
+        designation: staff.designation,
+      },
+      metrics: {
+        totalDaysInMonth,
+        eligibleDays,
+        presentDays: presentCount,
+        lateDays: lateCount,
+        earlyDepartureDays: earlyCount,
+        incompleteDays: incompleteCount,
+        approvedPaidLeaveDays: paidLeaveCount,
+        approvedUnpaidLeaveDays: unpaidLeaveCount,
+        absentDays: absentCount,
+      },
+      dailyBreakdown,
+    };
+
+    staffSummaries.push(summary);
+
+    consolidatedTotals.presentDays += presentCount;
+    consolidatedTotals.lateDays += lateCount;
+    consolidatedTotals.earlyDepartureDays += earlyCount;
+    consolidatedTotals.incompleteDays += incompleteCount;
+    consolidatedTotals.approvedPaidLeaveDays += paidLeaveCount;
+    consolidatedTotals.approvedUnpaidLeaveDays += unpaidLeaveCount;
+    consolidatedTotals.absentDays += absentCount;
+    consolidatedTotals.totalWorkingDaysEvaluated += eligibleDays;
+  }
+
+  // Filter if statusFilter applied
+  const filteredSummaries = statusFilter && statusFilter !== 'all'
+    ? staffSummaries.filter((s) => {
+        if (statusFilter === 'present') return s.metrics.presentDays > 0;
+        if (statusFilter === 'late') return s.metrics.lateDays > 0;
+        if (statusFilter === 'early_departure') return s.metrics.earlyDepartureDays > 0;
+        if (statusFilter === 'incomplete') return s.metrics.incompleteDays > 0;
+        if (statusFilter === 'absent') return s.metrics.absentDays > 0;
+        if (statusFilter === 'leave')
+          return s.metrics.approvedPaidLeaveDays > 0 || s.metrics.approvedUnpaidLeaveDays > 0;
+        return true;
+      })
+    : staffSummaries;
+
+  return {
+    monthYear,
+    branchId: branchId || 'all',
+    totalStaff: staffMembers.length,
+    dates: datesInMonth,
+    consolidatedTotals,
+    musterRoll: filteredSummaries,
+  };
+}
+
 export {
   deriveBusinessDate,
   getScheduledHours,
@@ -1530,6 +2031,8 @@ export {
   listAttendanceRecords,
   getStaffAttendanceDetail,
   adjustAttendanceRecord,
+  recordStaffPunch,
+  getMonthlyMusterRoll,
   listLeaveAppointmentConflicts,
   resolveLeaveAppointmentConflict,
   recordLeaveException,

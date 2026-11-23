@@ -68,6 +68,8 @@ jest.unstable_mockModule('../../services/attendance/attendance.service.js', () =
   createStaffDeviceMapping: jest.fn(async (input) => input),
   updateStaffDeviceMapping: jest.fn(async (input) => input),
   deactivateStaffDeviceMapping: jest.fn(async (input) => input),
+  recordStaffPunch: jest.fn(async (input) => input),
+  getMonthlyMusterRoll: jest.fn(async () => ({ totalStaff: 0, consolidatedTotals: {}, musterRoll: [] })),
 }));
 
 const { default: attendanceRouter } = await import('../../routers/attendance/attendance.router.js');

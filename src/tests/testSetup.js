@@ -76,6 +76,10 @@ export const REGISTERED_SUITE_SUFFIXES = Object.freeze([
   "coupon_test",
   "procurement_test",
   "incentives_test",
+  "expenses_test",
+  "finance_test",
+  "reports_test",
+  "xmod_test",
 ]);
 
 /**

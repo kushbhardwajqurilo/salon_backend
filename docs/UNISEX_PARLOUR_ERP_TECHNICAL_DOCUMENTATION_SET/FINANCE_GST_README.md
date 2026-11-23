@@ -1,32 +1,43 @@
-# Finance, Day-End & GST Tax Module — Specification & Status
+# Finance, Register Closures & Operating Profit Module — Specification & Status
 
 ```text
-Module: Financial Accounting, Register Closures & GST Tax Reports
-Status: ⏳ PENDING / PLANNED
-Layer: Financial Governance / Tax Compliance
+Module: Financial Accounting, Register Closures & Operating Profit (P&L)
+Status: ✅ IMPLEMENTED & VERIFIED
+Layer: Financial Governance / Branch Auditing
 Parent Architecture: docs/UNISEX_PARLOUR_ERP_TECHNICAL_DOCUMENTATION_SET/ARCHITECTURE.md
 Governing Standard: BACKEND_MODULE_ARCHITECTURE_STANDARD.md v1.0
-Last Updated: 2026-10-28
+Last Updated: 2026-11-21
 ```
 
 ---
 
 ## 1. Domain Overview & Business Purpose
 
-The **Finance & GST** module manages end-of-day cashier drawer reconciliations, store closure sign-offs, profit & loss analysis, and statutory GST (Goods & Services Tax) reporting for Indian salon operations.
+The **Finance** module manages end-of-day cashier drawer reconciliations, branch closure sign-offs, and store Operating Profit (P&L) analysis for salon operations.
 
-### Key Capabilities Required
-- Day-End (EOD) Register Closure: Front-desk cashier counts physical cash in the drawer, compares it with system billing totals, and logs discrepancy reasons.
-- Multi-tender reconciliation: Verifies Cash, Credit Card EDC slips, UPI payment settlement screenshots.
-- GSTR-1 Monthly Report: Aggregates outward taxable supplies, HSN/SAC code breakdowns, CGST (Central Tax), SGST (State Tax), and IGST (Integrated Tax).
-- Net Profit & Loss (P&L) statement: Aggregates revenue from `Invoice` items against branch operational `Expense` items.
+### Key Architectural Capabilities
+- **Day-End (EOD) Register Closure**:
+  - Exactly 1 closure record per physical branch per business date (`unique: { organizationId, branchId, businessDate }`).
+  - Cashier enters physical cash, card slips, UPI settlement totals, and other tenders.
+  - Compares physical counts against live system billing totals aggregated across completed `Payment` records in the branch-configured timezone (`branch.timezone`).
+  - **Reconciliation Result Separation**: Evaluated as `balanced` only if every tender delta (cash, card, UPI, other) is exactly zero. Any non-zero delta marks the result as `discrepant` and mandates a detailed `discrepancyReason`.
+  - **Immutable History**: Counted values are immutable once submitted. Manager approval locks the closure record (`status: "approved"`), preserving all variance numbers and justification notes permanently.
+- **Operating Profit (P&L)**:
+  - Computed on an accrual basis:
+    $$\text{Operating Profit} = \text{Net Revenue} - \text{Total Operating Expenses}$$
+    where $\text{Net Revenue} = \text{Gross Revenue (Finalized Invoices)} - \text{Completed Payment Refunds}$.
+  - Excludes soft-deleted and rejected expenses.
+  - Zero double-counting between returned items and refunds.
+- **Branch Scoping & Timezone Integrity**:
+  - Boundaries calculated using the authoritative branch timezone (e.g. `Asia/Kolkata`).
+  - Single-closure checks strictly enforce one register closure per physical branch.
 
 ---
 
 ## 2. Multi-Tenancy & Scoping Rules
 
-- **Branch Scoped**: Day-End register closures are executed per physical branch location (`X-Branch-Id`).
-- **Organization Scoped**: GST reports and Profit & Loss statements aggregate across all branches for corporate filing.
+- **Branch Scoped**: Day-End register closures are strictly per physical salon location (`X-Branch-Id`).
+- **Organization Scoped**: Operating Profit reports can be viewed per-branch or consolidated across the organization (omitting `X-Branch-Id`).
 
 ---
 
@@ -34,64 +45,71 @@ The **Finance & GST** module manages end-of-day cashier drawer reconciliations, 
 
 | Capability | Permission Key | Description |
 |:---|:---|:---|
-| View Finance Summaries | `finance.view` | View day-end register closures, P&L reports |
+| View Finance Summaries | `finance.view` | View day-end register closures and Operating Profit statements |
 | Submit Day Closure | `finance.create` | Execute daily register drawer count submission |
-| Reconcile Discrepancies | `finance.edit` | Manager adjustment of cash drawer discrepancies |
-| Generate GST Tax Reports | `finance.gst_report` | Export statutory GSTR-1 / GSTR-3B monthly tax summaries |
+| Manager Sign-off | `finance.edit` | Manager sign-off and approval of register closures |
 
 ---
 
-## 4. Proposed Database Model Specification
+## 4. Production Database Model Specification
 
-**File Target**: `src/models/finance/dayClosure.model.js`
-
+### DayClosure (`src/models/finance/dayClosure.model.js`)
 ```ts
 {
-  organizationId: ObjectId,         // ref: Organization, required
-  branchId: ObjectId,               // ref: Branch, required
-  closureDate: String,              // "YYYY-MM-DD" UTC
-  cashierId: ObjectId,              // ref: User
+  organizationId: ObjectId,                 // ref: Organization, required, indexed
+  branchId: ObjectId,                       // ref: Branch, required, indexed
+  businessDate: String,                     // "YYYY-MM-DD"
+  branchTimezone: String,                   // "Asia/Kolkata"
   systemTotals: {
-    cashExpected: Number,
-    cardExpected: Number,
-    upiExpected: Number,
-    totalBilled: Number
+    cash: Number,
+    card: Number,
+    upi: Number,
+    other: Number,
+    totalCollected: Number,
+    totalRefunded: Number,
+    netExpected: Number
   },
-  physicalCount: {
-    cashActual: Number,
-    cardSlipsActual: Number,
-    upiVerifiedActual: Number
+  physicalCounts: {
+    cash: Number,
+    card: Number,
+    upi: Number,
+    other: Number,
+    totalCounted: Number
   },
   discrepancy: {
-    cashDelta: Number,              // actual - expected
-    reason: String
+    cashDelta: Number,                      // physical - expected
+    cardDelta: Number,
+    upiDelta: Number,
+    otherDelta: Number,
+    totalDelta: Number,
+    reason: String                          // Mandatory if any delta != 0
   },
-  status: String,                   // "balanced", "discrepant", "manager_approved"
-  managerId: ObjectId,              // ref: User
-  managerNotes: String,
-  closedAt: Date
+  reconciliationResult: "balanced" | "discrepant",
+  status: "submitted" | "approved",
+  submittedBy: ObjectId,                    // ref: User
+  submittedAt: Date,
+  approvedBy: ObjectId,                     // ref: User
+  approvedAt: Date,
+  managerNotes: String
 }
 ```
 
 ---
 
-## 5. Planned API Endpoints
+## 5. Production API Endpoints
 
 | Method | Endpoint | Authorization | Description |
 |:---|:---|:---|:---|
-| `POST` | `/api/v1/finance/day-closure` | `finance.create` | Submit cashier EOD cash drawer count |
-| `GET` | `/api/v1/finance/day-closure` | `finance.view` | List past register closures |
-| `PATCH` | `/api/v1/finance/day-closure/:id/approve` | `finance.edit` | Manager sign-off on cash discrepancy |
-| `GET` | `/api/v1/finance/gst-report` | `finance.gst_report` | Monthly GSTR-1 report (HSN/SAC split, CGST/SGST/IGST) |
-| `GET` | `/api/v1/finance/pnl` | `finance.view` | Net Profit & Loss report (Revenue vs Expenses) |
+| `GET` | `/api/v1/finance/day-closure/system-totals` | `finance.view` | Real-time expected totals for a business date |
+| `POST` | `/api/v1/finance/day-closure` | `finance.create` | Submit register drawer closure |
+| `PATCH` | `/api/v1/finance/day-closure/:id/approve` | `finance.edit` | Manager approval & sign-off |
+| `GET` | `/api/v1/finance/day-closure` | `finance.view` | List historical day closures |
+| `GET` | `/api/v1/finance/day-closure/:id` | `finance.view` | View single day closure audit details |
+| `GET` | `/api/v1/finance/operating-profit` | `finance.view` | Operating Profit P&L report for period |
 
 ---
 
-## 6. Implementation Checklist
+## 6. Verification Status
 
-- [ ] Create `DayClosure` model in `src/models/finance/`.
-- [ ] Implement aggregation service summing daily finalized `Payment` records grouped by tender.
-- [ ] Build tax aggregation pipeline querying finalized `Invoice` items grouped by HSN/SAC code.
-- [ ] Mount `financeRouter` in `app.mjs`.
-- [ ] Write integration tests for cash discrepancy math and GST export.
-
+- **Automated Integration Tests**: `backend/src/tests/finance/finance.integration.test.js`
+- **Result**: 6/6 integration suites passing (Branch timezone tender aggregation, mandatory discrepancy justification, offsetting tender discrepancy detection, 409 duplicate closure prevention, manager sign-off preserving discrepancies, and Operating Profit revenue/expense calculations).

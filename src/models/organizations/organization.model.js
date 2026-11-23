@@ -15,6 +15,22 @@ const organizationSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    expenseApprovalThreshold: {
+      type: Number,
+      default: 5000,
+      min: 0,
+    },
+    allowedExpenseCategories: {
+      type: [String],
+      default: [
+        "utilities",
+        "maintenance",
+        "consumables",
+        "refreshments",
+        "marketing",
+        "other",
+      ],
+    },
   },
   {
     timestamps: true,

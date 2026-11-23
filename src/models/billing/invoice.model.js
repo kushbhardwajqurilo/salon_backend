@@ -403,6 +403,41 @@ const invoiceSchema = new mongoose.Schema(
     cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     cancellationReason: { type: String, default: null, trim: true },
 
+    // Marketing Campaign Financial Attribution Snapshot
+    campaignAttribution: {
+      campaignId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Campaign",
+        default: null,
+      },
+      campaignCode: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+      channel: {
+        type: String,
+        default: null,
+      },
+      sourceType: {
+        type: String,
+        enum: ["direct_promo", "appointment_source", "manual_pos", "unassigned"],
+        default: "unassigned",
+      },
+      sourceIdentifier: {
+        type: String,
+        default: null,
+      },
+      sourceEvidenceTimestamp: {
+        type: Date,
+        default: null,
+      },
+      attributedAt: {
+        type: Date,
+        default: null,
+      },
+    },
+
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
   },
@@ -411,6 +446,7 @@ const invoiceSchema = new mongoose.Schema(
 
 // Indexes
 invoiceSchema.index({ organizationId: 1, invoiceNumber: 1 }, { unique: true });
+invoiceSchema.index({ organizationId: 1, branchId: 1, "campaignAttribution.campaignId": 1, status: 1 });
 invoiceSchema.index(
   { organizationId: 1, appointmentId: 1 },
   {
@@ -448,4 +484,5 @@ invoiceSchema.set("toJSON", {
   },
 });
 
-export const Invoice = mongoose.model("Invoice", invoiceSchema);
+export const Invoice =
+  mongoose.models.Invoice || mongoose.model("Invoice", invoiceSchema);

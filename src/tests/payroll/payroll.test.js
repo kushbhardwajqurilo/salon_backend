@@ -1184,7 +1184,8 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ reversalReason: "Payment was confirmed against the wrong account" });
       expect(reversed.status).toBe(200);
-      expect(reversed.body.data.status).toBe("cancelled");
+      expect(reversed.body.data.status).toBe("approved");
+      expect(reversed.body.data.manualPaymentStatus).toBe("reversed");
       expect(reversed.body.payment.status).toBe("reversed");
 
       const reversalReplay = await request(app)
@@ -1260,7 +1261,7 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.data.status).toBe("cancelled");
+      expect(res.body.data.status).toBe("approved");
       expect(res.body.data.reversalReason).toBe(
         "Disputed leave day requires recalculation"
       );

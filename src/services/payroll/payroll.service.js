@@ -486,7 +486,7 @@ export class PayrollService {
                 _id: existingRecord._id,
                 organizationId,
                 status: "approved",
-                manualPaymentStatus: { $in: ["none", "failed"] },
+                manualPaymentStatus: { $in: ["none", "failed", "reversed"] },
               },
               {
                 $set: {
@@ -1277,7 +1277,7 @@ export class PayrollService {
             400,
           );
         }
-        if (!["none", "failed"].includes(record.manualPaymentStatus)) {
+        if (!["none", "failed", "reversed"].includes(record.manualPaymentStatus)) {
           throw new AppError("A payment attempt is already awaiting confirmation", 409);
         }
         const expectedAmountInPaise = getNetPayableInPaise(record);
@@ -1331,10 +1331,12 @@ export class PayrollService {
 
         const availablePaymentStatus = record.manualPaymentStatus === "failed"
           ? [{ manualPaymentStatus: "failed" }]
-          : [
-            { manualPaymentStatus: "none" },
-            { manualPaymentStatus: { $exists: false } },
-          ];
+          : record.manualPaymentStatus === "reversed"
+            ? [{ manualPaymentStatus: "reversed" }]
+            : [
+              { manualPaymentStatus: "none" },
+              { manualPaymentStatus: { $exists: false } },
+            ];
         const updatedRecord = await PayrollRecord.findOneAndUpdate(
           {
             _id: recordId,
@@ -1559,7 +1561,7 @@ export class PayrollService {
         ...branchCondition(branchId),
       }).session(session);
       if (!record) throw new AppError("Payroll record not found", 404);
-      if (record.status === "cancelled" && record.manualPaymentStatus === "reversed") {
+      if ((record.status === "approved" || record.status === "cancelled") && record.manualPaymentStatus === "reversed") {
         const payment = record.manualPaymentId
           ? await PayrollPayment.findOne({
             _id: record.manualPaymentId,
@@ -1628,7 +1630,7 @@ export class PayrollService {
         },
         {
           $set: {
-            status: "cancelled",
+            status: "approved",
             reversalReason,
             reversedAt: new Date(),
             reversedBy: userId,

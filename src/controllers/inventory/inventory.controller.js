@@ -174,3 +174,63 @@ export const recordDomainAllocation = async (req, res, next) => {
     next(error);
   }
 };
+
+export const listBatches = async (req, res, next) => {
+  try {
+    const { productId, stockDomain, isValued, status, page, limit } = req.query;
+    const branchId = req.branchId || req.query.branchId;
+    const result = await inventoryService.listBatches(
+      {
+        organizationId: req.user.organizationId,
+        branchId,
+        productId,
+        stockDomain,
+        isValued: isValued !== undefined ? isValued === "true" : undefined,
+        status,
+      },
+      { page: parseInt(page) || 1, limit: parseInt(limit) || 20 }
+    );
+    return sendResponse(res, 200, "Stock batches retrieved successfully", result.batches, result.pagination);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reverseMovement = async (req, res, next) => {
+  try {
+    const idempotencyKey = getIdempotencyKey(req);
+    const { id } = req.params;
+    const { reason, returnQuantity } = req.body;
+    const result = await inventoryService.reverseMovement({
+      movementId: id,
+      organizationId: req.user.organizationId,
+      actorId: req.user.id,
+      reason,
+      returnQuantity,
+      idempotencyKey,
+    });
+    return sendResponse(res, 200, "Movement reversed successfully", result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const valueOpeningStockBatch = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { unitCostPrice, notes, sourceDocumentRef } = req.body;
+    const branchId = req.branchId || req.body.branchId;
+    const batch = await inventoryService.valueOpeningStockBatch({
+      batchId: id,
+      organizationId: req.user.organizationId,
+      branchId,
+      unitCostPrice,
+      notes,
+      sourceDocumentRef,
+      actorId: req.user.id,
+    });
+    return sendResponse(res, 200, "Opening stock batch valued successfully", batch);
+  } catch (error) {
+    next(error);
+  }
+};

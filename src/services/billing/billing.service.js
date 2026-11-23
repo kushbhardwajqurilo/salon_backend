@@ -37,6 +37,7 @@ import {
   loadStaffAttributionSnapshot,
   resolveStaffAttribution,
 } from "./staffAttribution.service.js";
+import { CampaignAttributionService } from "../marketing/campaignAttribution.service.js";
 
 function allocatePaiseProportionally(totalPaise, weightedLines) {
   if (!Number.isInteger(totalPaise) || totalPaise < 0) {
@@ -4758,6 +4759,20 @@ export class BillingService {
         invoice.amountPaid,
         invoice.amountDue,
       );
+
+      // Server-authoritative Marketing Campaign Attribution Snapshot
+      // Resolves hierarchy: Verified Direct Promo > Valid Appointment Booking Source > Valid Manual POS Selection > Unassigned
+      const attributionSnapshot = await CampaignAttributionService.resolveAttributionSnapshot({
+        organizationId,
+        branchId,
+        promoCode: invoice.appliedCouponCode || payload?.promoCode,
+        appointmentSource: invoice.appointmentCode || null,
+        appointmentCreatedAt: invoice.createdAt,
+        manualCampaignId: payload?.campaignId || null,
+        finalizedAt: invoice.finalizedAt,
+        session,
+      });
+      invoice.campaignAttribution = attributionSnapshot;
 
       // If an invoice is fully covered by subscription / zero-due upon finalization, settle subscriptions atomically
       if (invoice.paymentStatus === "paid") {

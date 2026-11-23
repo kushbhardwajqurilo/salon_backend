@@ -1280,10 +1280,10 @@ class MembershipService {
             itemName: line.nameSnapshot || line.serviceId?.name || line.productId?.name || "Item",
             quantity: line.quantity,
             unitPrice: line.unitPrice,
-            subtotal: line.subtotal,
+            subtotal: line.subtotal ?? line.lineTotal ?? 0,
             benefitType: "membership_discount",
             membershipDiscountAmount: line.membershipDiscountAmount || 0,
-            finalPrice: line.finalPrice,
+            finalPrice: line.customerPayable ?? line.finalPrice ?? 0,
           });
         }
       }

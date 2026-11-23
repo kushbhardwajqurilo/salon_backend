@@ -21,6 +21,7 @@ import { User } from "../../../src/models/users/user.model.js";
 import { Product } from "../../../src/models/inventory/product.model.js";
 import { StockBalance } from "../../../src/models/inventory/stockBalance.model.js";
 import { StockMovement } from "../../../src/models/inventory/stockMovement.model.js";
+import { StockBatch } from "../../../src/models/inventory/stockBatch.model.js";
 import { AuditLog } from "../../../src/models/audit/auditLog.model.js";
 import { stockMovementRepository } from "../../../src/repositories/inventory/stockMovement.repository.js";
 
@@ -289,9 +290,8 @@ describe("Inventory MVP High-Risk Integrity & Concurrency Suite", () => {
           reason: "Baseline 100ml"
         });
 
-      // Simulate a ledger write failure by mocking stockMovementRepository.create to throw
-      const originalCreate = stockMovementRepository.create;
-      jest.spyOn(stockMovementRepository, "create").mockImplementationOnce(() => {
+      // Simulate a ledger write failure by mocking StockMovement.prototype.save to throw
+      const saveSpy = jest.spyOn(StockMovement.prototype, "save").mockImplementationOnce(async function () {
         throw new Error("Simulated Disk/DB Failure during StockMovement write");
       });
 
@@ -308,8 +308,8 @@ describe("Inventory MVP High-Risk Integrity & Concurrency Suite", () => {
 
       expect(res.status).toBe(500);
 
-      // Restore original repository create
-      stockMovementRepository.create = originalCreate;
+      // Restore original prototype save
+      saveSpy.mockRestore();
 
       // Balance must still be exactly 100ml (rolled back)
       const balance = await StockBalance.findOne({
@@ -318,7 +318,16 @@ describe("Inventory MVP High-Risk Integrity & Concurrency Suite", () => {
       });
       expect(balance.onHand).toBe(100);
 
-      // No service_consumption movement should exist
+      // Every affected StockBatch quantity must remain unchanged (100,000 milli = 100ml)
+      const batches = await StockBatch.find({
+        branchId: branchA1Id,
+        productId: testProduct._id
+      });
+      expect(batches.length).toBeGreaterThan(0);
+      const totalBatchRemainingMilli = batches.reduce((sum, b) => sum + b.remainingQuantityMilli, 0);
+      expect(totalBatchRemainingMilli).toBe(100000);
+
+      // No movement record from the failed transaction persists
       const movements = await StockMovement.find({
         branchId: branchA1Id,
         productId: testProduct._id,

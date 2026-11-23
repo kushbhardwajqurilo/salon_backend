@@ -1,6 +1,9 @@
-import { asyncHandler } from '../../utils/errors.js';
+import { asyncHandler, AppError } from '../../utils/errors.js';
+import { Staff } from '../../models/staff/staff.model.js';
 import {
   adjustAttendanceRecord,
+  recordStaffPunch,
+  getMonthlyMusterRoll,
   getProviderStatus,
   getStaffAttendanceDetail,
   ingestProviderEvents,
@@ -154,4 +157,81 @@ export const deactivateStaffDeviceMappingController = asyncHandler(async (req, r
     actorId: req.user.id,
   });
   res.status(200).json({ success: true, data, message: 'Staff device mapping deactivated successfully.' });
+});
+
+export const recordStaffPunchController = asyncHandler(async (req, res) => {
+  const organizationId = req.user.organizationId;
+  const branchId = req.currentBranch._id;
+  const actorId = req.user.id;
+  let targetStaffId = req.body?.staffId;
+
+  // If staffId not provided in body, or caller doesn't have manager adjust permissions,
+  // derive staffId directly from req.user
+  const canAdjust = req.user?.permissions?.includes('attendance.adjust') ||
+    ['owner', 'admin', 'manager'].includes(req.user?.role?.toLowerCase?.());
+
+  if (!targetStaffId || !canAdjust) {
+    const ownStaff = await Staff.findOne({
+      userId: actorId,
+      organizationId,
+      isDeleted: { $ne: true },
+      status: 'active',
+    }).select('_id');
+    if (!ownStaff) {
+      throw new AppError('No active staff profile linked to your user account.', 404);
+    }
+    targetStaffId = ownStaff._id.toString();
+  }
+
+  const result = await recordStaffPunch({
+    organizationId,
+    branchId,
+    staffId: targetStaffId,
+    punchType: req.body.punchType,
+    actorId,
+    notes: req.body?.notes,
+  });
+
+  res.status(200).json({
+    success: true,
+    data: result,
+    message: `Successfully clocked ${req.body.punchType}.`,
+  });
+});
+
+export const getMonthlyMusterRollController = asyncHandler(async (req, res) => {
+  const organizationId = req.user.organizationId;
+  const isOwner = req.user?.role?.toLowerCase?.() === 'owner' || req.user?.hasOrgWideAccess;
+  const requestedBranchId = req.query.branchId;
+
+  if (requestedBranchId === 'all' && !isOwner) {
+    throw new AppError('branchId=all requires multi-branch access or owner permissions.', 403);
+  }
+
+  let branchId = req.currentBranch._id.toString();
+  let accessibleBranchIds = null;
+
+  if (isOwner) {
+    if (requestedBranchId === 'all') {
+      branchId = 'all';
+      if (req.user?.branchAccess?.length > 0) {
+        accessibleBranchIds = req.user.branchAccess
+          .filter((b) => b.isActive)
+          .map((b) => b.branchId);
+      }
+    } else if (requestedBranchId) {
+      branchId = requestedBranchId;
+    }
+  }
+
+  const data = await getMonthlyMusterRoll({
+    organizationId,
+    branchId,
+    monthYear: req.query.monthYear,
+    search: req.query.search,
+    statusFilter: req.query.status,
+    accessibleBranchIds,
+  });
+
+  res.status(200).json({ success: true, data });
 });

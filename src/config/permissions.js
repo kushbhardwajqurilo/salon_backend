@@ -462,6 +462,36 @@ export const CANONICAL_PERMISSIONS = [
     description: "Access corporate cash flow logs, net profits, and consolidated tax ledgers."
   },
   {
+    name: "finance.create",
+    module: "Finance",
+    action: "Submit Day Closure",
+    description: "Submit end-of-day register drawer reconciliation."
+  },
+  {
+    name: "finance.edit",
+    module: "Finance",
+    action: "Reconcile Discrepancies",
+    description: "Manager sign-off on day closure and cash drawer discrepancies."
+  },
+  {
+    name: "finance.transactions.view",
+    module: "Finance",
+    action: "View Transactions",
+    description: "Search and inspect unified financial transactions across billing, expenses, payroll, and suppliers."
+  },
+  {
+    name: "finance.audit.view",
+    module: "Finance",
+    action: "View Audit History",
+    description: "View financial approval logs, register reconciliations, and cash movement audit history."
+  },
+  {
+    name: "finance.reports.export",
+    module: "Finance",
+    action: "Export Reports",
+    description: "Download financial summaries, P&L statements, and reconciliation reports."
+  },
+  {
     name: "finance.gst_report",
     module: "Finance",
     action: "Export GST",

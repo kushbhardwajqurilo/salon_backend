@@ -114,7 +114,7 @@ export const syncPermissionsLogic = async () => {
     `Owner role updated with exactly ${canonicalPermissionIds.length} canonical permissions.`,
   );
 
-  // 3. Synchronize Manager Role permissions
+  // 3. Synchronize Manager Role permissions (if existing in organizations)
   const DEFAULT_MANAGER_PERM_NAMES = [
     // Customers (all)
     "customers.view",
@@ -164,6 +164,19 @@ export const syncPermissionsLogic = async () => {
     "procurement.orders.update",
     "procurement.invoices.manage",
     "procurement.payments.manage",
+    // Expenses & Petty Cash (Manager operations)
+    "expenses.view",
+    "expenses.create",
+    "expenses.update",
+    "expenses.delete",
+    // Finance (Manager day closures, transactions, audit, and view)
+    "finance.view",
+    "finance.create",
+    "finance.edit",
+    "finance.transactions.view",
+    "finance.audit.view",
+    "finance.reports.export",
+    "finance.gst_report",
     // Services (all)
     "services.view",
     "services.create",
@@ -182,24 +195,20 @@ export const syncPermissionsLogic = async () => {
     "branches.view",
     "logs.view",
   ];
-  let managerRole = await Role.findOne({ name: "manager" });
-  if (!managerRole) {
-    logger.warn("Manager role not found in database. Creating a new one...");
-    managerRole = await Role.create({
-      name: "manager",
-      description: "Operational management role",
-      isSystem: true,
-    });
-  } else {
-    managerRole.isSystem = true;
-  }
+  let managerRoles = await Role.find({ name: "manager" });
   const managerPermDocs = await Permission.find({
     name: { $in: DEFAULT_MANAGER_PERM_NAMES },
   });
-  managerRole.permissions = managerPermDocs.map((p) => p._id);
-  await managerRole.save();
+  for (const mRole of managerRoles) {
+    // Keep isSystem as false if owned by an organization, allowing owner management
+    if (!mRole.organizationId) {
+      mRole.isSystem = true;
+    }
+    mRole.permissions = managerPermDocs.map((p) => p._id);
+    await mRole.save();
+  }
   logger.info(
-    `Manager role updated with ${managerPermDocs.length} permissions.`,
+    `Manager roles (${managerRoles.length}) updated with ${managerPermDocs.length} default permissions.`,
   );
 
   // 4. Update Receptionist Role if exists

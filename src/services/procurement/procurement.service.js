@@ -8,6 +8,8 @@ import { supplierPaymentRepository } from "../../repositories/procurement/suppli
 import { productRepository } from "../../repositories/inventory/product.repository.js";
 import { stockMovementRepository } from "../../repositories/inventory/stockMovement.repository.js";
 import { StockBalance } from "../../models/inventory/stockBalance.model.js";
+import { StockBatch } from "../../models/inventory/stockBatch.model.js";
+import { FifoDepletionService } from "../inventory/fifoDepletion.service.js";
 import { PurchaseOrder } from "../../models/procurement/purchaseOrder.model.js";
 import { SupplierInvoice } from "../../models/procurement/supplierInvoice.model.js";
 import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
@@ -444,6 +446,24 @@ export class ProcurementService {
         },
         session
       );
+
+      // Create StockBatch records for each received line item
+      for (const item of receivedItemsRecord) {
+        await FifoDepletionService.createGrnBatch({
+          organizationId,
+          branchId: po.branchId,
+          productId: item.productId,
+          stockDomain: item.targetDomain,
+          grnId: grn._id,
+          grnNumber: grn.grnNumber,
+          supplierId: po.supplierId,
+          receivedDate: grn.receivedAt,
+          receivedQuantity: item.receivedQuantity,
+          unitCostPrice: item.unitCostPrice,
+          userId,
+          session,
+        });
+      }
 
       // Audit Log
       const audit = new AuditLog({

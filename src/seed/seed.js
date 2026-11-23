@@ -75,8 +75,8 @@ const seed = async () => {
     // 5. Get Owner Role
     const ownerRole = await Role.findOne({ name: "owner" });
 
-    // 6. Create / Sync Manager Role
-    let managerRole = await Role.findOne({ name: "manager" });
+    // 6. Create / Sync Manager Role (Organization-managed role owned by the Organization)
+    let managerRole = await Role.findOne({ name: "manager", organizationId: org._id });
     const managerPermNames = [
       // Customers (all)
       "customers.view", "customers.create", "customers.update", "customers.delete", "customers.export", "customers.edit",
@@ -105,10 +105,14 @@ const seed = async () => {
       managerRole = await Role.create({
         name: "manager",
         description: "Operational management role",
+        organizationId: org._id,
+        isSystem: false,
         permissions: managerPerms.map(p => p._id)
       });
       console.log("Created Manager role.");
     } else {
+      managerRole.organizationId = org._id;
+      managerRole.isSystem = false;
       managerRole.permissions = managerPerms.map(p => p._id);
       await managerRole.save();
       console.log("Updated Manager role permissions.");
