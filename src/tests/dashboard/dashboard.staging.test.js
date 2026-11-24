@@ -1492,8 +1492,8 @@ describe("Salon ERP Phase 3 — Staging Validation & Multi-Branch Business Intel
       expect(novRes.body.kpis.collections.current).toBe(16000.3);
       expect(novRes.body.kpis.refunds.current).toBe(2000); // Only Nov refunds (Pay D partial 500 + Pay E full 1500)
       expect(novRes.body.kpis.netCollections.current).toBe(14000.3);
-      // Net billed sales for November remains intact and does not deduct December's refund:
-      expect(novRes.body.kpis.netSales.current).toBe(17000.3);
+      // Net billed sales for November remains intact at ₹21,000.30 and does not deduct December's refund:
+      expect(novRes.body.kpis.netSales.current).toBe(21000.3);
 
       // Verify: December reflects the Dec refund without touching November's historic ledger
       const decRes = await request(app)

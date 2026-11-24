@@ -429,59 +429,111 @@ export class AppointmentService {
   ) {
     if (!staffId) return;
 
-    const evaluation = await staffAvailabilityService.checkStaffSlotAvailability({
-      organizationId,
-      branchId,
-      staffId,
-      date: dateStr,
-      excludeAppointmentId,
-      serviceIds,
-      options: {
-        startAt,
-        endAt,
-        ...options,
-      },
-    });
+    const evaluation =
+      await staffAvailabilityService.checkStaffSlotAvailability({
+        organizationId,
+        branchId,
+        staffId,
+        date: dateStr,
+        excludeAppointmentId,
+        serviceIds,
+        options: {
+          startAt,
+          endAt,
+          ...options,
+        },
+      });
 
     if (evaluation.status !== AVAILABILITY_STATUS.AVAILABLE) {
       const reasons = evaluation.reasons || [];
       if (reasons.includes(REASON_CODES.STAFF_NOT_FOUND)) {
-        throw new AppError("Staff member not found", 404, { code: REASON_CODES.STAFF_NOT_FOUND });
+        throw new AppError("Staff member not found", 404, {
+          code: REASON_CODES.STAFF_NOT_FOUND,
+        });
       }
       if (reasons.includes(REASON_CODES.STAFF_INACTIVE)) {
-        throw new AppError("Cannot assign inactive staff member", 400, { code: REASON_CODES.STAFF_INACTIVE });
+        throw new AppError("Cannot assign inactive staff member", 400, {
+          code: REASON_CODES.STAFF_INACTIVE,
+        });
       }
       if (reasons.includes(REASON_CODES.BRANCH_NOT_ASSIGNED)) {
-        throw new AppError("This staff member is not assigned to this branch", 400, { code: REASON_CODES.BRANCH_NOT_ASSIGNED });
+        throw new AppError(
+          "This staff member is not assigned to this branch",
+          400,
+          { code: REASON_CODES.BRANCH_NOT_ASSIGNED },
+        );
       }
       if (reasons.includes(REASON_CODES.SERVICE_NOT_SUPPORTED)) {
-        throw new AppError("Staff member is not qualified for one or more selected services", 400, { code: REASON_CODES.SERVICE_NOT_SUPPORTED });
+        throw new AppError(
+          "Staff member is not qualified for one or more selected services",
+          400,
+          { code: REASON_CODES.SERVICE_NOT_SUPPORTED },
+        );
       }
       if (reasons.includes(REASON_CODES.BRANCH_CLOSED)) {
-        throw new AppError("Branch is closed during the selected appointment interval", 400, { code: REASON_CODES.BRANCH_CLOSED });
+        throw new AppError(
+          "Branch is closed during the selected appointment interval",
+          400,
+          { code: REASON_CODES.BRANCH_CLOSED },
+        );
       }
       if (reasons.includes(REASON_CODES.STAFF_NOT_SCHEDULED)) {
-        throw new AppError("Staff member is not scheduled at this branch at this time", 400, { code: REASON_CODES.STAFF_NOT_SCHEDULED });
+        throw new AppError(
+          "Staff member is not scheduled at this branch at this time",
+          400,
+          { code: REASON_CODES.STAFF_NOT_SCHEDULED },
+        );
       }
       if (reasons.includes(REASON_CODES.APPROVED_LEAVE)) {
-        throw new AppError(`Staff member is on leave on date ${dateStr}`, 400, { code: REASON_CODES.APPROVED_LEAVE });
+        throw new AppError(`Staff member is on leave on date ${dateStr}`, 400, {
+          code: REASON_CODES.APPROVED_LEAVE,
+        });
       }
       if (reasons.includes(REASON_CODES.PARTIAL_DAY_LEAVE_CONFLICT)) {
-        throw new AppError("Staff member is on partial-day leave during this time slot", 400, { code: REASON_CODES.PARTIAL_DAY_LEAVE_CONFLICT });
+        throw new AppError(
+          "Staff member is on partial-day leave during this time slot",
+          400,
+          { code: REASON_CODES.PARTIAL_DAY_LEAVE_CONFLICT },
+        );
       }
-      if (reasons.includes(REASON_CODES.APPOINTMENT_CONFLICT) || reasons.includes(REASON_CODES.CROSS_BRANCH_CONFLICT)) {
-        throw new AppError("Staff member has an overlapping appointment during this time window", 409, { code: reasons[0] });
+      if (
+        reasons.includes(REASON_CODES.APPOINTMENT_CONFLICT) ||
+        reasons.includes(REASON_CODES.CROSS_BRANCH_CONFLICT)
+      ) {
+        throw new AppError(
+          "Staff member has an overlapping appointment during this time window",
+          409,
+          { code: reasons[0] },
+        );
       }
       if (reasons.includes(REASON_CODES.TRAVEL_TIME_CONFLICT)) {
-        throw new AppError("There is not enough transition time between appointments at different branches", 409, { code: REASON_CODES.TRAVEL_TIME_CONFLICT });
+        throw new AppError(
+          "There is not enough transition time between appointments at different branches",
+          409,
+          { code: REASON_CODES.TRAVEL_TIME_CONFLICT },
+        );
       }
       if (reasons.includes(REASON_CODES.ATTENDANCE_CLOCKED_OUT)) {
-        throw new AppError("Staff member has clocked out for the day", 400, { code: REASON_CODES.ATTENDANCE_CLOCKED_OUT });
+        throw new AppError("Staff member has clocked out for the day", 400, {
+          code: REASON_CODES.ATTENDANCE_CLOCKED_OUT,
+        });
       }
-      if (reasons.includes(REASON_CODES.ATTENDANCE_CONFLICT) || reasons.includes(REASON_CODES.ATTENDANCE_INCOMPLETE)) {
-        throw new AppError("Attendance needs manager review before assigning this staff member", 400, { code: REASON_CODES.ATTENDANCE_REVIEW_REQUIRED });
+      if (
+        reasons.includes(REASON_CODES.ATTENDANCE_CONFLICT) ||
+        reasons.includes(REASON_CODES.ATTENDANCE_INCOMPLETE) ||
+        reasons.includes(REASON_CODES.ATTENDANCE_REVIEW_REQUIRED)
+      ) {
+        throw new AppError(
+          "Attendance needs manager review before assigning this staff member",
+          400,
+          { code: REASON_CODES.ATTENDANCE_REVIEW_REQUIRED },
+        );
       }
-      throw new AppError("Staff member is not available for this appointment slot", 400, { code: reasons[0] || "STAFF_UNAVAILABLE" });
+      throw new AppError(
+        "Staff member is not available for this appointment slot",
+        400,
+        { code: reasons[0] || "STAFF_UNAVAILABLE" },
+      );
     }
   }
 
@@ -494,7 +546,7 @@ export class AppointmentService {
     customerId,
     branchId,
     organizationId,
-    session = null
+    session = null,
   ) {
     if (!subscriptionId) return null;
 
@@ -507,14 +559,17 @@ export class AppointmentService {
     const subscription = await query;
 
     if (!subscription) {
-      throw new AppError("Applied subscription not found in this organization", 404);
+      throw new AppError(
+        "Applied subscription not found in this organization",
+        404,
+      );
     }
 
     const redeemableStatuses = ["active", "pending_payment"];
     if (!redeemableStatuses.includes(subscription.status)) {
       throw new AppError(
         `Applied subscription is not eligible for redemption (current status: '${subscription.status}')`,
-        400
+        400,
       );
     }
 
@@ -522,29 +577,44 @@ export class AppointmentService {
     let member = null;
     const rawDoc = subscription._doc || subscription;
     const hasMembersField = "members" in rawDoc && rawDoc.members !== undefined;
-    const isExplicitEmptyMembers = hasMembersField && Array.isArray(rawDoc.members) && rawDoc.members.length === 0;
-    const hasPopulatedMembers = hasMembersField && Array.isArray(rawDoc.members) && rawDoc.members.length > 0;
+    const isExplicitEmptyMembers =
+      hasMembersField &&
+      Array.isArray(rawDoc.members) &&
+      rawDoc.members.length === 0;
+    const hasPopulatedMembers =
+      hasMembersField &&
+      Array.isArray(rawDoc.members) &&
+      rawDoc.members.length > 0;
 
     if (isExplicitEmptyMembers) {
       // Explicit empty members array on a multi-customer subscription must fail closed
-      throw new AppError("Applied subscription does not belong to this customer", 400);
+      throw new AppError(
+        "Applied subscription does not belong to this customer",
+        400,
+      );
     } else if (hasPopulatedMembers) {
       member = subscription.members.find(
-        (m) => m.customerId.toString() === customerId.toString()
+        (m) => m.customerId.toString() === customerId.toString(),
       );
       if (!member) {
-        throw new AppError("Applied subscription does not belong to this customer", 400);
+        throw new AppError(
+          "Applied subscription does not belong to this customer",
+          400,
+        );
       }
       if (!["active", "pending_payment"].includes(member.status)) {
         throw new AppError(
           `Customer membership in applied subscription is not active (current status: '${member.status}')`,
-          400
+          400,
         );
       }
     } else {
       // Genuine legacy single-customer subscription (members field is undefined in storage)
       if (subscription.customerId.toString() !== customerId.toString()) {
-        throw new AppError("Applied subscription does not belong to this customer", 400);
+        throw new AppError(
+          "Applied subscription does not belong to this customer",
+          400,
+        );
       }
     }
 
@@ -557,21 +627,36 @@ export class AppointmentService {
     }
 
     // Branch eligibility check (effective intersection: sub is hard maximum, member further restricts)
-    const subBranches = Array.isArray(subscription.permittedBranchIds) ? subscription.permittedBranchIds : [];
-    const memberBranches = member && Array.isArray(member.permittedBranchIds) ? member.permittedBranchIds : [];
+    const subBranches = Array.isArray(subscription.permittedBranchIds)
+      ? subscription.permittedBranchIds
+      : [];
+    const memberBranches =
+      member && Array.isArray(member.permittedBranchIds)
+        ? member.permittedBranchIds
+        : [];
     const branchIdStr = branchId.toString();
 
     if (subBranches.length > 0) {
-      const isAllowedBySub = subBranches.some((b) => b.toString() === branchIdStr);
+      const isAllowedBySub = subBranches.some(
+        (b) => b.toString() === branchIdStr,
+      );
       if (!isAllowedBySub) {
-        throw new AppError("Applied subscription is not valid at this branch", 403);
+        throw new AppError(
+          "Applied subscription is not valid at this branch",
+          403,
+        );
       }
     }
 
     if (memberBranches.length > 0) {
-      const isAllowedByMember = memberBranches.some((b) => b.toString() === branchIdStr);
+      const isAllowedByMember = memberBranches.some(
+        (b) => b.toString() === branchIdStr,
+      );
       if (!isAllowedByMember) {
-        throw new AppError("Applied subscription is not valid at this branch", 403);
+        throw new AppError(
+          "Applied subscription is not valid at this branch",
+          403,
+        );
       }
     }
 
@@ -581,26 +666,26 @@ export class AppointmentService {
     let entitlement = null;
     if (member) {
       entitlement = (member.entitlements || []).find(
-        (e) => e.serviceId.toString() === serviceId.toString()
+        (e) => e.serviceId.toString() === serviceId.toString(),
       );
     } else {
       // Legacy single-customer subscription without members array uses root entitlements
       entitlement = (subscription.entitlements || []).find(
-        (e) => e.serviceId.toString() === serviceId.toString()
+        (e) => e.serviceId.toString() === serviceId.toString(),
       );
     }
 
     if (!entitlement) {
       throw new AppError(
         "Applied subscription does not contain an entitlement for this service",
-        400
+        400,
       );
     }
 
     if (entitlement.remainingQuantity <= 0) {
       throw new AppError(
         `Applied subscription has no remaining quantity for service '${entitlement.serviceName}'`,
-        409
+        409,
       );
     }
 
@@ -621,7 +706,7 @@ export class AppointmentService {
     serviceId,
     branchId,
     organizationId,
-    session = null
+    session = null,
   ) {
     const now = new Date();
     const customerObjId = new mongoose.Types.ObjectId(customerId);
@@ -842,14 +927,15 @@ export class AppointmentService {
     );
     const extractedIds = registeredInputs.map((item) => item.serviceId);
 
-    const dbServices = extractedIds.length > 0
-      ? await Service.find({
-        _id: { $in: extractedIds },
-        organizationId,
-        isDeleted: false,
-        status: "active",
-      })
-      : [];
+    const dbServices =
+      extractedIds.length > 0
+        ? await Service.find({
+            _id: { $in: extractedIds },
+            organizationId,
+            isDeleted: false,
+            status: "active",
+          })
+        : [];
 
     if (dbServices.length !== extractedIds.length) {
       throw new AppError(
@@ -868,7 +954,10 @@ export class AppointmentService {
           branchId,
           organizationId,
         );
-      } else if (item.appliedSubscriptionId === "auto" || item.appliedSubscriptionId === undefined) {
+      } else if (
+        item.appliedSubscriptionId === "auto" ||
+        item.appliedSubscriptionId === undefined
+      ) {
         // Automatically check if customer has an eligible active subscription for this service
         const eligibleSub = await this.findEligibleSubscriptionForService(
           customerId,
@@ -965,7 +1054,9 @@ export class AppointmentService {
 
     // 5. Staff Availability & Leave Validation
     if (staffId) {
-      const registeredServiceIds = (extractedIds || []).map((id) => id.toString());
+      const registeredServiceIds = (extractedIds || []).map((id) =>
+        id.toString(),
+      );
 
       await this.validateStaffAvailability(
         staffId,
@@ -980,16 +1071,20 @@ export class AppointmentService {
     }
 
     // Resolve customer membership benefits for automatic discount assignment
-    const { membershipService } = await import("../memberships/membership.service.js");
-    const activeMembership = await membershipService.resolveActiveMembershipForCustomer(
-      customerId,
-      branchId,
-      organizationId,
-    );
+    const { membershipService } =
+      await import("../memberships/membership.service.js");
+    const activeMembership =
+      await membershipService.resolveActiveMembershipForCustomer(
+        customerId,
+        branchId,
+        organizationId,
+      );
 
     let totalMembershipDiscount = 0;
     if (activeMembership && activeMembership.planSnapshot?.benefits) {
-      const discountPct = Number(activeMembership.planSnapshot.benefits.serviceDiscountPercentage || 0);
+      const discountPct = Number(
+        activeMembership.planSnapshot.benefits.serviceDiscountPercentage || 0,
+      );
       if (discountPct > 0) {
         for (const line of serviceSnapshots) {
           if (!line.appliedSubscriptionId && !line.isRedeemedViaSubscription) {
@@ -998,15 +1093,20 @@ export class AppointmentService {
             if (isCustom) {
               isEligible = true;
             } else {
-              const dbServ = dbServices.find((ds) => ds._id.toString() === line.serviceId?.toString());
+              const dbServ = dbServices.find(
+                (ds) => ds._id.toString() === line.serviceId?.toString(),
+              );
               isEligible = isServiceEligibleForMembershipBenefits(
                 { _id: line.serviceId, categoryId: dbServ?.categoryId },
                 activeMembership.planSnapshot.benefits,
               );
             }
             if (isEligible) {
-              const lineDisc = Number(((line.price * discountPct) / 100).toFixed(2));
-              line.appliedCustomerMembershipId = activeMembership._id.toString();
+              const lineDisc = Number(
+                ((line.price * discountPct) / 100).toFixed(2),
+              );
+              line.appliedCustomerMembershipId =
+                activeMembership._id.toString();
               line.membershipCode = activeMembership.membershipCode;
               line.membershipDiscountPercentage = discountPct;
               line.membershipDiscountAmount = lineDisc;
@@ -1019,8 +1119,13 @@ export class AppointmentService {
 
     // 6. Calculate Pricing
     const baseDiscount = Number((discount || 0).toFixed(2));
-    const effectiveDiscount = Number((baseDiscount + totalMembershipDiscount).toFixed(2));
-    const total = Math.max(0, Number((subtotal - effectiveDiscount).toFixed(2)));
+    const effectiveDiscount = Number(
+      (baseDiscount + totalMembershipDiscount).toFixed(2),
+    );
+    const total = Math.max(
+      0,
+      Number((subtotal - effectiveDiscount).toFixed(2)),
+    );
 
     // 7. Generate Code & Minute Buckets
     const appointmentCode = await this.generateAppointmentCode(organizationId);
@@ -1189,7 +1294,8 @@ export class AppointmentService {
             serviceType: "custom",
             _id: item._id || item.id || item.appointmentServiceId,
             name: item.name ? String(item.name).trim() : "",
-            duration: item.duration !== undefined ? Number(item.duration) : undefined,
+            duration:
+              item.duration !== undefined ? Number(item.duration) : undefined,
             price:
               item.price !== undefined
                 ? Number(item.price)
@@ -1234,14 +1340,15 @@ export class AppointmentService {
       );
       const extractedIds = registeredInputs.map((item) => item.serviceId);
 
-      const dbServices = extractedIds.length > 0
-        ? await Service.find({
-          _id: { $in: extractedIds },
-          organizationId,
-          isDeleted: false,
-          status: "active",
-        })
-        : [];
+      const dbServices =
+        extractedIds.length > 0
+          ? await Service.find({
+              _id: { $in: extractedIds },
+              organizationId,
+              isDeleted: false,
+              status: "active",
+            })
+          : [];
 
       if (dbServices.length !== extractedIds.length) {
         throw new AppError(
@@ -1256,7 +1363,10 @@ export class AppointmentService {
       // Validate or auto-resolve appliedSubscriptionId deterministically for registered lines
       const customerId = appointment.customerId?._id || appointment.customerId;
       for (const item of registeredInputs) {
-        if (item.appliedSubscriptionId && item.appliedSubscriptionId !== "auto") {
+        if (
+          item.appliedSubscriptionId &&
+          item.appliedSubscriptionId !== "auto"
+        ) {
           await this.validateSubscriptionEntitlement(
             item.appliedSubscriptionId,
             item.serviceId,
@@ -1264,7 +1374,10 @@ export class AppointmentService {
             branchId,
             organizationId,
           );
-        } else if (item.appliedSubscriptionId === "auto" || item.appliedSubscriptionId === undefined) {
+        } else if (
+          item.appliedSubscriptionId === "auto" ||
+          item.appliedSubscriptionId === undefined
+        ) {
           // Automatically check if customer has an eligible active subscription for this service
           const eligibleSub = await this.findEligibleSubscriptionForService(
             customerId,
@@ -1291,8 +1404,8 @@ export class AppointmentService {
           // If existing custom line matched by _id, preserve its agreed price if item.price not specified
           const existingLine = item._id
             ? existingServices.find(
-              (es) => es._id && es._id.toString() === item._id.toString(),
-            )
+                (es) => es._id && es._id.toString() === item._id.toString(),
+              )
             : null;
 
           const resolvedPrice =
@@ -1301,11 +1414,14 @@ export class AppointmentService {
               : (existingLine?.price ?? 0);
 
           const resolvedDuration =
-            item.duration !== undefined && !isNaN(item.duration) && item.duration > 0
+            item.duration !== undefined &&
+            !isNaN(item.duration) &&
+            item.duration > 0
               ? item.duration
               : (existingLine?.duration ?? 1);
 
-          const resolvedName = item.name || existingLine?.name || "Custom Service";
+          const resolvedName =
+            item.name || existingLine?.name || "Custom Service";
 
           totalDuration += resolvedDuration;
           subtotal += resolvedPrice;
@@ -1332,13 +1448,20 @@ export class AppointmentService {
           if (item._id && es._id && es._id.toString() === item._id.toString()) {
             return true;
           }
-          return es.serviceId && es.serviceId.toString() === item.serviceId.toString();
+          return (
+            es.serviceId &&
+            es.serviceId.toString() === item.serviceId.toString()
+          );
         });
 
         let resolvedPrice;
         if (item.customPrice !== undefined && item.customPrice !== null) {
           resolvedPrice = Number(item.customPrice);
-        } else if (existingLine && existingLine.price !== undefined && existingLine.price !== null) {
+        } else if (
+          existingLine &&
+          existingLine.price !== undefined &&
+          existingLine.price !== null
+        ) {
           resolvedPrice = existingLine.price;
         } else {
           resolvedPrice = s.pricing?.basePrice ?? 0;
@@ -1354,9 +1477,17 @@ export class AppointmentService {
           name: s.name,
           duration: s.duration,
           price: resolvedPrice,
-          appliedSubscriptionId: item.appliedSubscriptionId || (existingLine?.appliedSubscriptionId ? existingLine.appliedSubscriptionId.toString() : null),
-          isRedeemedViaSubscription: existingLine ? existingLine.isRedeemedViaSubscription : false,
-          subscriptionUsageId: existingLine ? existingLine.subscriptionUsageId : null,
+          appliedSubscriptionId:
+            item.appliedSubscriptionId ||
+            (existingLine?.appliedSubscriptionId
+              ? existingLine.appliedSubscriptionId.toString()
+              : null),
+          isRedeemedViaSubscription: existingLine
+            ? existingLine.isRedeemedViaSubscription
+            : false,
+          subscriptionUsageId: existingLine
+            ? existingLine.subscriptionUsageId
+            : null,
         };
       });
 
@@ -1406,7 +1537,11 @@ export class AppointmentService {
     let staffAvailabilityValidated = false;
     if (staffId !== undefined && staffId !== appointment.staffId?.toString()) {
       if (staffId) {
-        const registeredServiceIds = (updates.services || appointment.services || [])
+        const registeredServiceIds = (
+          updates.services ||
+          appointment.services ||
+          []
+        )
           .filter((s) => s.serviceType === "registered" && s.serviceId)
           .map((s) => s.serviceId.toString());
 
@@ -1434,7 +1569,8 @@ export class AppointmentService {
     }
 
     // Re-validate staff availability if service duration or qualifications changed for an existing assigned staff
-    const activeStaffId = updates.staffId !== undefined ? updates.staffId : appointment.staffId;
+    const activeStaffId =
+      updates.staffId !== undefined ? updates.staffId : appointment.staffId;
     if (!staffAvailabilityValidated && updates.services && activeStaffId) {
       const registeredServiceIds = (updates.services || [])
         .filter((s) => s.serviceType === "registered" && s.serviceId)
@@ -1577,7 +1713,9 @@ export class AppointmentService {
             organizationId,
             branchId,
             actorId: userId,
-            action: AUDIT_ACTIONS.APPOINTMENT_RESCHEDULED || "APPOINTMENT_RESCHEDULED",
+            action:
+              AUDIT_ACTIONS.APPOINTMENT_RESCHEDULED ||
+              "APPOINTMENT_RESCHEDULED",
             entityType: "Appointment",
             entityId: appointment._id,
             description: `Appointment ${appointment.appointmentCode} rescheduled from ${appointment.appointmentDate} ${appointment.startTime} to ${formattedStart.dateStr} ${formattedStart.timeStr}`,
@@ -1597,7 +1735,9 @@ export class AppointmentService {
             },
           });
         } catch (auditErr) {
-          logger.warn(`Failed to create audit log for reschedule: ${auditErr.message}`);
+          logger.warn(
+            `Failed to create audit log for reschedule: ${auditErr.message}`,
+          );
         }
       }
 
@@ -1716,7 +1856,9 @@ export class AppointmentService {
 
       // Audit log for staff assignment / reassignment
       if (userId) {
-        const prevStaff = appointment.staffId ? appointment.staffId.toString() : null;
+        const prevStaff = appointment.staffId
+          ? appointment.staffId.toString()
+          : null;
         const nextStaff = staffId ? staffId.toString() : null;
         let description;
         if (!prevStaff && nextStaff) {
@@ -1732,7 +1874,9 @@ export class AppointmentService {
             organizationId,
             branchId,
             actorId: userId,
-            action: AUDIT_ACTIONS.APPOINTMENT_STAFF_REASSIGNED || "APPOINTMENT_STAFF_REASSIGNED",
+            action:
+              AUDIT_ACTIONS.APPOINTMENT_STAFF_REASSIGNED ||
+              "APPOINTMENT_STAFF_REASSIGNED",
             entityType: "Appointment",
             entityId: appointment._id,
             description,
@@ -1746,7 +1890,9 @@ export class AppointmentService {
             },
           });
         } catch (auditErr) {
-          logger.warn(`Failed to create audit log for assignStaff: ${auditErr.message}`);
+          logger.warn(
+            `Failed to create audit log for assignStaff: ${auditErr.message}`,
+          );
         }
       }
 
@@ -1813,7 +1959,10 @@ export class AppointmentService {
       const EARLY_START_WINDOW_MS = 15 * 60 * 1000;
       const scheduledStartMs = new Date(appointment.startAt).getTime();
       const nowMs = Date.now();
-      if (scheduledStartMs - nowMs > EARLY_START_WINDOW_MS && !data.forceEarlyStart) {
+      if (
+        scheduledStartMs - nowMs > EARLY_START_WINDOW_MS &&
+        !data.forceEarlyStart
+      ) {
         throw new AppError(
           `Cannot start future appointment early. Appointment is scheduled for ${appointment.startTime} on ${appointment.appointmentDate}. Use forceEarlyStart override with authorization to proceed.`,
           400,
@@ -1837,7 +1986,9 @@ export class AppointmentService {
       if (overdueAppointment && !data.allowOverdueStaffOverride) {
         const overdueMinutes = Math.max(
           1,
-          Math.round((nowMs - new Date(overdueAppointment.endAt).getTime()) / 60000),
+          Math.round(
+            (nowMs - new Date(overdueAppointment.endAt).getTime()) / 60000,
+          ),
         );
         throw new AppError(
           `Assigned staff member is currently working on an overdue appointment (${overdueAppointment.appointmentCode}) that was scheduled to end at ${overdueAppointment.endTime} (${overdueMinutes}m overdue). An explicit manager override is required to start this appointment.`,
@@ -1861,12 +2012,12 @@ export class AppointmentService {
       }
       // Ensure appointments with subscription-associated service lines cannot bypass OTP consumption
       const hasSubscriptionService = (appointment.services || []).some(
-        (s) => s.appliedSubscriptionId && !s.isRedeemedViaSubscription
+        (s) => s.appliedSubscriptionId && !s.isRedeemedViaSubscription,
       );
       if (hasSubscriptionService) {
         throw new AppError(
           "This appointment contains subscription-associated services. It must be completed via OTP verification at /api/v1/appointments/:id/complete-with-subscription",
-          400
+          400,
         );
       }
     }
@@ -1894,30 +2045,38 @@ export class AppointmentService {
 
     let updated;
     if (status === "completed") {
-      updated = await runInTransaction(async (session) => {
-        const completedAppointment = await Appointment.findOneAndUpdate(
-          {
-            _id: id,
-            organizationId,
-            isDeleted: false,
-            status: currentStatus,
-          },
-          { $set: updates },
-          { returnDocument: "after", runValidators: true, session },
-        );
+      updated = await runInTransaction(
+        async (session) => {
+          const completedAppointment = await Appointment.findOneAndUpdate(
+            {
+              _id: id,
+              organizationId,
+              isDeleted: false,
+              status: currentStatus,
+            },
+            { $set: updates },
+            { returnDocument: "after", runValidators: true, session },
+          );
 
-        if (!completedAppointment) {
-          throw new AppError("Appointment status conflict during completion", 409);
-        }
+          if (!completedAppointment) {
+            throw new AppError(
+              "Appointment status conflict during completion",
+              409,
+            );
+          }
 
-        await settlementFulfillmentEventService.handlePhysicalFulfillmentCompleted({
-          appointment: completedAppointment,
-          session,
-          userId,
-        });
+          await settlementFulfillmentEventService.handlePhysicalFulfillmentCompleted(
+            {
+              appointment: completedAppointment,
+              session,
+              userId,
+            },
+          );
 
-        return completedAppointment;
-      }, { requireTransaction: true });
+          return completedAppointment;
+        },
+        { requireTransaction: true },
+      );
     } else {
       updated = await appointmentRepo.update(id, updates, organizationId);
     }
@@ -1929,7 +2088,9 @@ export class AppointmentService {
           organizationId,
           branchId,
           actorId: userId,
-          action: AUDIT_ACTIONS.APPOINTMENT_STATUS_UPDATED || "APPOINTMENT_STATUS_UPDATED",
+          action:
+            AUDIT_ACTIONS.APPOINTMENT_STATUS_UPDATED ||
+            "APPOINTMENT_STATUS_UPDATED",
           entityType: "Appointment",
           entityId: appointment._id,
           description: `Appointment ${appointment.appointmentCode} status transitioned from ${currentStatus} to ${status}`,
@@ -1944,7 +2105,9 @@ export class AppointmentService {
           },
         });
       } catch (auditErr) {
-        logger.warn(`Failed to create audit log for status change: ${auditErr.message}`);
+        logger.warn(
+          `Failed to create audit log for status change: ${auditErr.message}`,
+        );
       }
     }
 
@@ -1970,25 +2133,28 @@ export class AppointmentService {
     const getAptBranchId = (apt) =>
       apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString();
     if (getAptBranchId(appointment) !== branchId.toString()) {
-      throw new AppError("Target branchId does not match appointment branch", 400);
+      throw new AppError(
+        "Target branchId does not match appointment branch",
+        400,
+      );
     }
 
     if (appointment.status !== "in_progress") {
       throw new AppError(
         `Consumption OTP can only be requested for appointments in 'in_progress' status (current status: '${appointment.status}')`,
-        400
+        400,
       );
     }
 
     // Identify unredeemed subscription-associated service lines
     const subscriptionLines = (appointment.services || []).filter(
-      (s) => s.appliedSubscriptionId && !s.isRedeemedViaSubscription
+      (s) => s.appliedSubscriptionId && !s.isRedeemedViaSubscription,
     );
 
     if (subscriptionLines.length === 0) {
       throw new AppError(
         "Appointment does not contain any unredeemed subscription-associated services",
-        400
+        400,
       );
     }
 
@@ -2004,7 +2170,10 @@ export class AppointmentService {
     }
 
     if (!customer.phone) {
-      throw new AppError("Customer does not have a registered phone number for OTP delivery", 400);
+      throw new AppError(
+        "Customer does not have a registered phone number for OTP delivery",
+        400,
+      );
     }
 
     // Ensure every unredeemed subscription line has an _id so it can be uniquely tracked
@@ -2025,7 +2194,7 @@ export class AppointmentService {
       ...new Set(
         subscriptionLines
           .map((l) => getReferenceIdString(l.appliedSubscriptionId))
-          .filter(Boolean)
+          .filter(Boolean),
       ),
     ];
 
@@ -2043,7 +2212,7 @@ export class AppointmentService {
         getReferenceId(line.serviceId),
         customer._id,
         branchId,
-        organizationId
+        organizationId,
       );
     }
 
@@ -2063,7 +2232,7 @@ export class AppointmentService {
       },
       {
         $set: { status: "expired" },
-      }
+      },
     );
 
     // 2. Query any active or unexpired challenge for this appointment
@@ -2071,40 +2240,52 @@ export class AppointmentService {
     // - status: "pending" (unexpired) or "in_redemption"
     // - redemptionState: non-terminal redemption states ("in_redemption", "decremented", "restoring")
     // Also include any challenge for this appointment that has not expired (expiresAt > now)
-    const activeOrPendingChallenge = await SubscriptionConsumptionChallenge.findOne({
-      appointmentId: appointment._id,
-      $or: [
-        { status: { $in: ["pending", "in_redemption"] } },
-        { redemptionState: { $in: ["in_redemption", "decremented", "restoring"] } },
-        { expiresAt: { $gt: now } },
-      ],
-    }).sort({ createdAt: -1 });
+    const activeOrPendingChallenge =
+      await SubscriptionConsumptionChallenge.findOne({
+        appointmentId: appointment._id,
+        $or: [
+          { status: { $in: ["pending", "in_redemption"] } },
+          {
+            redemptionState: {
+              $in: ["in_redemption", "decremented", "restoring"],
+            },
+          },
+          { expiresAt: { $gt: now } },
+        ],
+      }).sort({ createdAt: -1 });
 
     if (activeOrPendingChallenge) {
       if (
         activeOrPendingChallenge.status === "in_redemption" ||
-        ["in_redemption", "decremented", "restoring"].includes(activeOrPendingChallenge.redemptionState)
+        ["in_redemption", "decremented", "restoring"].includes(
+          activeOrPendingChallenge.redemptionState,
+        )
       ) {
         throw new AppError(
           "A subscription redemption is currently in progress or awaiting reconciliation for this appointment. Please wait.",
-          409
+          409,
         );
       }
 
       // Check attempt exhaustion limit on existing active challenge
-      if (activeOrPendingChallenge.status === "exhausted" || (activeOrPendingChallenge.attempts || 0) >= 5) {
+      if (
+        activeOrPendingChallenge.status === "exhausted" ||
+        (activeOrPendingChallenge.attempts || 0) >= 5
+      ) {
         throw new AppError(
           "Too many incorrect OTP attempts. This challenge is exhausted. Please wait for it to expire before requesting a new OTP.",
-          429
+          429,
         );
       }
 
       // It is an unexpired pending challenge: enforce 60s cooldown
       if (activeOrPendingChallenge.resendAvailableAt > now) {
-        const waitSeconds = Math.ceil((activeOrPendingChallenge.resendAvailableAt - now) / 1000);
+        const waitSeconds = Math.ceil(
+          (activeOrPendingChallenge.resendAvailableAt - now) / 1000,
+        );
         throw new AppError(
           `Too many OTP requests. Please wait ${waitSeconds} seconds before requesting a new OTP.`,
-          429
+          429,
         );
       }
     }
@@ -2121,41 +2302,45 @@ export class AppointmentService {
     // If an unexpired pending challenge exists whose 60s cooldown has elapsed, atomically rotate its OTP
     // using findOneAndUpdate with CAS filter on status, redemptionState, resendAvailableAt, and attempts (< 5).
     // Preserves the existing verification attempt limit across resends to prevent unlimited brute-force attempts.
-    if (activeOrPendingChallenge && activeOrPendingChallenge.status === "pending") {
+    if (
+      activeOrPendingChallenge &&
+      activeOrPendingChallenge.status === "pending"
+    ) {
       const nextSeq = (activeOrPendingChallenge.dispatchSeq || 1) + 1;
       const dispatchJobId = `sub_otp_${activeOrPendingChallenge._id}_${nextSeq}`;
 
-      const updatedChallenge = await SubscriptionConsumptionChallenge.findOneAndUpdate(
-        {
-          _id: activeOrPendingChallenge._id,
-          status: "pending",
-          redemptionState: "pending",
-          attempts: { $lt: 5 },
-          resendAvailableAt: { $lte: now },
-        },
-        {
-          $set: {
-            otpHash,
-            subscriptionIds: uniqueSubscriptionIds,
-            serviceIds,
-            serviceLines: serviceLineBindings,
-            expiresAt,
-            resendAvailableAt,
+      const updatedChallenge =
+        await SubscriptionConsumptionChallenge.findOneAndUpdate(
+          {
+            _id: activeOrPendingChallenge._id,
             status: "pending",
             redemptionState: "pending",
-            dispatchJobId,
-            dispatchSeq: nextSeq,
-            dispatchStatus: "pending",
+            attempts: { $lt: 5 },
+            resendAvailableAt: { $lte: now },
           },
-        },
-        { returnDocument: "after" }
-      );
+          {
+            $set: {
+              otpHash,
+              subscriptionIds: uniqueSubscriptionIds,
+              serviceIds,
+              serviceLines: serviceLineBindings,
+              expiresAt,
+              resendAvailableAt,
+              status: "pending",
+              redemptionState: "pending",
+              dispatchJobId,
+              dispatchSeq: nextSeq,
+              dispatchStatus: "pending",
+            },
+          },
+          { returnDocument: "after" },
+        );
 
       if (!updatedChallenge) {
         // Another concurrent request either already rotated the OTP or advanced the challenge
         throw new AppError(
           "An OTP request was recently processed or redemption is in progress. Please wait before retrying.",
-          409
+          409,
         );
       }
 
@@ -2176,25 +2361,27 @@ export class AppointmentService {
           },
           {
             jobId: dispatchJobId,
-          }
+          },
         );
 
         await SubscriptionConsumptionChallenge.updateOne(
           { _id: activeOrPendingChallenge._id, dispatchJobId },
-          { $set: { dispatchStatus: "queued" } }
+          { $set: { dispatchStatus: "queued" } },
         ).catch(() => {});
       } catch (queueErr) {
-        logger.error(`Failed or ambiguous enqueue of consumption OTP SMS on resend [${dispatchJobId}]: ${queueErr.message}`);
+        logger.error(
+          `Failed or ambiguous enqueue of consumption OTP SMS on resend [${dispatchJobId}]: ${queueErr.message}`,
+        );
 
         // Mark dispatchStatus: "failed" on the challenge record without invalidating the active otpHash
         await SubscriptionConsumptionChallenge.updateOne(
           { _id: activeOrPendingChallenge._id, dispatchJobId },
-          { $set: { dispatchStatus: "failed" } }
+          { $set: { dispatchStatus: "failed" } },
         ).catch(() => {});
 
         throw new AppError(
           "Failed to dispatch OTP SMS. Please try again in a few moments.",
-          500
+          500,
         );
       }
     } else {
@@ -2203,13 +2390,17 @@ export class AppointmentService {
         appointmentId: appointment._id,
         $or: [
           { status: "in_redemption" },
-          { redemptionState: { $in: ["in_redemption", "decremented", "restoring"] } },
+          {
+            redemptionState: {
+              $in: ["in_redemption", "decremented", "restoring"],
+            },
+          },
         ],
       });
       if (conflictCheck) {
         throw new AppError(
           "A subscription redemption is currently in progress or awaiting reconciliation for this appointment. Please wait.",
-          409
+          409,
         );
       }
 
@@ -2243,7 +2434,7 @@ export class AppointmentService {
         if (createErr.code === 11000) {
           throw new AppError(
             "A subscription redemption is currently in progress or awaiting reconciliation for this appointment. Please wait.",
-            409
+            409,
           );
         }
         throw createErr;
@@ -2266,15 +2457,17 @@ export class AppointmentService {
           },
           {
             jobId: dispatchJobId,
-          }
+          },
         );
 
         await SubscriptionConsumptionChallenge.updateOne(
           { _id: createdChallenge._id, dispatchJobId },
-          { $set: { dispatchStatus: "queued" } }
+          { $set: { dispatchStatus: "queued" } },
         ).catch(() => {});
       } catch (queueErr) {
-        logger.error(`Failed or ambiguous enqueue of consumption OTP SMS on initial creation [${dispatchJobId}]: ${queueErr.message}`);
+        logger.error(
+          `Failed or ambiguous enqueue of consumption OTP SMS on initial creation [${dispatchJobId}]: ${queueErr.message}`,
+        );
 
         // Update challenge to mark dispatch failure and reset resendAvailableAt to allow immediate client retry,
         // without destroying the challenge document or its valid otpHash!
@@ -2290,19 +2483,23 @@ export class AppointmentService {
               dispatchStatus: "failed",
               resendAvailableAt: new Date(),
             },
-          }
+          },
         ).catch((updateErr) => {
-          logger.error(`Failed to update challenge dispatchStatus after queue failure: ${updateErr.message}`);
+          logger.error(
+            `Failed to update challenge dispatchStatus after queue failure: ${updateErr.message}`,
+          );
         });
 
         throw new AppError(
           "Failed to dispatch OTP SMS. Please try again in a few moments.",
-          500
+          500,
         );
       }
     }
 
-    logger.info(`[SECURITY] CONSUMPTION_OTP_SENT for appointment ${appointment._id}`);
+    logger.info(
+      `[SECURITY] CONSUMPTION_OTP_SENT for appointment ${appointment._id}`,
+    );
 
     return {
       success: true,
@@ -2321,7 +2518,10 @@ export class AppointmentService {
     const { branchId, otp } = data;
 
     if (!otp) {
-      throw new AppError("OTP is required to complete subscription-associated appointment", 400);
+      throw new AppError(
+        "OTP is required to complete subscription-associated appointment",
+        400,
+      );
     }
 
     const appointment = await appointmentRepo.findById(id, organizationId);
@@ -2332,24 +2532,27 @@ export class AppointmentService {
     const getAptBranchId = (apt) =>
       apt.branchId?._id ? apt.branchId._id.toString() : apt.branchId.toString();
     if (getAptBranchId(appointment) !== branchId.toString()) {
-      throw new AppError("Target branchId does not match appointment branch", 400);
+      throw new AppError(
+        "Target branchId does not match appointment branch",
+        400,
+      );
     }
 
     if (appointment.status !== "in_progress") {
       throw new AppError(
         `Cannot complete appointment with status '${appointment.status}'. Must be 'in_progress'`,
-        400
+        400,
       );
     }
 
     const subscriptionLines = (appointment.services || []).filter(
-      (s) => s.appliedSubscriptionId && !s.isRedeemedViaSubscription
+      (s) => s.appliedSubscriptionId && !s.isRedeemedViaSubscription,
     );
 
     if (subscriptionLines.length === 0) {
       throw new AppError(
         "Appointment does not contain any unredeemed subscription-associated services",
-        400
+        400,
       );
     }
 
@@ -2362,7 +2565,7 @@ export class AppointmentService {
     if (!challenge) {
       throw new AppError(
         "No OTP challenge found. Please request an OTP first.",
-        400
+        400,
       );
     }
 
@@ -2370,10 +2573,13 @@ export class AppointmentService {
       if (challenge.status !== "exhausted") {
         await SubscriptionConsumptionChallenge.updateOne(
           { _id: challenge._id },
-          { $set: { status: "exhausted" } }
+          { $set: { status: "exhausted" } },
         );
       }
-      throw new AppError("Too many incorrect OTP attempts. Please request a new OTP.", 429);
+      throw new AppError(
+        "Too many incorrect OTP attempts. Please request a new OTP.",
+        429,
+      );
     }
 
     // 1. Mandatory customer verification: challenge customer must exist and match appointment customer
@@ -2381,54 +2587,101 @@ export class AppointmentService {
       appointment.customerId?._id || appointment.customerId
     ).toString();
     if (!challenge.customerId) {
-      throw new AppError("OTP challenge is missing required customer binding", 400);
+      throw new AppError(
+        "OTP challenge is missing required customer binding",
+        400,
+      );
     }
     if (challenge.customerId.toString() !== appointmentCustomerId) {
-      throw new AppError("OTP challenge does not match the customer on this appointment", 400);
+      throw new AppError(
+        "OTP challenge does not match the customer on this appointment",
+        400,
+      );
     }
 
     // 2. Mandatory subscription verification: challenge must have non-empty subscriptionIds and cover all unredeemed applied subscriptions
     const currentSubIds = [
-      ...new Set(subscriptionLines.map((l) => getReferenceIdString(l.appliedSubscriptionId)).filter(Boolean)),
+      ...new Set(
+        subscriptionLines
+          .map((l) => getReferenceIdString(l.appliedSubscriptionId))
+          .filter(Boolean),
+      ),
     ];
-    const challengeSubIds = (challenge.subscriptionIds || []).map((id) => id.toString());
+    const challengeSubIds = (challenge.subscriptionIds || []).map((id) =>
+      id.toString(),
+    );
     if (challengeSubIds.length === 0) {
-      throw new AppError("OTP challenge is missing required subscription bindings", 400);
+      throw new AppError(
+        "OTP challenge is missing required subscription bindings",
+        400,
+      );
     }
-    const subsMatch = currentSubIds.every((subId) => challengeSubIds.includes(subId));
+    const subsMatch = currentSubIds.every((subId) =>
+      challengeSubIds.includes(subId),
+    );
     if (!subsMatch) {
-      throw new AppError("OTP challenge does not match the subscriptions applied to this appointment", 400);
+      throw new AppError(
+        "OTP challenge does not match the subscriptions applied to this appointment",
+        400,
+      );
     }
 
     // 3. Mandatory service and exact service-line verification (Fail Closed):
     // Catalog serviceIds check
-    const currentServiceIds = subscriptionLines.map((l) => getReferenceIdString(l.serviceId)).filter(Boolean);
-    const challengeServiceIds = (challenge.serviceIds || []).map((id) => id.toString());
+    const currentServiceIds = subscriptionLines
+      .map((l) => getReferenceIdString(l.serviceId))
+      .filter(Boolean);
+    const challengeServiceIds = (challenge.serviceIds || []).map((id) =>
+      id.toString(),
+    );
     if (challengeServiceIds.length === 0) {
-      throw new AppError("OTP challenge is missing required service bindings", 400);
+      throw new AppError(
+        "OTP challenge is missing required service bindings",
+        400,
+      );
     }
-    const servicesMatch = currentServiceIds.every((sId) => challengeServiceIds.includes(sId));
+    const servicesMatch = currentServiceIds.every((sId) =>
+      challengeServiceIds.includes(sId),
+    );
     if (!servicesMatch) {
-      throw new AppError("OTP challenge does not match the services on this appointment", 400);
+      throw new AppError(
+        "OTP challenge does not match the services on this appointment",
+        400,
+      );
     }
 
     // Exact appointment service-line matching (Fail Closed)
     // Challenge serviceLines is mandatory and must strictly bind 1-to-1 to subscriptionLines
-    if (!Array.isArray(challenge.serviceLines) || challenge.serviceLines.length === 0) {
-      throw new AppError("OTP challenge is missing required service line bindings", 400);
+    if (
+      !Array.isArray(challenge.serviceLines) ||
+      challenge.serviceLines.length === 0
+    ) {
+      throw new AppError(
+        "OTP challenge is missing required service line bindings",
+        400,
+      );
     }
     if (challenge.serviceLines.length !== subscriptionLines.length) {
-      throw new AppError("Appointment service lines do not match OTP challenge", 400);
+      throw new AppError(
+        "Appointment service lines do not match OTP challenge",
+        400,
+      );
     }
 
     const matchedChallengeIndices = new Set();
     for (const line of subscriptionLines) {
       const lineIdStr = line._id ? line._id.toString() : null;
       if (!lineIdStr) {
-        throw new AppError("Appointment service line is missing a valid identifier", 400);
+        throw new AppError(
+          "Appointment service line is missing a valid identifier",
+          400,
+        );
       }
       if (!line.serviceId || !line.appliedSubscriptionId) {
-        throw new AppError("Appointment service line is missing service or subscription reference", 400);
+        throw new AppError(
+          "Appointment service line is missing service or subscription reference",
+          400,
+        );
       }
 
       let matchedIdx = -1;
@@ -2442,16 +2695,21 @@ export class AppointmentService {
           !cl.appliedSubscriptionId ||
           !cl.customerId
         ) {
-          throw new AppError("OTP challenge contains incomplete service line bindings", 400);
+          throw new AppError(
+            "OTP challenge contains incomplete service line bindings",
+            400,
+          );
         }
 
         const matchesId = cl.appointmentServiceId.toString() === lineIdStr;
         const matchesService =
-          getReferenceIdString(cl.serviceId) === getReferenceIdString(line.serviceId);
+          getReferenceIdString(cl.serviceId) ===
+          getReferenceIdString(line.serviceId);
         const matchesSub =
           getReferenceIdString(cl.appliedSubscriptionId) ===
           getReferenceIdString(line.appliedSubscriptionId);
-        const matchesCustomer = cl.customerId.toString() === appointmentCustomerId;
+        const matchesCustomer =
+          cl.customerId.toString() === appointmentCustomerId;
 
         if (matchesId && matchesService && matchesSub && matchesCustomer) {
           matchedIdx = i;
@@ -2460,7 +2718,10 @@ export class AppointmentService {
       }
 
       if (matchedIdx === -1) {
-        throw new AppError("Appointment service line binding does not match OTP challenge", 400);
+        throw new AppError(
+          "Appointment service line binding does not match OTP challenge",
+          400,
+        );
       }
       matchedChallengeIndices.add(matchedIdx);
     }
@@ -2469,16 +2730,19 @@ export class AppointmentService {
       if (challenge.status !== "exhausted") {
         await SubscriptionConsumptionChallenge.updateOne(
           { _id: challenge._id },
-          { $set: { status: "exhausted" } }
+          { $set: { status: "exhausted" } },
         );
       }
-      throw new AppError("Too many incorrect OTP attempts. Please request a new OTP.", 429);
+      throw new AppError(
+        "Too many incorrect OTP attempts. Please request a new OTP.",
+        429,
+      );
     }
 
     if (challenge.status !== "pending") {
       throw new AppError(
         "No pending OTP challenge found. Please request a new OTP first.",
-        400
+        400,
       );
     }
 
@@ -2492,11 +2756,17 @@ export class AppointmentService {
     if (challenge.attempts >= 5) {
       challenge.status = "exhausted";
       await challenge.save();
-      throw new AppError("Too many incorrect OTP attempts. Please request a new OTP.", 429);
+      throw new AppError(
+        "Too many incorrect OTP attempts. Please request a new OTP.",
+        429,
+      );
     }
 
     // Verify OTP hash with constant-time comparison
-    const inputHash = crypto.createHash("sha256").update(otp.toString().trim()).digest("hex");
+    const inputHash = crypto
+      .createHash("sha256")
+      .update(otp.toString().trim())
+      .digest("hex");
     const inputHashBuf = Buffer.from(inputHash, "utf8");
     const targetHashBuf = Buffer.from(challenge.otpHash || "", "utf8");
     const isOtpMatch =
@@ -2506,57 +2776,68 @@ export class AppointmentService {
     if (!isOtpMatch) {
       // Atomic increment of attempts and atomic exhaustion transition in a single operation
       // using an update pipeline to guarantee zero race window between 5th attempt increment and exhausted status
-      const updatedChallenge = await SubscriptionConsumptionChallenge.findOneAndUpdate(
-        {
-          _id: challenge._id,
-          status: "pending",
-          attempts: { $lt: 5 },
-        },
-        [
+      const updatedChallenge =
+        await SubscriptionConsumptionChallenge.findOneAndUpdate(
           {
-            $set: {
-              attempts: { $add: ["$attempts", 1] },
-              status: {
-                $cond: {
-                  if: { $gte: [{ $add: ["$attempts", 1] }, 5] },
-                  then: "exhausted",
-                  else: "$status",
+            _id: challenge._id,
+            status: "pending",
+            attempts: { $lt: 5 },
+          },
+          [
+            {
+              $set: {
+                attempts: { $add: ["$attempts", 1] },
+                status: {
+                  $cond: {
+                    if: { $gte: [{ $add: ["$attempts", 1] }, 5] },
+                    then: "exhausted",
+                    else: "$status",
+                  },
                 },
               },
             },
-          },
-        ],
-        { returnDocument: "after", updatePipeline: true }
-      );
+          ],
+          { returnDocument: "after", updatePipeline: true },
+        );
 
       if (!updatedChallenge) {
-        throw new AppError("Too many incorrect OTP attempts. Please request a new OTP.", 429);
+        throw new AppError(
+          "Too many incorrect OTP attempts. Please request a new OTP.",
+          429,
+        );
       }
 
       const remaining = Math.max(0, 5 - updatedChallenge.attempts);
-      throw new AppError(`Invalid OTP. ${remaining} attempt(s) remaining.`, 400);
+      throw new AppError(
+        `Invalid OTP. ${remaining} attempt(s) remaining.`,
+        400,
+      );
     }
 
     // Atomically claim the challenge by setting status: 'in_redemption'
     // Requires status: 'pending', redemptionState: 'pending', attempts < 5, and unexpired (expiresAt > now)
     // This provides a strict concurrency guard ensuring neither concurrent completion, expiry transition,
     // nor an interleaved 5th-attempt exhaustion can claim the challenge
-    const lockedChallenge = await SubscriptionConsumptionChallenge.findOneAndUpdate(
-      {
-        _id: challenge._id,
-        status: "pending",
-        attempts: { $lt: 5 },
-        redemptionState: "pending",
-        expiresAt: { $gt: now },
-      },
-      {
-        $set: { status: "in_redemption" },
-      },
-      { returnDocument: "after" }
-    );
+    const lockedChallenge =
+      await SubscriptionConsumptionChallenge.findOneAndUpdate(
+        {
+          _id: challenge._id,
+          status: "pending",
+          attempts: { $lt: 5 },
+          redemptionState: "pending",
+          expiresAt: { $gt: now },
+        },
+        {
+          $set: { status: "in_redemption" },
+        },
+        { returnDocument: "after" },
+      );
 
     if (!lockedChallenge) {
-      throw new AppError("Another completion request is currently being processed or this challenge has expired. Please retry.", 409);
+      throw new AppError(
+        "Another completion request is currently being processed or this challenge has expired. Please retry.",
+        409,
+      );
     }
 
     // OTP matches! Execute atomic transaction with mandatory ACID guarantee
@@ -2566,362 +2847,425 @@ export class AppointmentService {
       isDeleted: false,
     });
 
-    const completionResult = await this.executeTransaction(async (session) => {
-      // Pre-validation pass: Verify all subscription lines are eligible and have remaining balance before mutating anything
-      for (const line of subscriptionLines) {
-        await this.validateSubscriptionEntitlement(
-          getReferenceId(line.appliedSubscriptionId),
-          getReferenceId(line.serviceId),
-          customer._id,
-          branchId,
-          organizationId,
-          session
-        );
-      }
-
-      // 1. Mark challenge verified (replay protection)
-      challenge.status = "verified";
-      await challenge.save({ session });
-
-      const createdUsageRecords = [];
-      const updatedServiceLines = appointment.services.map((s) => {
-        const serviceLine = s.toObject ? s.toObject() : { ...s };
-        return {
-          ...serviceLine,
-          serviceId: getReferenceId(serviceLine.serviceId),
-          appliedSubscriptionId: getReferenceId(serviceLine.appliedSubscriptionId),
-        };
-      });
-      const latestSubMap = new Map();
-
-      // Group consumption by subscription to handle multiple services under same or distinct subscriptions
-      for (const line of subscriptionLines) {
-        const subId = getReferenceId(line.appliedSubscriptionId);
-        const sId = getReferenceId(line.serviceId);
-
-        // Revalidate subscription eligibility at completion inside transaction
-        await this.validateSubscriptionEntitlement(
-          subId,
-          sId,
-          customer._id,
-          branchId,
-          organizationId,
-          session
-        );
-
-        if (!line._id) {
-          line._id = new mongoose.Types.ObjectId();
+    const completionResult = await this.executeTransaction(
+      async (session) => {
+        // Pre-validation pass: Verify all subscription lines are eligible and have remaining balance before mutating anything
+        for (const line of subscriptionLines) {
+          await this.validateSubscriptionEntitlement(
+            getReferenceId(line.appliedSubscriptionId),
+            getReferenceId(line.serviceId),
+            customer._id,
+            branchId,
+            organizationId,
+            session,
+          );
         }
-        const lineIdStr = line._id.toString();
-        const decOpId = `${challenge._id.toString()}:${lineIdStr}:dec`;
 
-        // 1. Ensure intent is durably saved in challenge ledger with isDecremented: false BEFORE mutating subscription
-        let decEntry = (challenge.decrements || []).find(
-          (d) => d.appointmentServiceId?.toString() === line._id?.toString()
-        );
-        if (!decEntry) {
-          challenge.decrements = challenge.decrements || [];
-          decEntry = {
-            operationId: decOpId,
-            subscriptionId: subId,
-            memberCustomerId: customer._id,
-            serviceId: sId,
-            quantity: 1,
-            appointmentServiceId: line._id,
-            decrementedAt: null,
-            isDecremented: false,
-            isRestored: false,
-            restorationState: "none",
+        // 1. Mark challenge verified (replay protection)
+        challenge.status = "verified";
+        await challenge.save({ session });
+
+        const createdUsageRecords = [];
+        const updatedServiceLines = appointment.services.map((s) => {
+          const serviceLine = s.toObject ? s.toObject() : { ...s };
+          return {
+            ...serviceLine,
+            serviceId: getReferenceId(serviceLine.serviceId),
+            appliedSubscriptionId: getReferenceId(
+              serviceLine.appliedSubscriptionId,
+            ),
           };
-          challenge.decrements.push(decEntry);
-          challenge.redemptionState = "in_redemption";
-          await challenge.save({ session });
-        } else if (!decEntry.operationId) {
-          decEntry.operationId = decOpId;
-          await challenge.save({ session });
-        }
+        });
+        const latestSubMap = new Map();
 
-        // If this exact service line was already decremented in a previous attempt, do not double-decrement
-        let updatedSub = latestSubMap.get(subId.toString()) || null;
-        if (!decEntry.isDecremented) {
-          // Check verifiable state on Subscription: did this operation already commit?
-          const alreadyCommitted = await Subscription.exists({
-            _id: subId,
-            appliedOperations: decOpId,
-          });
+        // Group consumption by subscription to handle multiple services under same or distinct subscriptions
+        for (const line of subscriptionLines) {
+          const subId = getReferenceId(line.appliedSubscriptionId);
+          const sId = getReferenceId(line.serviceId);
 
-          if (alreadyCommitted) {
-            // Acknowledgment was lost during previous attempt; decrement committed in MongoDB
-            decEntry.isDecremented = true;
-            decEntry.decrementedAt = decEntry.decrementedAt || new Date();
-            challenge.redemptionState = "decremented";
+          // Revalidate subscription eligibility at completion inside transaction
+          await this.validateSubscriptionEntitlement(
+            subId,
+            sId,
+            customer._id,
+            branchId,
+            organizationId,
+            session,
+          );
+
+          if (!line._id) {
+            line._id = new mongoose.Types.ObjectId();
+          }
+          const lineIdStr = line._id.toString();
+          const decOpId = `${challenge._id.toString()}:${lineIdStr}:dec`;
+
+          // 1. Ensure intent is durably saved in challenge ledger with isDecremented: false BEFORE mutating subscription
+          let decEntry = (challenge.decrements || []).find(
+            (d) => d.appointmentServiceId?.toString() === line._id?.toString(),
+          );
+          if (!decEntry) {
+            challenge.decrements = challenge.decrements || [];
+            decEntry = {
+              operationId: decOpId,
+              subscriptionId: subId,
+              memberCustomerId: customer._id,
+              serviceId: sId,
+              quantity: 1,
+              appointmentServiceId: line._id,
+              decrementedAt: null,
+              isDecremented: false,
+              isRestored: false,
+              restorationState: "none",
+            };
+            challenge.decrements.push(decEntry);
+            challenge.redemptionState = "in_redemption";
             await challenge.save({ session });
-            updatedSub = await Subscription.findById(subId).session(session);
-            latestSubMap.set(subId.toString(), updatedSub);
-          } else {
-            // Atomic decrement using member-aware arrayFilter or legacy elemMatch with durable operation identity
-            updatedSub = null;
-            const subDoc = await Subscription.findById(subId).session(session);
-            if (subDoc && Array.isArray(subDoc.members) && subDoc.members.length > 0) {
-              const targetMember = subDoc.members.find((m) => m.customerId.toString() === customer._id.toString());
-              if (targetMember) {
-                const memberFilter = {
+          } else if (!decEntry.operationId) {
+            decEntry.operationId = decOpId;
+            await challenge.save({ session });
+          }
+
+          // If this exact service line was already decremented in a previous attempt, do not double-decrement
+          let updatedSub = latestSubMap.get(subId.toString()) || null;
+          if (!decEntry.isDecremented) {
+            // Check verifiable state on Subscription: did this operation already commit?
+            const alreadyCommitted = await Subscription.exists({
+              _id: subId,
+              appliedOperations: decOpId,
+            });
+
+            if (alreadyCommitted) {
+              // Acknowledgment was lost during previous attempt; decrement committed in MongoDB
+              decEntry.isDecremented = true;
+              decEntry.decrementedAt = decEntry.decrementedAt || new Date();
+              challenge.redemptionState = "decremented";
+              await challenge.save({ session });
+              updatedSub = await Subscription.findById(subId).session(session);
+              latestSubMap.set(subId.toString(), updatedSub);
+            } else {
+              // Atomic decrement using member-aware arrayFilter or legacy elemMatch with durable operation identity
+              updatedSub = null;
+              const subDoc =
+                await Subscription.findById(subId).session(session);
+              if (
+                subDoc &&
+                Array.isArray(subDoc.members) &&
+                subDoc.members.length > 0
+              ) {
+                const targetMember = subDoc.members.find(
+                  (m) => m.customerId.toString() === customer._id.toString(),
+                );
+                if (targetMember) {
+                  const memberFilter = {
+                    _id: subId,
+                    organizationId,
+                    status: { $in: ["active", "pending_payment"] },
+                    isDeleted: false,
+                    appliedOperations: { $nin: [decOpId, `fence:${decOpId}`] },
+                    members: {
+                      $elemMatch: {
+                        customerId: customer._id,
+                        status: { $in: ["active", "pending_payment"] },
+                        entitlements: {
+                          $elemMatch: {
+                            serviceId: sId,
+                            remainingQuantity: { $gte: 1 },
+                          },
+                        },
+                      },
+                    },
+                  };
+                  const memberUpdate = {
+                    $inc: {
+                      "members.$[mem].entitlements.$[ent].usedQuantity": 1,
+                      "members.$[mem].entitlements.$[ent].remainingQuantity":
+                        -1,
+                      "entitlements.$[legacyEnt].usedQuantity": 1,
+                      "entitlements.$[legacyEnt].remainingQuantity": -1,
+                    },
+                    $push: {
+                      appliedOperations: decOpId,
+                    },
+                  };
+                  const memberOptions = {
+                    arrayFilters: [
+                      {
+                        "mem.customerId": customer._id,
+                        "mem.status": { $in: ["active", "pending_payment"] },
+                      },
+                      {
+                        "ent.serviceId": sId,
+                        "ent.remainingQuantity": { $gte: 1 },
+                      },
+                      { "legacyEnt.serviceId": sId },
+                    ],
+                    returnDocument: "after",
+                  };
+                  if (session) memberOptions.session = session;
+                  try {
+                    updatedSub = await Subscription.findOneAndUpdate(
+                      memberFilter,
+                      memberUpdate,
+                      memberOptions,
+                    );
+                  } catch (err) {
+                    delete memberUpdate.$inc[
+                      "entitlements.$[legacyEnt].usedQuantity"
+                    ];
+                    delete memberUpdate.$inc[
+                      "entitlements.$[legacyEnt].remainingQuantity"
+                    ];
+                    memberOptions.arrayFilters =
+                      memberOptions.arrayFilters.slice(0, 2);
+                    updatedSub = await Subscription.findOneAndUpdate(
+                      memberFilter,
+                      memberUpdate,
+                      memberOptions,
+                    );
+                  }
+                }
+              }
+
+              if (!updatedSub) {
+                // Fallback to legacy single-customer document update
+                const legacyQuery = {
                   _id: subId,
                   organizationId,
                   status: { $in: ["active", "pending_payment"] },
                   isDeleted: false,
                   appliedOperations: { $nin: [decOpId, `fence:${decOpId}`] },
-                  members: {
+                  entitlements: {
                     $elemMatch: {
-                      customerId: customer._id,
-                      status: { $in: ["active", "pending_payment"] },
-                      entitlements: {
-                        $elemMatch: {
-                          serviceId: sId,
-                          remainingQuantity: { $gte: 1 },
-                        },
-                      },
+                      serviceId: sId,
+                      remainingQuantity: { $gte: 1 },
                     },
                   },
                 };
-                const memberUpdate = {
+                const legacyUpdate = {
                   $inc: {
-                    "members.$[mem].entitlements.$[ent].usedQuantity": 1,
-                    "members.$[mem].entitlements.$[ent].remainingQuantity": -1,
-                    "entitlements.$[legacyEnt].usedQuantity": 1,
-                    "entitlements.$[legacyEnt].remainingQuantity": -1,
+                    "entitlements.$.usedQuantity": 1,
+                    "entitlements.$.remainingQuantity": -1,
                   },
                   $push: {
                     appliedOperations: decOpId,
                   },
                 };
-                const memberOptions = {
-                  arrayFilters: [
-                    { "mem.customerId": customer._id, "mem.status": { $in: ["active", "pending_payment"] } },
-                    { "ent.serviceId": sId, "ent.remainingQuantity": { $gte: 1 } },
-                    { "legacyEnt.serviceId": sId },
-                  ],
-                  returnDocument: "after",
-                };
-                if (session) memberOptions.session = session;
-                try {
-                  updatedSub = await Subscription.findOneAndUpdate(memberFilter, memberUpdate, memberOptions);
-                } catch (err) {
-                  delete memberUpdate.$inc["entitlements.$[legacyEnt].usedQuantity"];
-                  delete memberUpdate.$inc["entitlements.$[legacyEnt].remainingQuantity"];
-                  memberOptions.arrayFilters = memberOptions.arrayFilters.slice(0, 2);
-                  updatedSub = await Subscription.findOneAndUpdate(memberFilter, memberUpdate, memberOptions);
-                }
-              }
-            }
-
-            if (!updatedSub) {
-              // Fallback to legacy single-customer document update
-              const legacyQuery = {
-                _id: subId,
-                organizationId,
-                status: { $in: ["active", "pending_payment"] },
-                isDeleted: false,
-                appliedOperations: { $nin: [decOpId, `fence:${decOpId}`] },
-                entitlements: {
-                  $elemMatch: {
-                    serviceId: sId,
-                    remainingQuantity: { $gte: 1 },
-                  },
-                },
-              };
-              const legacyUpdate = {
-                $inc: {
-                  "entitlements.$.usedQuantity": 1,
-                  "entitlements.$.remainingQuantity": -1,
-                },
-                $push: {
-                  appliedOperations: decOpId,
-                },
-              };
-              const legacyOptions = { returnDocument: "after" };
-              if (session) legacyOptions.session = session;
-              updatedSub = await Subscription.findOneAndUpdate(legacyQuery, legacyUpdate, legacyOptions);
-            }
-
-            if (!updatedSub) {
-              // Check if it was applied concurrently
-              const wasAppliedConcurrently = await Subscription.exists({
-                _id: subId,
-                appliedOperations: decOpId,
-              });
-              if (wasAppliedConcurrently) {
-                updatedSub = await Subscription.findById(subId).session(session);
-              } else {
-                const wasFenced = await Subscription.exists({
-                  _id: subId,
-                  appliedOperations: `fence:${decOpId}`,
-                });
-                if (wasFenced) {
-                  throw new AppError(
-                    `Redemption operation was expired or cancelled by reconciliation recovery`,
-                    409
-                  );
-                }
-                throw new AppError(
-                  `Concurrent modification or insufficient entitlement balance for service ${line.name}`,
-                  409
+                const legacyOptions = { returnDocument: "after" };
+                if (session) legacyOptions.session = session;
+                updatedSub = await Subscription.findOneAndUpdate(
+                  legacyQuery,
+                  legacyUpdate,
+                  legacyOptions,
                 );
               }
+
+              if (!updatedSub) {
+                // Check if it was applied concurrently
+                const wasAppliedConcurrently = await Subscription.exists({
+                  _id: subId,
+                  appliedOperations: decOpId,
+                });
+                if (wasAppliedConcurrently) {
+                  updatedSub =
+                    await Subscription.findById(subId).session(session);
+                } else {
+                  const wasFenced = await Subscription.exists({
+                    _id: subId,
+                    appliedOperations: `fence:${decOpId}`,
+                  });
+                  if (wasFenced) {
+                    throw new AppError(
+                      `Redemption operation was expired or cancelled by reconciliation recovery`,
+                      409,
+                    );
+                  }
+                  throw new AppError(
+                    `Concurrent modification or insufficient entitlement balance for service ${line.name}`,
+                    409,
+                  );
+                }
+              }
+
+              // Mark intent as applied durably
+              decEntry.isDecremented = true;
+              decEntry.decrementedAt = new Date();
+              challenge.redemptionState = "decremented";
+              await challenge.save({ session });
+              latestSubMap.set(subId.toString(), updatedSub);
             }
-
-            // Mark intent as applied durably
-            decEntry.isDecremented = true;
-            decEntry.decrementedAt = new Date();
-            challenge.redemptionState = "decremented";
-            await challenge.save({ session });
-            latestSubMap.set(subId.toString(), updatedSub);
           }
-        }
 
-        // Create SubscriptionUsage record with exact appointmentServiceId
-        const performerAttribution = await loadStaffAttributionSnapshot(
-          appointment.staffId,
-          organizationId,
-          session,
-        );
-        const usageData = {
-          organizationId,
-          subscriptionId: subId,
-          customerId: customer._id,
-          serviceId: sId,
-          serviceName: line.name,
-          quantity: 1,
-          branchId,
-          verifiedBy: userId,
-          attribution: { performedBy: performerAttribution },
-          verificationMethod: "otp",
-          appointmentId: appointment._id,
-          appointmentServiceId: line._id,
-          appointmentCode: appointment.appointmentCode,
-          subscriptionInvoiceId: updatedSub.invoiceId || null,
-        };
-
-        const usageRecord = new SubscriptionUsage(usageData);
-        await usageRecord.save({ session });
-        createdUsageRecords.push(usageRecord);
-
-        // Mark corresponding service line as redeemed
-        const targetLine = updatedServiceLines.find(
-          (sl) => sl._id?.toString() === line._id?.toString()
-        );
-        if (targetLine) {
-          targetLine.isRedeemedViaSubscription = true;
-          targetLine.subscriptionUsageId = usageRecord._id;
-        }
-
-        latestSubMap.set(subId.toString(), updatedSub);
-
-        // Create subscription redemption audit log
-        const subAudit = new AuditLog({
-          organizationId,
-          branchId,
-          actorId: userId,
-          action: AUDIT_ACTIONS.SUBSCRIPTION_REDEEMED,
-          entityType: "Subscription",
-          entityId: subId,
-          description: `Subscription ${updatedSub.subscriptionCode} redeemed for appointment ${appointment.appointmentCode}`,
-          metadata: {
-            subscriptionCode: updatedSub.subscriptionCode,
+          // Create SubscriptionUsage record with exact appointmentServiceId
+          const performerAttribution = await loadStaffAttributionSnapshot(
+            appointment.staffId,
+            organizationId,
+            session,
+          );
+          const usageData = {
+            organizationId,
+            subscriptionId: subId,
+            customerId: customer._id,
+            serviceId: sId,
+            serviceName: line.name,
+            quantity: 1,
+            branchId,
+            verifiedBy: userId,
+            attribution: { performedBy: performerAttribution },
+            verificationMethod: "otp",
             appointmentId: appointment._id,
             appointmentServiceId: line._id,
-            serviceId: sId,
-            verifiedBy: userId,
-          },
-        });
-        await subAudit.save({ session });
-      }
+            appointmentCode: appointment.appointmentCode,
+            subscriptionInvoiceId: updatedSub.invoiceId || null,
+          };
 
-      // Check member-level and global exhaustion for all affected subscriptions
-      for (const [subIdKey] of latestSubMap.entries()) {
-        const freshSub = await Subscription.findById(subIdKey).session(session);
-        if (freshSub) {
-          let mod = false;
-          if (Array.isArray(freshSub.members) && freshSub.members.length > 0) {
-            for (const m of freshSub.members) {
-              if (m.entitlements.every((e) => e.remainingQuantity === 0) && m.status !== "exhausted") {
-                m.status = "exhausted";
+          const usageRecord = new SubscriptionUsage(usageData);
+          await usageRecord.save({ session });
+          createdUsageRecords.push(usageRecord);
+
+          // Mark corresponding service line as redeemed
+          const targetLine = updatedServiceLines.find(
+            (sl) => sl._id?.toString() === line._id?.toString(),
+          );
+          if (targetLine) {
+            targetLine.isRedeemedViaSubscription = true;
+            targetLine.subscriptionUsageId = usageRecord._id;
+          }
+
+          latestSubMap.set(subId.toString(), updatedSub);
+
+          // Create subscription redemption audit log
+          const subAudit = new AuditLog({
+            organizationId,
+            branchId,
+            actorId: userId,
+            action: AUDIT_ACTIONS.SUBSCRIPTION_REDEEMED,
+            entityType: "Subscription",
+            entityId: subId,
+            description: `Subscription ${updatedSub.subscriptionCode} redeemed for appointment ${appointment.appointmentCode}`,
+            metadata: {
+              subscriptionCode: updatedSub.subscriptionCode,
+              appointmentId: appointment._id,
+              appointmentServiceId: line._id,
+              serviceId: sId,
+              verifiedBy: userId,
+            },
+          });
+          await subAudit.save({ session });
+        }
+
+        // Check member-level and global exhaustion for all affected subscriptions
+        for (const [subIdKey] of latestSubMap.entries()) {
+          const freshSub =
+            await Subscription.findById(subIdKey).session(session);
+          if (freshSub) {
+            let mod = false;
+            if (
+              Array.isArray(freshSub.members) &&
+              freshSub.members.length > 0
+            ) {
+              for (const m of freshSub.members) {
+                if (
+                  m.entitlements.every((e) => e.remainingQuantity === 0) &&
+                  m.status !== "exhausted"
+                ) {
+                  m.status = "exhausted";
+                  mod = true;
+                }
+              }
+              if (
+                freshSub.members.every(
+                  (m) => m.status === "exhausted" || m.status === "cancelled",
+                )
+              ) {
+                freshSub.status = "exhausted";
                 mod = true;
               }
-            }
-            if (freshSub.members.every((m) => m.status === "exhausted" || m.status === "cancelled")) {
+            } else if (
+              freshSub.entitlements.every((e) => e.remainingQuantity === 0)
+            ) {
               freshSub.status = "exhausted";
               mod = true;
             }
-          } else if (freshSub.entitlements.every((e) => e.remainingQuantity === 0)) {
-            freshSub.status = "exhausted";
-            mod = true;
-          }
-          if (mod) {
-            await freshSub.save({ session });
+            if (mod) {
+              await freshSub.save({ session });
+            }
           }
         }
-      }
 
-      // Update Appointment document: completed, clear slotMinutes, update services
-      const completedAt = new Date();
-      let aptUpdateQuery = {
-        _id: appointment._id,
-        organizationId,
-        status: "in_progress", // Concurrency guard: must still be in_progress
-      };
+        // Update Appointment document: completed, clear slotMinutes, update services
+        const completedAt = new Date();
+        let aptUpdateQuery = {
+          _id: appointment._id,
+          organizationId,
+          status: "in_progress", // Concurrency guard: must still be in_progress
+        };
 
-      const aptUpdateDoc = {
-        $set: {
-          status: "completed",
-          completedAt,
-          slotMinutes: [],
-          services: updatedServiceLines,
-        },
-      };
+        const aptUpdateDoc = {
+          $set: {
+            status: "completed",
+            completedAt,
+            slotMinutes: [],
+            services: updatedServiceLines,
+          },
+        };
 
-      const aptOptions = { returnDocument: "after" };
-      if (session) aptOptions.session = session;
+        const aptOptions = { returnDocument: "after" };
+        if (session) aptOptions.session = session;
 
-      const finalAppointment = await appointmentRepo.model
-        ? await appointmentRepo.model.findOneAndUpdate(aptUpdateQuery, aptUpdateDoc, aptOptions)
-        : await Appointment.findOneAndUpdate(aptUpdateQuery, aptUpdateDoc, aptOptions);
+        const finalAppointment = (await appointmentRepo.model)
+          ? await appointmentRepo.model.findOneAndUpdate(
+              aptUpdateQuery,
+              aptUpdateDoc,
+              aptOptions,
+            )
+          : await Appointment.findOneAndUpdate(
+              aptUpdateQuery,
+              aptUpdateDoc,
+              aptOptions,
+            );
 
-      if (!finalAppointment) {
-        throw new AppError("Appointment status conflict during completion", 409);
-      }
+        if (!finalAppointment) {
+          throw new AppError(
+            "Appointment status conflict during completion",
+            409,
+          );
+        }
 
-      await settlementFulfillmentEventService.handlePhysicalFulfillmentCompleted({
-        appointment: finalAppointment,
-        session,
-        userId,
-      });
+        await settlementFulfillmentEventService.handlePhysicalFulfillmentCompleted(
+          {
+            appointment: finalAppointment,
+            session,
+            userId,
+          },
+        );
 
-      // Create Appointment Completion Audit Log
-      const aptAudit = new AuditLog({
-        organizationId,
-        branchId,
-        actorId: userId,
-        action: AUDIT_ACTIONS.APPOINTMENT_COMPLETED,
-        entityType: "Appointment",
-        entityId: appointment._id,
-        description: `Appointment ${appointment.appointmentCode} completed with subscription entitlement redemption`,
-        metadata: {
-          appointmentCode: appointment.appointmentCode,
-          redeemedViaSubscription: true,
-          subscriptionCount: subscriptionLines.length,
-        },
-      });
-      // Mark challenge redemptionState as completed (Audit saved)
-      await aptAudit.save({ session });
-      challenge.redemptionState = "completed";
-      await challenge.save({ session });
+        // Create Appointment Completion Audit Log
+        const aptAudit = new AuditLog({
+          organizationId,
+          branchId,
+          actorId: userId,
+          action: AUDIT_ACTIONS.APPOINTMENT_COMPLETED,
+          entityType: "Appointment",
+          entityId: appointment._id,
+          description: `Appointment ${appointment.appointmentCode} completed with subscription entitlement redemption`,
+          metadata: {
+            appointmentCode: appointment.appointmentCode,
+            redeemedViaSubscription: true,
+            subscriptionCount: subscriptionLines.length,
+          },
+        });
+        // Mark challenge redemptionState as completed (Audit saved)
+        await aptAudit.save({ session });
+        challenge.redemptionState = "completed";
+        await challenge.save({ session });
 
-      return {
-        appointment: finalAppointment,
-        usages: createdUsageRecords,
-      };
-    }, { requireTransaction: true });
+        return {
+          appointment: finalAppointment,
+          usages: createdUsageRecords,
+        };
+      },
+      { requireTransaction: true },
+    );
 
     // Enqueue service completion notification strictly AFTER transaction commit
     try {
@@ -2933,7 +3277,9 @@ export class AppointmentService {
         });
       }
     } catch (queueErr) {
-      logger.warn(`Failed to enqueue service completion SMS: ${queueErr.message}`);
+      logger.warn(
+        `Failed to enqueue service completion SMS: ${queueErr.message}`,
+      );
     }
 
     return completionResult.appointment;
@@ -2980,13 +3326,16 @@ export class AppointmentService {
       ? appointment.branchId._id.toString()
       : appointment.branchId.toString();
     if (aptBranchId !== branchId.toString()) {
-      throw new AppError("Target branchId does not match appointment branch", 400);
+      throw new AppError(
+        "Target branchId does not match appointment branch",
+        400,
+      );
     }
 
     if (["completed", "cancelled", "no_show"].includes(appointment.status)) {
       throw new AppError(
         `Cannot modify services on appointment with terminal status '${appointment.status}'`,
-        400
+        400,
       );
     }
 
@@ -3019,7 +3368,8 @@ export class AppointmentService {
             serviceType: "custom",
             _id: item._id || item.id || item.appointmentServiceId,
             name: item.name ? String(item.name).trim() : "",
-            duration: item.duration !== undefined ? Number(item.duration) : undefined,
+            duration:
+              item.duration !== undefined ? Number(item.duration) : undefined,
             price:
               item.price !== undefined
                 ? Number(item.price)
@@ -3033,7 +3383,9 @@ export class AppointmentService {
         return {
           serviceType: "registered",
           _id: item._id || item.id || item.appointmentServiceId,
-          serviceId: item.serviceId ? item.serviceId.toString() : item.toString(),
+          serviceId: item.serviceId
+            ? item.serviceId.toString()
+            : item.toString(),
           customPrice:
             item.customPrice !== undefined && item.customPrice !== null
               ? Number(item.customPrice)
@@ -3060,15 +3412,18 @@ export class AppointmentService {
     const registeredInputs = normalizedServiceInputs.filter(
       (item) => item.serviceType === "registered",
     );
-    const uniqueIds = [...new Set(registeredInputs.map((item) => item.serviceId))];
-    const dbServices = uniqueIds.length > 0
-      ? await Service.find({
-        _id: { $in: uniqueIds },
-        organizationId,
-        isDeleted: false,
-        status: "active",
-      })
-      : [];
+    const uniqueIds = [
+      ...new Set(registeredInputs.map((item) => item.serviceId)),
+    ];
+    const dbServices =
+      uniqueIds.length > 0
+        ? await Service.find({
+            _id: { $in: uniqueIds },
+            organizationId,
+            isDeleted: false,
+            status: "active",
+          })
+        : [];
 
     if (dbServices.length !== uniqueIds.length) {
       throw new AppError(
@@ -3085,8 +3440,8 @@ export class AppointmentService {
       if (item.serviceType === "custom") {
         const existingLine = item._id
           ? existingServices.find(
-            (es) => es._id && es._id.toString() === item._id.toString(),
-          )
+              (es) => es._id && es._id.toString() === item._id.toString(),
+            )
           : null;
 
         const resolvedPrice =
@@ -3095,11 +3450,14 @@ export class AppointmentService {
             : (existingLine?.price ?? 0);
 
         const resolvedDuration =
-          item.duration !== undefined && !isNaN(item.duration) && item.duration > 0
+          item.duration !== undefined &&
+          !isNaN(item.duration) &&
+          item.duration > 0
             ? item.duration
             : (existingLine?.duration ?? 1);
 
-        const resolvedName = item.name || existingLine?.name || "Custom Service";
+        const resolvedName =
+          item.name || existingLine?.name || "Custom Service";
 
         totalDuration += resolvedDuration;
         subtotal += resolvedPrice;
@@ -3117,18 +3475,26 @@ export class AppointmentService {
         };
       }
 
-      const s = dbServices.find((serv) => serv._id.toString() === item.serviceId.toString());
+      const s = dbServices.find(
+        (serv) => serv._id.toString() === item.serviceId.toString(),
+      );
       const existingLine = existingServices.find((es) => {
         if (item._id && es._id && es._id.toString() === item._id.toString()) {
           return true;
         }
-        return es.serviceId && es.serviceId.toString() === item.serviceId.toString();
+        return (
+          es.serviceId && es.serviceId.toString() === item.serviceId.toString()
+        );
       });
 
       let resolvedPrice;
       if (item.customPrice !== undefined && item.customPrice !== null) {
         resolvedPrice = Number(item.customPrice);
-      } else if (existingLine && existingLine.price !== undefined && existingLine.price !== null) {
+      } else if (
+        existingLine &&
+        existingLine.price !== undefined &&
+        existingLine.price !== null
+      ) {
         resolvedPrice = existingLine.price;
       } else {
         resolvedPrice = s.pricing?.basePrice ?? 0;
@@ -3159,8 +3525,12 @@ export class AppointmentService {
         duration: s.duration,
         price: resolvedPrice,
         appliedSubscriptionId: resolvedAppliedSubscriptionId,
-        isRedeemedViaSubscription: existingLine ? existingLine.isRedeemedViaSubscription : false,
-        subscriptionUsageId: existingLine ? existingLine.subscriptionUsageId : null,
+        isRedeemedViaSubscription: existingLine
+          ? existingLine.isRedeemedViaSubscription
+          : false,
+        subscriptionUsageId: existingLine
+          ? existingLine.subscriptionUsageId
+          : null,
       };
     });
 
@@ -3173,16 +3543,27 @@ export class AppointmentService {
     let remainingMinutes = totalDuration;
 
     if (appointment.status === "in_progress") {
-      const startedAt = appointment.startedAt ? new Date(appointment.startedAt) : null;
+      const startedAt = appointment.startedAt
+        ? new Date(appointment.startedAt)
+        : null;
       // If startedAt was recorded today and startAt was today, elapsed is Date.now() - startedAt.
       // If appointment is for a future test date or startedAt is null, remaining duration starts from startAt.
       const now = Date.now();
       let elapsedMinutes = 0;
-      if (startedAt && startedAt.getTime() <= now && Math.abs(now - startAt.getTime()) < 24 * 60 * 60 * 1000) {
-        elapsedMinutes = Math.max(0, Math.floor((now - startedAt.getTime()) / 60000));
+      if (
+        startedAt &&
+        startedAt.getTime() <= now &&
+        Math.abs(now - startAt.getTime()) < 24 * 60 * 60 * 1000
+      ) {
+        elapsedMinutes = Math.max(
+          0,
+          Math.floor((now - startedAt.getTime()) / 60000),
+        );
       }
       remainingMinutes = Math.max(0, totalDuration - elapsedMinutes);
-      proposedEndAt = new Date(startAt.getTime() + (elapsedMinutes + remainingMinutes) * 60000);
+      proposedEndAt = new Date(
+        startAt.getTime() + (elapsedMinutes + remainingMinutes) * 60000,
+      );
     } else {
       proposedEndAt = new Date(startAt.getTime() + totalDuration * 60000);
     }
@@ -3192,16 +3573,20 @@ export class AppointmentService {
     const initiatingFormattedStart = formatUTCToLocal(startAt, tz);
 
     // Resolve customer membership benefits for preview discount calculation
-    const { membershipService } = await import("../memberships/membership.service.js");
-    const activeMembership = await membershipService.resolveActiveMembershipForCustomer(
-      appointment.customerId,
-      branchId,
-      organizationId
-    );
+    const { membershipService } =
+      await import("../memberships/membership.service.js");
+    const activeMembership =
+      await membershipService.resolveActiveMembershipForCustomer(
+        appointment.customerId,
+        branchId,
+        organizationId,
+      );
 
     let totalMembershipDiscount = 0;
     if (activeMembership && activeMembership.planSnapshot?.benefits) {
-      const discountPct = Number(activeMembership.planSnapshot.benefits.serviceDiscountPercentage || 0);
+      const discountPct = Number(
+        activeMembership.planSnapshot.benefits.serviceDiscountPercentage || 0,
+      );
       if (discountPct > 0) {
         for (const line of proposedServiceSnapshots) {
           if (!line.appliedSubscriptionId && !line.isRedeemedViaSubscription) {
@@ -3210,15 +3595,20 @@ export class AppointmentService {
             if (isCustom) {
               isEligible = true;
             } else {
-              const dbServ = dbServices.find((ds) => ds._id.toString() === line.serviceId?.toString());
+              const dbServ = dbServices.find(
+                (ds) => ds._id.toString() === line.serviceId?.toString(),
+              );
               isEligible = isServiceEligibleForMembershipBenefits(
                 { _id: line.serviceId, categoryId: dbServ?.categoryId },
-                activeMembership.planSnapshot.benefits
+                activeMembership.planSnapshot.benefits,
               );
             }
             if (isEligible) {
-              const lineDisc = Number(((line.price * discountPct) / 100).toFixed(2));
-              line.appliedCustomerMembershipId = activeMembership._id.toString();
+              const lineDisc = Number(
+                ((line.price * discountPct) / 100).toFixed(2),
+              );
+              line.appliedCustomerMembershipId =
+                activeMembership._id.toString();
               line.membershipCode = activeMembership.membershipCode;
               line.membershipDiscountPercentage = discountPct;
               line.membershipDiscountAmount = lineDisc;
@@ -3229,9 +3619,15 @@ export class AppointmentService {
       }
     }
 
-    const baseDiscount = discount !== undefined ? discount : (appointment.pricing?.discount || 0);
-    const effectiveDiscount = Number((baseDiscount + totalMembershipDiscount).toFixed(2));
-    const total = Math.max(0, Number((subtotal - effectiveDiscount).toFixed(2)));
+    const baseDiscount =
+      discount !== undefined ? discount : appointment.pricing?.discount || 0;
+    const effectiveDiscount = Number(
+      (baseDiscount + totalMembershipDiscount).toFixed(2),
+    );
+    const total = Math.max(
+      0,
+      Number((subtotal - effectiveDiscount).toFixed(2)),
+    );
 
     const initiatingAppointmentProposal = {
       id: appointment._id.toString(),
@@ -3260,7 +3656,10 @@ export class AppointmentService {
     const conflicts = [];
 
     // Validate initiating appointment against branch operating hours and midnight boundary
-    if (initiatingFormattedStart.dateStr !== initiatingFormattedProposedEnd.dateStr) {
+    if (
+      initiatingFormattedStart.dateStr !==
+      initiatingFormattedProposedEnd.dateStr
+    ) {
       conflicts.push({
         appointmentId: appointment._id.toString(),
         appointmentCode: appointment.appointmentCode,
@@ -3270,10 +3669,12 @@ export class AppointmentService {
     }
 
     if (branch?.operatingHours) {
-      const dayOfWeek = new Date(startAt).toLocaleDateString("en-US", {
-        weekday: "long",
-        timeZone: tz,
-      }).toLowerCase();
+      const dayOfWeek = new Date(startAt)
+        .toLocaleDateString("en-US", {
+          weekday: "long",
+          timeZone: tz,
+        })
+        .toLowerCase();
 
       const hoursForDay = branch.operatingHours.get
         ? branch.operatingHours.get(dayOfWeek)
@@ -3287,7 +3688,10 @@ export class AppointmentService {
             reason: `Branch is closed on ${dayOfWeek}s.`,
             actionRequired: "reschedule_different_day",
           });
-        } else if (hoursForDay.closeTime && initiatingFormattedProposedEnd.timeStr > hoursForDay.closeTime) {
+        } else if (
+          hoursForDay.closeTime &&
+          initiatingFormattedProposedEnd.timeStr > hoursForDay.closeTime
+        ) {
           conflicts.push({
             appointmentId: appointment._id.toString(),
             appointmentCode: appointment.appointmentCode,
@@ -3326,7 +3730,8 @@ export class AppointmentService {
               appointmentId: nextApt._id.toString(),
               appointmentCode: nextApt.appointmentCode,
               customerName: nextApt.customerId?.name || "Customer",
-              reason: "Cannot shift an appointment that is already in progress.",
+              reason:
+                "Cannot shift an appointment that is already in progress.",
               actionRequired: "reassign_or_shorten",
               conflictingWithEndAt: currentChainEnd,
             });
@@ -3335,17 +3740,26 @@ export class AppointmentService {
 
           // Determine applicable buffer between appointments:
           // Check branch-configured bufferMinutes or previous service-configured bufferMinutes
-          const branchBuffer = (branch?.bufferMinutes && branch.bufferMinutes > 0) ? branch.bufferMinutes : 0;
+          const branchBuffer =
+            branch?.bufferMinutes && branch.bufferMinutes > 0
+              ? branch.bufferMinutes
+              : 0;
           let serviceBuffer = 0;
           // Determine buffer from previous appointment in chain
-          const prevServices = affectedAppointments.length > 0
-            ? null // handled by previous appointment in chain
-            : proposedServiceSnapshots;
+          const prevServices =
+            affectedAppointments.length > 0
+              ? null // handled by previous appointment in chain
+              : proposedServiceSnapshots;
           if (prevServices) {
             for (const ps of prevServices) {
               if (ps.serviceId) {
-                const matchedSvc = dbServices.find((s) => s._id.toString() === ps.serviceId.toString());
-                if (matchedSvc?.bufferMinutes && matchedSvc.bufferMinutes > serviceBuffer) {
+                const matchedSvc = dbServices.find(
+                  (s) => s._id.toString() === ps.serviceId.toString(),
+                );
+                if (
+                  matchedSvc?.bufferMinutes &&
+                  matchedSvc.bufferMinutes > serviceBuffer
+                ) {
                   serviceBuffer = matchedSvc.bufferMinutes;
                 }
               }
@@ -3354,13 +3768,20 @@ export class AppointmentService {
           const effectiveBuffer = Math.max(branchBuffer, serviceBuffer);
 
           // Propose shifting next appointment so it starts after previous service ends + buffer
-          const shiftedStartAt = new Date(currentChainEnd.getTime() + effectiveBuffer * 60000);
-          const shiftedEndAt = new Date(shiftedStartAt.getTime() + nextApt.totalDuration * 60000);
+          const shiftedStartAt = new Date(
+            currentChainEnd.getTime() + effectiveBuffer * 60000,
+          );
+          const shiftedEndAt = new Date(
+            shiftedStartAt.getTime() + nextApt.totalDuration * 60000,
+          );
           const shiftedStartLocal = formatUTCToLocal(shiftedStartAt, tz);
           const shiftedEndLocal = formatUTCToLocal(shiftedEndAt, tz);
 
           // Check midnight boundary constraint
-          if (shiftedStartLocal.dateStr !== shiftedEndLocal.dateStr || shiftedStartLocal.dateStr !== nextApt.appointmentDate) {
+          if (
+            shiftedStartLocal.dateStr !== shiftedEndLocal.dateStr ||
+            shiftedStartLocal.dateStr !== nextApt.appointmentDate
+          ) {
             conflicts.push({
               appointmentId: nextApt._id.toString(),
               appointmentCode: nextApt.appointmentCode,
@@ -3372,10 +3793,12 @@ export class AppointmentService {
 
           // Check branch configured operating hours
           if (branch?.operatingHours) {
-            const dayOfWeek = new Date(shiftedStartAt).toLocaleDateString("en-US", {
-              weekday: "long",
-              timeZone: tz,
-            }).toLowerCase(); // e.g. "friday"
+            const dayOfWeek = new Date(shiftedStartAt)
+              .toLocaleDateString("en-US", {
+                weekday: "long",
+                timeZone: tz,
+              })
+              .toLowerCase(); // e.g. "friday"
 
             const hoursForDay = branch.operatingHours.get
               ? branch.operatingHours.get(dayOfWeek)
@@ -3391,7 +3814,10 @@ export class AppointmentService {
                 });
                 break;
               }
-              if (hoursForDay.closeTime && shiftedEndLocal.timeStr > hoursForDay.closeTime) {
+              if (
+                hoursForDay.closeTime &&
+                shiftedEndLocal.timeStr > hoursForDay.closeTime
+              ) {
                 conflicts.push({
                   appointmentId: nextApt._id.toString(),
                   appointmentCode: nextApt.appointmentCode,
@@ -3435,8 +3861,11 @@ export class AppointmentService {
             proposedEndAt: shiftedEndAt,
             proposedStartTime: shiftedStartLocal.timeStr,
             proposedEndTime: shiftedEndLocal.timeStr,
-            delayMinutes: Math.round((shiftedStartAt.getTime() - nextStartAt.getTime()) / 60000),
-            reason: "Cascaded due to service extension on preceding appointment.",
+            delayMinutes: Math.round(
+              (shiftedStartAt.getTime() - nextStartAt.getTime()) / 60000,
+            ),
+            reason:
+              "Cascaded due to service extension on preceding appointment.",
           });
 
           // Advance chain end to this shifted appointment's end time
@@ -3456,10 +3885,11 @@ export class AppointmentService {
         duration: Number(s.duration),
         subId: s.appliedSubscriptionId ? String(s.appliedSubscriptionId) : "",
       }))
-      .sort((a, b) =>
-        `${a.type}:${a.idOrName}`.localeCompare(`${b.type}:${b.idOrName}`) ||
-        a.price - b.price ||
-        a.duration - b.duration
+      .sort(
+        (a, b) =>
+          `${a.type}:${a.idOrName}`.localeCompare(`${b.type}:${b.idOrName}`) ||
+          a.price - b.price ||
+          a.duration - b.duration,
       );
 
     const tokenPayload = JSON.stringify({
@@ -3470,11 +3900,17 @@ export class AppointmentService {
       proposedEndAt: proposedEndAt.toISOString(),
       canonicalServices,
       effectiveDiscount,
-      affectedIdsAndVersions: affectedAppointments.map((a) => `${a.id}:${a.version}`),
+      affectedIdsAndVersions: affectedAppointments.map(
+        (a) => `${a.id}:${a.version}`,
+      ),
     });
 
     const previewSecret = env.JWT_SECRET;
-    if (!previewSecret || typeof previewSecret !== "string" || previewSecret.length < 8) {
+    if (
+      !previewSecret ||
+      typeof previewSecret !== "string" ||
+      previewSecret.length < 8
+    ) {
       throw new AppError("Server cryptographic secret is misconfigured", 500);
     }
 
@@ -3510,7 +3946,10 @@ export class AppointmentService {
     } = data;
 
     if (!previewToken) {
-      throw new AppError("Preview token is required to commit schedule modification", 400);
+      throw new AppError(
+        "Preview token is required to commit schedule modification",
+        400,
+      );
     }
 
     const appointment = await appointmentRepo.findById(id, organizationId);
@@ -3522,13 +3961,16 @@ export class AppointmentService {
       ? appointment.branchId._id.toString()
       : appointment.branchId.toString();
     if (aptBranchId !== branchId.toString()) {
-      throw new AppError("Target branchId does not match appointment branch", 400);
+      throw new AppError(
+        "Target branchId does not match appointment branch",
+        400,
+      );
     }
 
     if (["completed", "cancelled", "no_show"].includes(appointment.status)) {
       throw new AppError(
         `Cannot modify services on appointment with terminal status '${appointment.status}'`,
-        400
+        400,
       );
     }
 
@@ -3536,7 +3978,7 @@ export class AppointmentService {
     const freshPreview = await this.previewServiceModification(
       id,
       { branchId, services, serviceIds, discount },
-      organizationId
+      organizationId,
     );
 
     const freshTokenBuf = Buffer.from(freshPreview.previewToken, "utf8");
@@ -3548,14 +3990,14 @@ export class AppointmentService {
     if (!isTokenMatch) {
       throw new AppError(
         "The schedule proposal is stale due to a concurrent update. Please preview again before committing.",
-        409
+        409,
       );
     }
 
     if (!freshPreview.canCommit && !managerOverrideReason) {
       throw new AppError(
         "Cannot commit schedule modification due to unresolved conflicts. Manager override reason is required if permitted by policy.",
-        409
+        409,
       );
     }
 
@@ -3564,132 +4006,143 @@ export class AppointmentService {
 
     let commitResult;
     try {
-      commitResult = await this.executeTransaction(async (session) => {
-        // 1. Invalidate pending subscription OTP challenges for initiating appointment
-        await SubscriptionConsumptionChallenge.deleteMany(
-          { appointmentId: appointment._id, status: "pending" },
-          { session }
-        );
+      commitResult = await this.executeTransaction(
+        async (session) => {
+          // 1. Invalidate pending subscription OTP challenges for initiating appointment
+          await SubscriptionConsumptionChallenge.deleteMany(
+            { appointmentId: appointment._id, status: "pending" },
+            { session },
+          );
 
-        // Pass 1: Temporarily clear slotMinutes on initiating and affected appointments to release old slots
-        const initProposal = freshPreview.initiatingAppointment;
-        await Appointment.updateOne(
-          { _id: appointment._id, organizationId },
-          { $set: { slotMinutes: [] } },
-          { session }
-        );
-
-        for (const aff of freshPreview.affectedAppointments) {
+          // Pass 1: Temporarily clear slotMinutes on initiating and affected appointments to release old slots
+          const initProposal = freshPreview.initiatingAppointment;
           await Appointment.updateOne(
-            { _id: aff.id, organizationId },
+            { _id: appointment._id, organizationId },
             { $set: { slotMinutes: [] } },
-            { session }
-          );
-        }
-
-        // Shift all affected subsequent appointments atomically first to free up slots
-        const updatedAffected = [];
-        for (const aff of freshPreview.affectedAppointments) {
-          const affSlotMinutes = generateSlotMinutes(
-            new Date(aff.proposedStartAt),
-            new Date(aff.proposedEndAt)
+            { session },
           );
 
-          // Handle documents where version may not have been explicitly set (legacy records default to 1)
-          const versionFilter =
-            aff.version === 1
+          for (const aff of freshPreview.affectedAppointments) {
+            await Appointment.updateOne(
+              { _id: aff.id, organizationId },
+              { $set: { slotMinutes: [] } },
+              { session },
+            );
+          }
+
+          // Shift all affected subsequent appointments atomically first to free up slots
+          const updatedAffected = [];
+          for (const aff of freshPreview.affectedAppointments) {
+            const affSlotMinutes = generateSlotMinutes(
+              new Date(aff.proposedStartAt),
+              new Date(aff.proposedEndAt),
+            );
+
+            // Handle documents where version may not have been explicitly set (legacy records default to 1)
+            const versionFilter =
+              aff.version === 1 ? { $in: [1, null, undefined] } : aff.version;
+
+            const shiftedApt = await Appointment.findOneAndUpdate(
+              {
+                _id: aff.id,
+                organizationId,
+                version: versionFilter,
+                status: "scheduled",
+              },
+              {
+                $set: {
+                  startAt: aff.proposedStartAt,
+                  endAt: aff.proposedEndAt,
+                  startTime: aff.proposedStartTime,
+                  endTime: aff.proposedEndTime,
+                  slotMinutes: affSlotMinutes,
+                },
+                $inc: { version: 1 },
+              },
+              { returnDocument: "after", session },
+            );
+
+            if (!shiftedApt) {
+              throw new AppError(
+                `Subsequent appointment ${aff.appointmentCode} was modified concurrently. Commit aborted to prevent partial shift.`,
+                409,
+              );
+            }
+            updatedAffected.push(shiftedApt);
+          }
+
+          // Now expand initiating appointment into its newly vacated slots
+          const initSlotMinutes = appointment.staffId
+            ? generateSlotMinutes(
+                new Date(initProposal.proposedStartAt),
+                new Date(initProposal.proposedEndAt),
+              )
+            : [];
+
+          const initVersionFilter =
+            initProposal.version === 1
               ? { $in: [1, null, undefined] }
-              : aff.version;
+              : initProposal.version;
 
-          const shiftedApt = await Appointment.findOneAndUpdate(
+          const initiatingUpdated = await Appointment.findOneAndUpdate(
             {
-              _id: aff.id,
+              _id: appointment._id,
               organizationId,
-              version: versionFilter,
-              status: "scheduled",
+              version: initVersionFilter,
             },
             {
               $set: {
-                startAt: aff.proposedStartAt,
-                endAt: aff.proposedEndAt,
-                startTime: aff.proposedStartTime,
-                endTime: aff.proposedEndTime,
-                slotMinutes: affSlotMinutes,
+                services: initProposal.services,
+                totalDuration: initProposal.totalDuration,
+                endAt: initProposal.proposedEndAt,
+                endTime: initProposal.proposedEndTime,
+                pricing: initProposal.pricing,
+                slotMinutes: initSlotMinutes,
               },
               $inc: { version: 1 },
             },
-            { returnDocument: "after", session }
+            { returnDocument: "after", session },
           );
 
-          if (!shiftedApt) {
+          if (!initiatingUpdated) {
             throw new AppError(
-              `Subsequent appointment ${aff.appointmentCode} was modified concurrently. Commit aborted to prevent partial shift.`,
-              409
+              "Initiating appointment was modified concurrently. Commit aborted.",
+              409,
             );
           }
-          updatedAffected.push(shiftedApt);
-        }
 
-        // Now expand initiating appointment into its newly vacated slots
-        const initSlotMinutes = appointment.staffId
-          ? generateSlotMinutes(new Date(initProposal.proposedStartAt), new Date(initProposal.proposedEndAt))
-          : [];
+          // 4. Record Audit Log for cascading reschedule
+          if (userId) {
+            const cascadeAudit = new AuditLog({
+              organizationId,
+              branchId,
+              actorId: userId,
+              action:
+                AUDIT_ACTIONS.APPOINTMENT_CASCADE_RESCHEDULED ||
+                "APPOINTMENT_CASCADE_RESCHEDULED",
+              entityType: "Appointment",
+              entityId: appointment._id,
+              description: `Appointment ${appointment.appointmentCode} services modified and cascaded ${updatedAffected.length} subsequent appointments`,
+              metadata: {
+                appointmentCode: appointment.appointmentCode,
+                initiatingAppointmentId: appointment._id,
+                shiftedAppointmentsCount: updatedAffected.length,
+                shiftedAppointmentCodes: updatedAffected.map(
+                  (a) => a.appointmentCode,
+                ),
+                managerOverrideReason: managerOverrideReason || null,
+              },
+            });
+            await cascadeAudit.save({ session });
+          }
 
-        const initVersionFilter =
-          initProposal.version === 1
-            ? { $in: [1, null, undefined] }
-            : initProposal.version;
-
-        const initiatingUpdated = await Appointment.findOneAndUpdate(
-          {
-            _id: appointment._id,
-            organizationId,
-            version: initVersionFilter,
-          },
-          {
-            $set: {
-              services: initProposal.services,
-              totalDuration: initProposal.totalDuration,
-              endAt: initProposal.proposedEndAt,
-              endTime: initProposal.proposedEndTime,
-              pricing: initProposal.pricing,
-              slotMinutes: initSlotMinutes,
-            },
-            $inc: { version: 1 },
-          },
-          { returnDocument: "after", session }
-        );
-
-        if (!initiatingUpdated) {
-          throw new AppError("Initiating appointment was modified concurrently. Commit aborted.", 409);
-        }
-
-        // 4. Record Audit Log for cascading reschedule
-        if (userId) {
-          const cascadeAudit = new AuditLog({
-            organizationId,
-            branchId,
-            actorId: userId,
-            action: AUDIT_ACTIONS.APPOINTMENT_CASCADE_RESCHEDULED || "APPOINTMENT_CASCADE_RESCHEDULED",
-            entityType: "Appointment",
-            entityId: appointment._id,
-            description: `Appointment ${appointment.appointmentCode} services modified and cascaded ${updatedAffected.length} subsequent appointments`,
-            metadata: {
-              appointmentCode: appointment.appointmentCode,
-              initiatingAppointmentId: appointment._id,
-              shiftedAppointmentsCount: updatedAffected.length,
-              shiftedAppointmentCodes: updatedAffected.map((a) => a.appointmentCode),
-              managerOverrideReason: managerOverrideReason || null,
-            },
-          });
-          await cascadeAudit.save({ session });
-        }
-
-        return {
-          initiatingAppointment: initiatingUpdated,
-          shiftedAppointments: updatedAffected,
-        };
-      }, { requireTransaction: true });
+          return {
+            initiatingAppointment: initiatingUpdated,
+            shiftedAppointments: updatedAffected,
+          };
+        },
+        { requireTransaction: true },
+      );
     } catch (err) {
       console.error("COMMIT INNER ERROR:", {
         message: err.message,
@@ -3700,7 +4153,7 @@ export class AppointmentService {
       if (err.code === 11000 && err.keyPattern?.slotMinutes) {
         throw new AppError(
           "Staff member slot assignment conflict during schedule commit. Concurrently overlapping booking detected.",
-          409
+          409,
         );
       }
       throw err;
@@ -3725,7 +4178,10 @@ export class AppointmentService {
         }
       }
     } catch (postErr) {
-      console.error("Post-commit reminder/notification dispatch error:", postErr.message);
+      console.error(
+        "Post-commit reminder/notification dispatch error:",
+        postErr.message,
+      );
     }
 
     return {
@@ -3740,7 +4196,13 @@ export class AppointmentService {
    * Atomically sells a subscription, creates its sale billing record, and
    * reassesses/attaches eligible benefits to the appointment's registered service lines.
    */
-  async upsellSubscription(appointmentId, upsellData, organizationId, branchId, userId) {
+  async upsellSubscription(
+    appointmentId,
+    upsellData,
+    organizationId,
+    branchId,
+    userId,
+  ) {
     const {
       price,
       entitlements,
@@ -3753,243 +4215,272 @@ export class AppointmentService {
       billImmediately = true,
     } = upsellData;
 
-    return await runInTransaction(async (session) => {
-      // 1. Fetch and validate appointment
-      const appointment = await Appointment.findOne({
-        _id: appointmentId,
-        organizationId,
-        isDeleted: false,
-      }).session(session);
-
-      if (!appointment) {
-        throw new AppError("Appointment not found", 404);
-      }
-
-      if (branchId && appointment.branchId.toString() !== branchId.toString()) {
-        throw new AppError("Target branchId does not match appointment branch", 400);
-      }
-      const soldBy = await resolveStaffAttribution(
-        soldByStaffId,
-        organizationId,
-        appointment.branchId,
-        session,
-      );
-
-      if (!["scheduled", "in_progress"].includes(appointment.status)) {
-        throw new AppError(
-          `Cannot upsell subscription to an appointment with status '${appointment.status}'. Must be 'scheduled' or 'in_progress'.`,
-          400
-        );
-      }
-
-      const customerId = appointment.customerId;
-      const customer = await Customer.findOne({
-        _id: customerId,
-        organizationId,
-        isDeleted: false,
-      }).session(session);
-
-      if (!customer || customer.status !== "active") {
-        throw new AppError("Customer is inactive or not found", 400);
-      }
-
-      // 2. Validate dates
-      const start = new Date(startDate || new Date().toISOString());
-      const end = new Date(endDate);
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        throw new AppError("Invalid start or end date", 400);
-      }
-      if (end <= start) {
-        throw new AppError("End date must be strictly after start date", 400);
-      }
-
-      // 3. Validate entitlements
-      if (!Array.isArray(entitlements) || entitlements.length === 0) {
-        throw new AppError("At least one entitlement is required", 400);
-      }
-
-      const seenServiceIds = new Set();
-      const resolvedEntitlements = [];
-      for (const ent of entitlements) {
-        const sIdStr = ent.serviceId.toString();
-        if (seenServiceIds.has(sIdStr)) {
-          throw new AppError(
-            "Duplicate serviceId in entitlements. Consolidate into a single entitlement with total quantity.",
-            400
-          );
-        }
-        seenServiceIds.add(sIdStr);
-
-        const service = await Service.findOne({
-          _id: ent.serviceId,
+    return await runInTransaction(
+      async (session) => {
+        // 1. Fetch and validate appointment
+        const appointment = await Appointment.findOne({
+          _id: appointmentId,
           organizationId,
           isDeleted: false,
         }).session(session);
 
-        if (!service) {
-          throw new AppError(`Service ${ent.serviceId} not found in this organization`, 404);
-        }
-        if (service.status !== "active") {
-          throw new AppError(`Service '${service.name}' is inactive and cannot be added to a subscription`, 400);
+        if (!appointment) {
+          throw new AppError("Appointment not found", 404);
         }
 
-        const totalQuantity = parseInt(ent.quantity, 10);
-        if (isNaN(totalQuantity) || totalQuantity < 1) {
-          throw new AppError(`Invalid quantity for service '${service.name}'. Must be at least 1.`, 400);
+        if (
+          branchId &&
+          appointment.branchId.toString() !== branchId.toString()
+        ) {
+          throw new AppError(
+            "Target branchId does not match appointment branch",
+            400,
+          );
         }
-
-        resolvedEntitlements.push({
-          serviceId: service._id,
-          serviceName: service.name,
-          totalQuantity,
-          usedQuantity: 0,
-          remainingQuantity: totalQuantity,
-        });
-      }
-
-      // 4. Validate permittedBranchIds
-      const validPermittedBranchIds = [];
-      if (Array.isArray(permittedBranchIds) && permittedBranchIds.length > 0) {
-        for (const bId of permittedBranchIds) {
-          const branch = await Branch.findOne({
-            _id: bId,
-            organizationId,
-            isActive: true,
-          }).session(session);
-          if (!branch) {
-            throw new AppError(`Permitted branch ${bId} is invalid or inactive`, 400);
-          }
-          validPermittedBranchIds.push(branch._id);
-        }
-      }
-
-      // 5. Generate subscription code
-      const sequenceKey = `SUB_${organizationId.toString()}`;
-      const seq = await Sequence.findOneAndUpdate(
-        { key: sequenceKey },
-        { $inc: { seq: 1 } },
-        { new: true, upsert: true, session }
-      );
-      const today = new Date();
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, "0");
-      const dd = String(today.getDate()).padStart(2, "0");
-      const num = String(seq.seq).padStart(4, "0");
-      const subscriptionCode = `SUB-${yyyy}${mm}${dd}-${num}`;
-
-      // 6. Create subscription doc
-      // Status policy:
-      // If billImmediately is true and price > 0, invoice is generated and subscription starts as "pending_payment"
-      // until the invoice is paid via POS payment recording.
-      // If price is 0 (complimentary/deferred), status is "active".
-      const initialStatus = billImmediately && Number(price) > 0 ? "pending_payment" : "active";
-      const newSubscription = new Subscription({
-        organizationId,
-        payerCustomerId: customer._id,
-        customerId: customer._id,
-        subscriptionCode,
-        planId: planId || null,
-        attribution: { soldBy },
-        price: Number(price),
-        members: [
-          {
-            customerId: customer._id,
-            status: initialStatus,
-            permittedBranchIds: validPermittedBranchIds,
-            entitlements: resolvedEntitlements,
-            notes: notes || `Upsold during appointment ${appointment.appointmentCode}`,
-          },
-        ],
-        entitlements: resolvedEntitlements,
-        permittedBranchIds: validPermittedBranchIds,
-        startDate: start,
-        endDate: end,
-        status: initialStatus,
-        notes: notes || `Upsold during appointment ${appointment.appointmentCode}`,
-      });
-      await newSubscription.save({ session });
-
-      // 7. Route invoice creation through unified checkout if billImmediately is true
-      let invoice = null;
-      if (billImmediately) {
-        const { billingService } = await import("../billing/billing.service.js");
-        invoice = await billingService.createUnifiedInvoice(
-          {
-            subscriptionId: newSubscription._id,
-            branchId: appointment.branchId,
-            notes: `Upsold during appointment ${appointment.appointmentCode}`,
-          },
+        const soldBy = await resolveStaffAttribution(
+          soldByStaffId,
           organizationId,
-          userId,
-          session
+          appointment.branchId,
+          session,
         );
-        newSubscription.invoiceId = invoice._id;
-      }
 
-      // 8. Reassess this appointment's registered service lines and attach the new subscription
-      // Subscriptions are redeemable even when payment is pending or partial
-      let newlyCoveredCount = 0;
-      if (["active", "pending_payment"].includes(newSubscription.status)) {
-        for (const line of appointment.services || []) {
-          if (
-            line.serviceType !== "custom" &&
-            !line.isRedeemedViaSubscription &&
-            !line.appliedSubscriptionId
-          ) {
-            const matchingEntitlement = newSubscription.entitlements.find(
-              (e) =>
-                e.serviceId.toString() === line.serviceId.toString() &&
-                e.remainingQuantity >= 1
+        if (!["scheduled", "in_progress"].includes(appointment.status)) {
+          throw new AppError(
+            `Cannot upsell subscription to an appointment with status '${appointment.status}'. Must be 'scheduled' or 'in_progress'.`,
+            400,
+          );
+        }
+
+        const customerId = appointment.customerId;
+        const customer = await Customer.findOne({
+          _id: customerId,
+          organizationId,
+          isDeleted: false,
+        }).session(session);
+
+        if (!customer || customer.status !== "active") {
+          throw new AppError("Customer is inactive or not found", 400);
+        }
+
+        // 2. Validate dates
+        const start = new Date(startDate || new Date().toISOString());
+        const end = new Date(endDate);
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+          throw new AppError("Invalid start or end date", 400);
+        }
+        if (end <= start) {
+          throw new AppError("End date must be strictly after start date", 400);
+        }
+
+        // 3. Validate entitlements
+        if (!Array.isArray(entitlements) || entitlements.length === 0) {
+          throw new AppError("At least one entitlement is required", 400);
+        }
+
+        const seenServiceIds = new Set();
+        const resolvedEntitlements = [];
+        for (const ent of entitlements) {
+          const sIdStr = ent.serviceId.toString();
+          if (seenServiceIds.has(sIdStr)) {
+            throw new AppError(
+              "Duplicate serviceId in entitlements. Consolidate into a single entitlement with total quantity.",
+              400,
             );
+          }
+          seenServiceIds.add(sIdStr);
 
-            if (matchingEntitlement) {
-              // Check permitted branches
-              const isPermitted =
-                validPermittedBranchIds.length === 0 ||
-                validPermittedBranchIds.some(
-                  (b) => b.toString() === appointment.branchId.toString()
-                );
-              if (isPermitted) {
-                line.appliedSubscriptionId = newSubscription._id;
-                newlyCoveredCount++;
+          const service = await Service.findOne({
+            _id: ent.serviceId,
+            organizationId,
+            isDeleted: false,
+          }).session(session);
+
+          if (!service) {
+            throw new AppError(
+              `Service ${ent.serviceId} not found in this organization`,
+              404,
+            );
+          }
+          if (service.status !== "active") {
+            throw new AppError(
+              `Service '${service.name}' is inactive and cannot be added to a subscription`,
+              400,
+            );
+          }
+
+          const totalQuantity = parseInt(ent.quantity, 10);
+          if (isNaN(totalQuantity) || totalQuantity < 1) {
+            throw new AppError(
+              `Invalid quantity for service '${service.name}'. Must be at least 1.`,
+              400,
+            );
+          }
+
+          resolvedEntitlements.push({
+            serviceId: service._id,
+            serviceName: service.name,
+            totalQuantity,
+            usedQuantity: 0,
+            remainingQuantity: totalQuantity,
+          });
+        }
+
+        // 4. Validate permittedBranchIds
+        const validPermittedBranchIds = [];
+        if (
+          Array.isArray(permittedBranchIds) &&
+          permittedBranchIds.length > 0
+        ) {
+          for (const bId of permittedBranchIds) {
+            const branch = await Branch.findOne({
+              _id: bId,
+              organizationId,
+              isActive: true,
+            }).session(session);
+            if (!branch) {
+              throw new AppError(
+                `Permitted branch ${bId} is invalid or inactive`,
+                400,
+              );
+            }
+            validPermittedBranchIds.push(branch._id);
+          }
+        }
+
+        // 5. Generate subscription code
+        const sequenceKey = `SUB_${organizationId.toString()}`;
+        const seq = await Sequence.findOneAndUpdate(
+          { key: sequenceKey },
+          { $inc: { seq: 1 } },
+          { new: true, upsert: true, session },
+        );
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, "0");
+        const dd = String(today.getDate()).padStart(2, "0");
+        const num = String(seq.seq).padStart(4, "0");
+        const subscriptionCode = `SUB-${yyyy}${mm}${dd}-${num}`;
+
+        // 6. Create subscription doc
+        // Status policy:
+        // If billImmediately is true and price > 0, invoice is generated and subscription starts as "pending_payment"
+        // until the invoice is paid via POS payment recording.
+        // If price is 0 (complimentary/deferred), status is "active".
+        const initialStatus =
+          billImmediately && Number(price) > 0 ? "pending_payment" : "active";
+        const newSubscription = new Subscription({
+          organizationId,
+          payerCustomerId: customer._id,
+          customerId: customer._id,
+          subscriptionCode,
+          planId: planId || null,
+          attribution: { soldBy },
+          price: Number(price),
+          members: [
+            {
+              customerId: customer._id,
+              status: initialStatus,
+              permittedBranchIds: validPermittedBranchIds,
+              entitlements: resolvedEntitlements,
+              notes:
+                notes ||
+                `Upsold during appointment ${appointment.appointmentCode}`,
+            },
+          ],
+          entitlements: resolvedEntitlements,
+          permittedBranchIds: validPermittedBranchIds,
+          startDate: start,
+          endDate: end,
+          status: initialStatus,
+          notes:
+            notes || `Upsold during appointment ${appointment.appointmentCode}`,
+        });
+        await newSubscription.save({ session });
+
+        // 7. Route invoice creation through unified checkout if billImmediately is true
+        let invoice = null;
+        if (billImmediately) {
+          const { billingService } =
+            await import("../billing/billing.service.js");
+          invoice = await billingService.createUnifiedInvoice(
+            {
+              subscriptionId: newSubscription._id,
+              branchId: appointment.branchId,
+              notes: `Upsold during appointment ${appointment.appointmentCode}`,
+            },
+            organizationId,
+            userId,
+            session,
+          );
+          newSubscription.invoiceId = invoice._id;
+        }
+
+        // 8. Reassess this appointment's registered service lines and attach the new subscription
+        // Subscriptions are redeemable even when payment is pending or partial
+        let newlyCoveredCount = 0;
+        if (["active", "pending_payment"].includes(newSubscription.status)) {
+          for (const line of appointment.services || []) {
+            if (
+              line.serviceType !== "custom" &&
+              !line.isRedeemedViaSubscription &&
+              !line.appliedSubscriptionId
+            ) {
+              const matchingEntitlement = newSubscription.entitlements.find(
+                (e) =>
+                  e.serviceId.toString() === line.serviceId.toString() &&
+                  e.remainingQuantity >= 1,
+              );
+
+              if (matchingEntitlement) {
+                // Check permitted branches
+                const isPermitted =
+                  validPermittedBranchIds.length === 0 ||
+                  validPermittedBranchIds.some(
+                    (b) => b.toString() === appointment.branchId.toString(),
+                  );
+                if (isPermitted) {
+                  line.appliedSubscriptionId = newSubscription._id;
+                  newlyCoveredCount++;
+                }
               }
             }
           }
         }
-      }
 
-      await appointment.save({ session });
+        await appointment.save({ session });
 
-      // 9. Audit log
-      const auditLog = new AuditLog({
-        organizationId,
-        branchId: appointment.branchId,
-        actorId: userId,
-        action: AUDIT_ACTIONS.SUBSCRIPTION_CREATED,
-        entityType: "Subscription",
-        entityId: newSubscription._id,
-        description: `Subscription ${subscriptionCode} upsold during appointment ${appointment.appointmentCode} for customer ${customer.name}`,
-        metadata: {
-          appointmentId: appointment._id,
-          appointmentCode: appointment.appointmentCode,
-          subscriptionCode,
-          price,
-          newlyCoveredCount,
-          invoiceId: invoice?._id || null,
-        },
-      });
-      await auditLog.save({ session });
+        // 9. Audit log
+        const auditLog = new AuditLog({
+          organizationId,
+          branchId: appointment.branchId,
+          actorId: userId,
+          action: AUDIT_ACTIONS.SUBSCRIPTION_CREATED,
+          entityType: "Subscription",
+          entityId: newSubscription._id,
+          description: `Subscription ${subscriptionCode} upsold during appointment ${appointment.appointmentCode} for customer ${customer.name}`,
+          metadata: {
+            appointmentId: appointment._id,
+            appointmentCode: appointment.appointmentCode,
+            subscriptionCode,
+            price,
+            newlyCoveredCount,
+            invoiceId: invoice?._id || null,
+          },
+        });
+        await auditLog.save({ session });
 
-      return {
-        subscription: newSubscription,
-        invoice,
-        appointment,
-        summary: {
-          newlyCoveredServicesCount: newlyCoveredCount,
-          appliedSubscriptionCode: subscriptionCode,
-        },
-      };
-    }, { requireTransaction: false });
+        return {
+          subscription: newSubscription,
+          invoice,
+          appointment,
+          summary: {
+            newlyCoveredServicesCount: newlyCoveredCount,
+            appliedSubscriptionCode: subscriptionCode,
+          },
+        };
+      },
+      { requireTransaction: false },
+    );
   }
 
   /**
@@ -3997,7 +4488,13 @@ export class AppointmentService {
    * Atomically enrolls customer/beneficiaries in a membership plan, creates its sale billing record,
    * and immediately reassesses and applies eligible percentage discounts to the appointment's service lines.
    */
-  async upsellMembership(appointmentId, upsellData, organizationId, branchId, userId) {
+  async upsellMembership(
+    appointmentId,
+    upsellData,
+    organizationId,
+    branchId,
+    userId,
+  ) {
     const {
       planId = null,
       payerCustomerId = null,
@@ -4009,305 +4506,384 @@ export class AppointmentService {
       customPlan = null,
     } = upsellData;
 
-    return await runInTransaction(async (session) => {
-      // 1. Fetch and validate appointment
-      const appointment = await Appointment.findOne({
-        _id: appointmentId,
-        organizationId,
-        isDeleted: false,
-      }).session(session);
-
-      if (!appointment) {
-        throw new AppError("Appointment not found", 404);
-      }
-
-      if (branchId && appointment.branchId.toString() !== branchId.toString()) {
-        throw new AppError("Target branchId does not match appointment branch", 400);
-      }
-
-      if (!["scheduled", "in_progress"].includes(appointment.status)) {
-        throw new AppError(
-          `Cannot upsell membership to an appointment with status '${appointment.status}'. Must be 'scheduled' or 'in_progress'.`,
-          400
-        );
-      }
-
-      const soldBy = await resolveStaffAttribution(
-        soldByStaffId,
-        organizationId,
-        appointment.branchId,
-        session,
-      );
-
-      // 2. Resolve Membership Plan (catalog plan or custom on-the-fly plan)
-      let plan = null;
-      if (customPlan) {
-        const { membershipService } = await import("../memberships/membership.service.js");
-        plan = await membershipService.createPlan(
-          {
-            ...customPlan,
-            isCustom: true,
-            permittedBranchIds: customPlan.permittedBranchIds || [appointment.branchId],
-          },
+    return await runInTransaction(
+      async (session) => {
+        // 1. Fetch and validate appointment
+        const appointment = await Appointment.findOne({
+          _id: appointmentId,
           organizationId,
-          userId
-        );
-      } else if (planId) {
-        plan = await MembershipPlan.findOne({
-          _id: planId,
-          organizationId,
-          isActive: true,
           isDeleted: false,
         }).session(session);
-        if (!plan) {
-          throw new AppError("Active membership plan not found", 404);
-        }
-      } else {
-        throw new AppError("Either planId or customPlan configuration is required", 400);
-      }
 
-      // Check plan permitted branch scope
-      if (Array.isArray(plan.permittedBranchIds) && plan.permittedBranchIds.length > 0) {
-        const isPermitted = plan.permittedBranchIds.some(
-          (b) => b.toString() === appointment.branchId.toString()
-        );
-        if (!isPermitted) {
+        if (!appointment) {
+          throw new AppError("Appointment not found", 404);
+        }
+
+        if (
+          branchId &&
+          appointment.branchId.toString() !== branchId.toString()
+        ) {
           throw new AppError(
-            `Membership plan '${plan.name}' is not permitted at branch '${appointment.branchId}'`,
-            403
+            "Target branchId does not match appointment branch",
+            400,
           );
         }
-      }
 
-      // 3. Resolve & validate payer and beneficiaries
-      const effectivePayerId = payerCustomerId || appointment.customerId;
-      const payer = await Customer.findOne({
-        _id: effectivePayerId,
-        organizationId,
-        isDeleted: false,
-      }).session(session);
-
-      if (!payer || payer.status !== "active") {
-        throw new AppError("Payer customer not found or inactive in organization", 400);
-      }
-
-      let targetBeneficiaryIds = [];
-      const beneficiaryOverridesList = Array.isArray(beneficiaries) ? beneficiaries : [];
-      if (beneficiaryOverridesList.length > 0) {
-        targetBeneficiaryIds = beneficiaryOverridesList.map((b) => b.customerId);
-      } else if (Array.isArray(beneficiaryCustomerIds) && beneficiaryCustomerIds.length > 0) {
-        targetBeneficiaryIds = beneficiaryCustomerIds;
-      } else {
-        targetBeneficiaryIds = [effectivePayerId];
-      }
-
-      const uniqueBeneficiaryIds = Array.from(new Set(targetBeneficiaryIds.map((b) => b.toString())));
-      if (uniqueBeneficiaryIds.length !== targetBeneficiaryIds.length) {
-        throw new AppError("Duplicate beneficiaries detected in membership upsell", 400);
-      }
-
-      const maxAllowed = plan.maxBeneficiaries || 1;
-      if (uniqueBeneficiaryIds.length > maxAllowed) {
-        throw new AppError(
-          `Membership plan '${plan.name}' allows at most ${maxAllowed} beneficiaries, but ${uniqueBeneficiaryIds.length} were specified`,
-          400
-        );
-      }
-
-      const verifiedBeneficiaries = await Customer.find({
-        _id: { $in: uniqueBeneficiaryIds },
-        organizationId,
-        isDeleted: false,
-      }).session(session);
-
-      if (verifiedBeneficiaries.length !== uniqueBeneficiaryIds.length) {
-        throw new AppError("One or more beneficiaries not found in organization", 404);
-      }
-
-      // 4. Calculate validity dates and generate sequence code
-      const startDate = new Date();
-      const endDate = new Date(startDate);
-      endDate.setMonth(endDate.getMonth() + (plan.validityMonths || 12));
-
-      const sequenceKey = `MEM_${organizationId.toString()}`;
-      const seq = await Sequence.findOneAndUpdate(
-        { key: sequenceKey },
-        { $inc: { seq: 1 } },
-        { new: true, upsert: true, session }
-      );
-      const today = new Date();
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, "0");
-      const dd = String(today.getDate()).padStart(2, "0");
-      const num = String(seq.seq).padStart(4, "0");
-      const baseMembershipCode = `MEM-${yyyy}${mm}${dd}-${num}`;
-
-      // Status policy:
-      // If billImmediately and price > 0, invoice is generated and starts as "pending_payment"
-      // Eligible benefits apply immediately, even while in "pending_payment".
-      const initialStatus = billImmediately && Number(plan.price) > 0 ? "pending_payment" : "active";
-      const membershipPurchaseId = new mongoose.Types.ObjectId();
-      const createdMemberships = [];
-
-      for (let i = 0; i < uniqueBeneficiaryIds.length; i++) {
-        const bId = uniqueBeneficiaryIds[i];
-        const memCode = uniqueBeneficiaryIds.length === 1 ? baseMembershipCode : `${baseMembershipCode}-${i + 1}`;
-        const overrideConfig = beneficiaryOverridesList.find(
-          (o) => (o.customerId?._id || o.customerId)?.toString() === bId.toString()
-        );
-        const effectiveBenefits = overrideConfig?.benefits || plan.benefits;
-
-        const newMembership = new CustomerMembership({
-          organizationId,
-          customerId: bId,
-          payerCustomerId: effectivePayerId,
-          membershipPurchaseId,
-          membershipPlanId: plan._id,
-          attribution: { soldBy },
-          membershipCode: memCode,
-          planSnapshot: {
-            name: plan.name,
-            tier: plan.tier || "Standard",
-            price: Number(plan.price),
-            validityMonths: plan.validityMonths || 12,
-            maxBeneficiaries: plan.maxBeneficiaries || 1,
-            benefits: effectiveBenefits,
-          },
-          status: initialStatus,
-          startDate,
-          endDate,
-          permittedBranchIds: plan.permittedBranchIds || [],
-          notes: notes || `Upsold during appointment ${appointment.appointmentCode}`,
-        });
-
-        await newMembership.save({ session });
-        createdMemberships.push(newMembership);
-      }
-
-      // 5. Generate unified invoice if billImmediately is true
-      let invoice = null;
-      if (billImmediately) {
-        const { billingService } = await import("../billing/billing.service.js");
-        invoice = await billingService.createUnifiedInvoice(
-          {
-            customerId: effectivePayerId,
-            branchId: appointment.branchId,
-            membershipLines: [
-              {
-                membershipPlanId: plan._id,
-                unitPrice: Number(plan.price),
-                payerCustomerId: effectivePayerId,
-                beneficiaryCustomerIds: uniqueBeneficiaryIds,
-                beneficiaries: beneficiaryOverridesList,
-                soldByStaffId: soldBy?.staffId,
-                customerMembershipId: createdMemberships[0]._id,
-                customerMembershipIds: createdMemberships.map((m) => m._id),
-              },
-            ],
-            notes: notes || `Membership upsold during appointment ${appointment.appointmentCode}`,
-          },
-          organizationId,
-          userId,
-          session
-        );
-
-        for (const cm of createdMemberships) {
-          cm.invoiceId = invoice._id;
-          await cm.save({ session });
+        if (!["scheduled", "in_progress"].includes(appointment.status)) {
+          throw new AppError(
+            `Cannot upsell membership to an appointment with status '${appointment.status}'. Must be 'scheduled' or 'in_progress'.`,
+            400,
+          );
         }
-      }
 
-      // 6. Immediate benefit application: Reassess appointment services if appointment's customer is a beneficiary
-      const targetCustomerMembership = createdMemberships.find(
-        (m) => m.customerId.toString() === appointment.customerId.toString()
-      );
+        const soldBy = await resolveStaffAttribution(
+          soldByStaffId,
+          organizationId,
+          appointment.branchId,
+          session,
+        );
 
-      let newlyDiscountedServicesCount = 0;
-      let totalMembershipDiscount = 0;
+        // 2. Resolve Membership Plan (catalog plan or custom on-the-fly plan)
+        let plan = null;
+        if (customPlan) {
+          const { membershipService } =
+            await import("../memberships/membership.service.js");
+          plan = await membershipService.createPlan(
+            {
+              ...customPlan,
+              isCustom: true,
+              permittedBranchIds: customPlan.permittedBranchIds || [
+                appointment.branchId,
+              ],
+            },
+            organizationId,
+            userId,
+          );
+        } else if (planId) {
+          plan = await MembershipPlan.findOne({
+            _id: planId,
+            organizationId,
+            isActive: true,
+            isDeleted: false,
+          }).session(session);
+          if (!plan) {
+            throw new AppError("Active membership plan not found", 404);
+          }
+        } else {
+          throw new AppError(
+            "Either planId or customPlan configuration is required",
+            400,
+          );
+        }
 
-      if (targetCustomerMembership && ["active", "pending_payment"].includes(targetCustomerMembership.status)) {
-        const benefits = targetCustomerMembership.planSnapshot?.benefits;
-        const discountPct = Number(benefits?.serviceDiscountPercentage || 0);
+        // Check plan permitted branch scope
+        if (
+          Array.isArray(plan.permittedBranchIds) &&
+          plan.permittedBranchIds.length > 0
+        ) {
+          const isPermitted = plan.permittedBranchIds.some(
+            (b) => b.toString() === appointment.branchId.toString(),
+          );
+          if (!isPermitted) {
+            throw new AppError(
+              `Membership plan '${plan.name}' is not permitted at branch '${appointment.branchId}'`,
+              403,
+            );
+          }
+        }
 
-        if (discountPct > 0) {
-          const serviceIds = (appointment.services || []).map((l) => l.serviceId).filter(Boolean);
-          const dbServices = serviceIds.length > 0 ? await Service.find({ _id: { $in: serviceIds }, organizationId }).session(session) : [];
+        // 3. Resolve & validate payer and beneficiaries
+        const effectivePayerId = payerCustomerId || appointment.customerId;
+        const payer = await Customer.findOne({
+          _id: effectivePayerId,
+          organizationId,
+          isDeleted: false,
+        }).session(session);
 
-          for (const line of appointment.services || []) {
-            if (!line.isRedeemedViaSubscription && !line.appliedSubscriptionId) {
-              const isCustom = line.serviceType === "custom" || !line.serviceId;
-              let isEligible = false;
-              if (isCustom) {
-                isEligible = true;
-              } else {
-                const dbServ = dbServices.find((ds) => ds._id.toString() === line.serviceId?.toString());
-                isEligible = isServiceEligibleForMembershipBenefits(
-                  { serviceId: line.serviceId, categoryId: dbServ?.categoryId },
-                  benefits
-                );
-              }
-              if (isEligible) {
-                const lineDiscount = Number(((line.price * discountPct) / 100).toFixed(2));
-                line.appliedCustomerMembershipId = targetCustomerMembership._id;
-                line.membershipCode = targetCustomerMembership.membershipCode;
-                line.membershipDiscountPercentage = discountPct;
-                line.membershipDiscountAmount = lineDiscount;
-                newlyDiscountedServicesCount++;
-                totalMembershipDiscount += lineDiscount;
+        if (!payer || payer.status !== "active") {
+          throw new AppError(
+            "Payer customer not found or inactive in organization",
+            400,
+          );
+        }
+
+        let targetBeneficiaryIds = [];
+        const beneficiaryOverridesList = Array.isArray(beneficiaries)
+          ? beneficiaries
+          : [];
+        if (beneficiaryOverridesList.length > 0) {
+          targetBeneficiaryIds = beneficiaryOverridesList.map(
+            (b) => b.customerId,
+          );
+        } else if (
+          Array.isArray(beneficiaryCustomerIds) &&
+          beneficiaryCustomerIds.length > 0
+        ) {
+          targetBeneficiaryIds = beneficiaryCustomerIds;
+        } else {
+          targetBeneficiaryIds = [effectivePayerId];
+        }
+
+        const uniqueBeneficiaryIds = Array.from(
+          new Set(targetBeneficiaryIds.map((b) => b.toString())),
+        );
+        if (uniqueBeneficiaryIds.length !== targetBeneficiaryIds.length) {
+          throw new AppError(
+            "Duplicate beneficiaries detected in membership upsell",
+            400,
+          );
+        }
+
+        const maxAllowed = plan.maxBeneficiaries || 1;
+        if (uniqueBeneficiaryIds.length > maxAllowed) {
+          throw new AppError(
+            `Membership plan '${plan.name}' allows at most ${maxAllowed} beneficiaries, but ${uniqueBeneficiaryIds.length} were specified`,
+            400,
+          );
+        }
+
+        const verifiedBeneficiaries = await Customer.find({
+          _id: { $in: uniqueBeneficiaryIds },
+          organizationId,
+          isDeleted: false,
+        }).session(session);
+
+        if (verifiedBeneficiaries.length !== uniqueBeneficiaryIds.length) {
+          throw new AppError(
+            "One or more beneficiaries not found in organization",
+            404,
+          );
+        }
+
+        // 4. Calculate validity dates and generate sequence code
+        const startDate = new Date();
+        const endDate = new Date(startDate);
+        endDate.setMonth(endDate.getMonth() + (plan.validityMonths || 12));
+
+        const sequenceKey = `MEM_${organizationId.toString()}`;
+        const seq = await Sequence.findOneAndUpdate(
+          { key: sequenceKey },
+          { $inc: { seq: 1 } },
+          { new: true, upsert: true, session },
+        );
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, "0");
+        const dd = String(today.getDate()).padStart(2, "0");
+        const num = String(seq.seq).padStart(4, "0");
+        const baseMembershipCode = `MEM-${yyyy}${mm}${dd}-${num}`;
+
+        // Status policy:
+        // If billImmediately and price > 0, invoice is generated and starts as "pending_payment"
+        // Eligible benefits apply immediately, even while in "pending_payment".
+        const initialStatus =
+          billImmediately && Number(plan.price) > 0
+            ? "pending_payment"
+            : "active";
+        const membershipPurchaseId = new mongoose.Types.ObjectId();
+        const createdMemberships = [];
+
+        for (let i = 0; i < uniqueBeneficiaryIds.length; i++) {
+          const bId = uniqueBeneficiaryIds[i];
+          const memCode =
+            uniqueBeneficiaryIds.length === 1
+              ? baseMembershipCode
+              : `${baseMembershipCode}-${i + 1}`;
+          const overrideConfig = beneficiaryOverridesList.find(
+            (o) =>
+              (o.customerId?._id || o.customerId)?.toString() ===
+              bId.toString(),
+          );
+          const effectiveBenefits = overrideConfig?.benefits || plan.benefits;
+
+          const newMembership = new CustomerMembership({
+            organizationId,
+            customerId: bId,
+            payerCustomerId: effectivePayerId,
+            membershipPurchaseId,
+            membershipPlanId: plan._id,
+            attribution: { soldBy },
+            membershipCode: memCode,
+            planSnapshot: {
+              name: plan.name,
+              tier: plan.tier || "Standard",
+              price: Number(plan.price),
+              validityMonths: plan.validityMonths || 12,
+              maxBeneficiaries: plan.maxBeneficiaries || 1,
+              benefits: effectiveBenefits,
+            },
+            status: initialStatus,
+            startDate,
+            endDate,
+            permittedBranchIds: plan.permittedBranchIds || [],
+            notes:
+              notes ||
+              `Upsold during appointment ${appointment.appointmentCode}`,
+          });
+
+          await newMembership.save({ session });
+          createdMemberships.push(newMembership);
+        }
+
+        // 5. Generate unified invoice if billImmediately is true
+        let invoice = null;
+        if (billImmediately) {
+          const { billingService } =
+            await import("../billing/billing.service.js");
+          invoice = await billingService.createUnifiedInvoice(
+            {
+              customerId: effectivePayerId,
+              branchId: appointment.branchId,
+              membershipLines: [
+                {
+                  membershipPlanId: plan._id,
+                  unitPrice: Number(plan.price),
+                  payerCustomerId: effectivePayerId,
+                  beneficiaryCustomerIds: uniqueBeneficiaryIds,
+                  beneficiaries: beneficiaryOverridesList,
+                  soldByStaffId: soldBy?.staffId,
+                  customerMembershipId: createdMemberships[0]._id,
+                  customerMembershipIds: createdMemberships.map((m) => m._id),
+                },
+              ],
+              notes:
+                notes ||
+                `Membership upsold during appointment ${appointment.appointmentCode}`,
+            },
+            organizationId,
+            userId,
+            session,
+          );
+
+          for (const cm of createdMemberships) {
+            cm.invoiceId = invoice._id;
+            await cm.save({ session });
+          }
+        }
+
+        // 6. Immediate benefit application: Reassess appointment services if appointment's customer is a beneficiary
+        const targetCustomerMembership = createdMemberships.find(
+          (m) => m.customerId.toString() === appointment.customerId.toString(),
+        );
+
+        let newlyDiscountedServicesCount = 0;
+        let totalMembershipDiscount = 0;
+
+        if (
+          targetCustomerMembership &&
+          ["active", "pending_payment"].includes(
+            targetCustomerMembership.status,
+          )
+        ) {
+          const benefits = targetCustomerMembership.planSnapshot?.benefits;
+          const discountPct = Number(benefits?.serviceDiscountPercentage || 0);
+
+          if (discountPct > 0) {
+            const serviceIds = (appointment.services || [])
+              .map((l) => l.serviceId)
+              .filter(Boolean);
+            const dbServices =
+              serviceIds.length > 0
+                ? await Service.find({
+                    _id: { $in: serviceIds },
+                    organizationId,
+                  }).session(session)
+                : [];
+
+            for (const line of appointment.services || []) {
+              if (
+                !line.isRedeemedViaSubscription &&
+                !line.appliedSubscriptionId
+              ) {
+                const isCustom =
+                  line.serviceType === "custom" || !line.serviceId;
+                let isEligible = false;
+                if (isCustom) {
+                  isEligible = true;
+                } else {
+                  const dbServ = dbServices.find(
+                    (ds) => ds._id.toString() === line.serviceId?.toString(),
+                  );
+                  isEligible = isServiceEligibleForMembershipBenefits(
+                    {
+                      serviceId: line.serviceId,
+                      categoryId: dbServ?.categoryId,
+                    },
+                    benefits,
+                  );
+                }
+                if (isEligible) {
+                  const lineDiscount = Number(
+                    ((line.price * discountPct) / 100).toFixed(2),
+                  );
+                  line.appliedCustomerMembershipId =
+                    targetCustomerMembership._id;
+                  line.membershipCode = targetCustomerMembership.membershipCode;
+                  line.membershipDiscountPercentage = discountPct;
+                  line.membershipDiscountAmount = lineDiscount;
+                  newlyDiscountedServicesCount++;
+                  totalMembershipDiscount += lineDiscount;
+                }
               }
             }
           }
         }
-      }
 
-      if (newlyDiscountedServicesCount > 0) {
-        const subtotal = (appointment.services || []).reduce((acc, s) => acc + (s.price || 0), 0);
-        const discount = Number(((appointment.pricing?.discount || 0) + totalMembershipDiscount).toFixed(2));
-        const total = Math.max(0, Number((subtotal - discount).toFixed(2)));
-        appointment.pricing = {
-          subtotal: Number(subtotal.toFixed(2)),
-          discount,
-          total,
+        if (newlyDiscountedServicesCount > 0) {
+          const subtotal = (appointment.services || []).reduce(
+            (acc, s) => acc + (s.price || 0),
+            0,
+          );
+          const discount = Number(
+            (
+              (appointment.pricing?.discount || 0) + totalMembershipDiscount
+            ).toFixed(2),
+          );
+          const total = Math.max(0, Number((subtotal - discount).toFixed(2)));
+          appointment.pricing = {
+            subtotal: Number(subtotal.toFixed(2)),
+            discount,
+            total,
+          };
+          await appointment.save({ session });
+        }
+
+        // 7. Audit log
+        const auditLog = new AuditLog({
+          organizationId,
+          branchId: appointment.branchId,
+          actorId: userId,
+          action: AUDIT_ACTIONS.MEMBERSHIP_CREATED,
+          entityType: "CustomerMembership",
+          entityId: createdMemberships[0]._id,
+          description: `Membership ${createdMemberships[0].membershipCode} upsold during appointment ${appointment.appointmentCode} for customer ${payer.name}`,
+          metadata: {
+            appointmentId: appointment._id,
+            appointmentCode: appointment.appointmentCode,
+            membershipCode: createdMemberships[0].membershipCode,
+            membershipPurchaseId,
+            beneficiaryCount: createdMemberships.length,
+            price: plan.price,
+            newlyDiscountedServicesCount,
+            totalMembershipDiscount,
+            invoiceId: invoice?._id || null,
+          },
+        });
+        await auditLog.save({ session });
+
+        return {
+          customerMembership: createdMemberships[0],
+          customerMemberships: createdMemberships,
+          invoice,
+          appointment,
+          summary: {
+            appliedMembershipCode: createdMemberships[0].membershipCode,
+            newlyDiscountedServicesCount,
+            totalMembershipDiscount,
+          },
         };
-        await appointment.save({ session });
-      }
-
-      // 7. Audit log
-      const auditLog = new AuditLog({
-        organizationId,
-        branchId: appointment.branchId,
-        actorId: userId,
-        action: AUDIT_ACTIONS.MEMBERSHIP_CREATED,
-        entityType: "CustomerMembership",
-        entityId: createdMemberships[0]._id,
-        description: `Membership ${createdMemberships[0].membershipCode} upsold during appointment ${appointment.appointmentCode} for customer ${payer.name}`,
-        metadata: {
-          appointmentId: appointment._id,
-          appointmentCode: appointment.appointmentCode,
-          membershipCode: createdMemberships[0].membershipCode,
-          membershipPurchaseId,
-          beneficiaryCount: createdMemberships.length,
-          price: plan.price,
-          newlyDiscountedServicesCount,
-          totalMembershipDiscount,
-          invoiceId: invoice?._id || null,
-        },
-      });
-      await auditLog.save({ session });
-
-      return {
-        customerMembership: createdMemberships[0],
-        customerMemberships: createdMemberships,
-        invoice,
-        appointment,
-        summary: {
-          appliedMembershipCode: createdMemberships[0].membershipCode,
-          newlyDiscountedServicesCount,
-          totalMembershipDiscount,
-        },
-      };
-    }, { requireTransaction: false });
+      },
+      { requireTransaction: false },
+    );
   }
 }
-
-

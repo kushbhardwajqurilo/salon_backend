@@ -1,4 +1,12 @@
-import { describe, expect, it, beforeAll, afterAll, beforeEach, jest } from "@jest/globals";
+import {
+  describe,
+  expect,
+  it,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  jest,
+} from "@jest/globals";
 import mongoose from "mongoose";
 import { getIsolatedTestMongoUri } from "../testSetup.js";
 import { Organization } from "../../models/organizations/organization.model.js";
@@ -169,7 +177,9 @@ describe("Authoritative Staff Availability Engine - 28 Production Scenarios", ()
     await Organization.deleteMany({});
 
     // 1. Organization & Branches
-    const org = await Organization.create({ name: "Availability Engine Test Salon" });
+    const org = await Organization.create({
+      name: "Availability Engine Test Salon",
+    });
     orgId = org._id;
 
     branchA = await Branch.create({
@@ -432,7 +442,10 @@ describe("Authoritative Staff Availability Engine - 28 Production Scenarios", ()
         date: getFutureDateStr(10),
         startTime: "10:00",
         duration: 90,
-        serviceIds: [serviceHaircut._id.toString(), serviceColor._id.toString()],
+        serviceIds: [
+          serviceHaircut._id.toString(),
+          serviceColor._id.toString(),
+        ],
       });
 
       expect(res.status).toBe(AVAILABILITY_STATUS.UNAVAILABLE);
@@ -454,7 +467,10 @@ describe("Authoritative Staff Availability Engine - 28 Production Scenarios", ()
         date: getFutureDateStr(10),
         startTime: "10:00",
         duration: 90,
-        serviceIds: [serviceHaircut._id.toString(), serviceColor._id.toString()],
+        serviceIds: [
+          serviceHaircut._id.toString(),
+          serviceColor._id.toString(),
+        ],
       });
 
       expect(res.status).toBe(AVAILABILITY_STATUS.AVAILABLE);
@@ -887,6 +903,162 @@ describe("Authoritative Staff Availability Engine - 28 Production Scenarios", ()
       expect(res.status).toBe(AVAILABILITY_STATUS.REQUIRES_REVIEW);
       expect(res.reasons).toContain(REASON_CODES.ATTENDANCE_CONFLICT);
     });
+
+    it("Scenario 23b: Historical attendance record does not affect today's availability", async () => {
+      const tz = branchA.timezone;
+      const now = new Date();
+      const todayStr = deriveBusinessDate(now, tz);
+      const yesterdayStr = getFutureDateStr(-1);
+
+      // Create attendance record from yesterday with clocked out or incomplete
+      await Attendance.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffA._id,
+        attendanceDate: new Date(`${yesterdayStr}T00:00:00.000Z`),
+        status: "incomplete",
+        conflictType: "appointment",
+        isReconciled: false,
+      });
+
+      // Roster Alice for today
+      await StaffRoster.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffA._id,
+        isActive: true,
+        weeklySchedule: [
+          {
+            dayOfWeek: new Date(`${todayStr}T12:00:00Z`).getUTCDay(),
+            isWorkingDay: true,
+            shifts: [{ startTime: "09:00", endTime: "20:00" }],
+          },
+        ],
+      });
+
+      // Add check-in punch today so she is present
+      const startAt = parseLocalToUTC(todayStr, "11:00", tz);
+      await AttendancePunch.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffA._id,
+        punchType: "in",
+        punchAt: new Date(startAt.getTime() - 60 * 60000),
+        provider: "biometric",
+      });
+
+      const res = await staffAvailabilityService.checkStaffSlotAvailability({
+        organizationId: orgId.toString(),
+        branchId: branchA._id.toString(),
+        staffId: staffA._id.toString(),
+        date: todayStr,
+        startTime: "11:00",
+        duration: 30,
+      });
+
+      expect(res.status).toBe(AVAILABILITY_STATUS.AVAILABLE);
+      expect(res.reasons).not.toContain(REASON_CODES.ATTENDANCE_CONFLICT);
+    });
+
+    it("Scenario 23c: Punches returned out of order are evaluated chronologically", async () => {
+      const tz = branchA.timezone;
+      const now = new Date();
+      const todayStr = deriveBusinessDate(now, tz);
+      const slotTime = parseLocalToUTC(todayStr, "14:00", tz);
+
+      // Create Attendance record for today
+      await Attendance.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffA._id,
+        attendanceDate: new Date(`${todayStr}T00:00:00.000Z`),
+        status: "present",
+      });
+
+      // Create punches: later punch is OUT at 13:00, earlier punch is IN at 09:00.
+      // Both single-evaluator and batch evaluator must sort by punchAt to determine lastPunch.
+      await AttendancePunch.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffA._id,
+        punchType: "in",
+        punchAt: new Date(slotTime.getTime() - 4 * 60 * 60000), // 10:00
+        provider: "biometric",
+      });
+
+      await AttendancePunch.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffA._id,
+        punchType: "out",
+        punchAt: new Date(slotTime.getTime() - 60 * 60000), // 13:00
+        provider: "biometric",
+      });
+
+      const singleRes =
+        await staffAvailabilityService.checkStaffSlotAvailability({
+          organizationId: orgId.toString(),
+          branchId: branchA._id.toString(),
+          staffId: staffA._id.toString(),
+          date: todayStr,
+          startTime: "14:00",
+          duration: 30,
+        });
+
+      expect(singleRes.status).toBe(AVAILABILITY_STATUS.UNAVAILABLE);
+      expect(singleRes.reasons).toContain(REASON_CODES.ATTENDANCE_CLOCKED_OUT);
+
+      const batchRes = await staffAvailabilityService.findAvailableStaffForSlot(
+        {
+          organizationId: orgId.toString(),
+          branchId: branchA._id.toString(),
+          date: todayStr,
+          startTime: "14:00",
+          duration: 30,
+        },
+      );
+
+      const aliceBatch = batchRes.staff.find(
+        (s) => s.staffId === staffA._id.toString(),
+      );
+      expect(aliceBatch.status).toBe(AVAILABILITY_STATUS.UNAVAILABLE);
+      expect(aliceBatch.reasons).toContain(REASON_CODES.ATTENDANCE_CLOCKED_OUT);
+    });
+
+    it("Scenario 23d: Missing attendance after expected shift start results in requires_review", async () => {
+      const tz = branchA.timezone;
+      const now = new Date();
+      const todayStr = deriveBusinessDate(now, tz);
+
+      // Explicitly configure staff roster with shift starting at 09:00
+      await StaffRoster.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffA._id,
+        isActive: true,
+        weeklySchedule: [
+          {
+            dayOfWeek: new Date(`${todayStr}T12:00:00Z`).getUTCDay(),
+            isWorkingDay: true,
+            shifts: [{ startTime: "09:00", endTime: "20:00" }],
+          },
+        ],
+      });
+
+      // When staff has a configured shift starting at 09:00, checking a slot past/during
+      // the shift without any attendance punch triggers ATTENDANCE_REVIEW_REQUIRED:
+      const res = await staffAvailabilityService.checkStaffSlotAvailability({
+        organizationId: orgId.toString(),
+        branchId: branchA._id.toString(),
+        staffId: staffA._id.toString(),
+        date: todayStr,
+        startTime: "09:30",
+        duration: 30,
+      });
+
+      expect(res.status).toBe(AVAILABILITY_STATUS.REQUIRES_REVIEW);
+      expect(res.reasons).toContain(REASON_CODES.ATTENDANCE_REVIEW_REQUIRED);
+    });
   });
 
   // =========================================================================
@@ -1063,7 +1235,10 @@ describe("Authoritative Staff Availability Engine - 28 Production Scenarios", ()
         date: dateStr,
         startTime: "10:00",
         duration: 90,
-        serviceIds: [serviceHaircut._id.toString(), serviceColor._id.toString()],
+        serviceIds: [
+          serviceHaircut._id.toString(),
+          serviceColor._id.toString(),
+        ],
       });
 
       expect(res.status).toBe(AVAILABILITY_STATUS.UNAVAILABLE);
@@ -1112,7 +1287,9 @@ describe("Authoritative Staff Availability Engine - 28 Production Scenarios", ()
 
       expect(results.staff[1].staffId).toBe(staffB._id.toString());
       expect(results.staff[1].status).toBe(AVAILABILITY_STATUS.UNAVAILABLE);
-      expect(results.staff[1].reasons).toContain(REASON_CODES.SERVICE_NOT_SUPPORTED);
+      expect(results.staff[1].reasons).toContain(
+        REASON_CODES.SERVICE_NOT_SUPPORTED,
+      );
     });
 
     it("generates calendar availability lane for staff across date range with leaves and attendance", async () => {
@@ -1124,16 +1301,302 @@ describe("Authoritative Staff Availability Engine - 28 Production Scenarios", ()
       });
 
       const dateStr = getFutureDateStr(15);
-      const calendarData = await staffAvailabilityService.getStaffCalendarAvailability({
-        organizationId: orgId.toString(),
-        branchId: branchA._id.toString(),
-        date: dateStr,
-        staffId: staffA._id.toString(),
-      });
+      const calendarData =
+        await staffAvailabilityService.getStaffCalendarAvailability({
+          organizationId: orgId.toString(),
+          branchId: branchA._id.toString(),
+          date: dateStr,
+          staffId: staffA._id.toString(),
+        });
 
       expect(calendarData.lanes.length).toBe(1);
       expect(calendarData.lanes[0].id).toBe(staffA._id.toString());
       expect(calendarData.lanes[0].name).toBe("Senior Stylist Alice");
+      expect(calendarData.lanes[0].attendanceDetails).toBeDefined();
+      expect(calendarData.lanes[0].attendanceDetails.status).toBe(
+        "not_started",
+      );
+    });
+
+    it("evaluates normalized calendar attendance statuses: present, absent, clocked_out, review_required, on_leave", async () => {
+      const now = new Date();
+      const tz = branchA.timezone || "Asia/Kolkata";
+      const todayStr = deriveBusinessDate(now, tz);
+
+      await StaffBranch.create({
+        organizationId: orgId,
+        staffId: staffA._id,
+        branchId: branchA._id,
+        isActive: true,
+      });
+
+      // 1. Clock in punch -> present
+      await AttendancePunch.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffA._id,
+        punchType: "in",
+        punchAt: new Date(),
+        provider: "biometric",
+        mappingStatus: "mapped",
+      });
+
+      let calendarData =
+        await staffAvailabilityService.getStaffCalendarAvailability({
+          organizationId: orgId.toString(),
+          branchId: branchA._id.toString(),
+          date: todayStr,
+          staffId: staffA._id.toString(),
+        });
+      expect(calendarData.lanes[0].attendanceDetails.status).toBe("present");
+
+      // 2. Clock out punch -> clocked_out
+      await AttendancePunch.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffA._id,
+        punchType: "out",
+        punchAt: new Date(Date.now() + 60000),
+        provider: "biometric",
+        mappingStatus: "mapped",
+      });
+
+      calendarData =
+        await staffAvailabilityService.getStaffCalendarAvailability({
+          organizationId: orgId.toString(),
+          branchId: branchA._id.toString(),
+          date: todayStr,
+          staffId: staffA._id.toString(),
+        });
+      expect(calendarData.lanes[0].attendanceDetails.status).toBe(
+        "clocked_out",
+      );
+
+      // 3. Unreconciled attendance conflict -> review_required
+      await Attendance.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffB._id,
+        attendanceDate: new Date(`${todayStr}T00:00:00.000Z`),
+        status: "incomplete",
+        conflictType: "leave",
+        isReconciled: false,
+      });
+
+      await StaffBranch.create({
+        organizationId: orgId,
+        staffId: staffB._id,
+        branchId: branchA._id,
+        isActive: true,
+      });
+
+      calendarData =
+        await staffAvailabilityService.getStaffCalendarAvailability({
+          organizationId: orgId.toString(),
+          branchId: branchA._id.toString(),
+          date: todayStr,
+          staffId: staffB._id.toString(),
+        });
+      expect(calendarData.lanes[0].attendanceDetails.status).toBe(
+        "review_required",
+      );
+    });
+
+    it("partial-day approved leave with afternoon clock-in evaluates to present with partial leave retained", async () => {
+      const now = new Date();
+      const tz = branchA.timezone || "Asia/Kolkata";
+      const todayStr = deriveBusinessDate(now, tz);
+
+      // Create staff C
+      const staffC = await Staff.create({
+        organizationId: orgId,
+        name: "Stylist Charlie",
+        phone: `+91914${Math.floor(1000000 + Math.random() * 9000000)}`,
+        email: `charlie_${Date.now()}_${Math.random()}@salon.com`,
+        designation: "Senior Stylist",
+        staffCode: `STF-C-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        joiningDate: new Date(),
+        status: "active",
+        isDeleted: false,
+      });
+
+      await StaffBranch.create({
+        organizationId: orgId,
+        staffId: staffC._id,
+        branchId: branchA._id,
+        isActive: true,
+      });
+
+      // Scheduled shift 09:00 - 18:00
+      await StaffRoster.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffC._id,
+        weeklySchedule: [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({
+          dayOfWeek,
+          isWorkingDay: true,
+          shifts: [{ startTime: "09:00", endTime: "18:00" }],
+        })),
+        isActive: true,
+      });
+
+      // Approved partial leave 10:00 - 12:00
+      await Leave.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffC._id,
+        leaveCode: "LV-PART-1",
+        leaveType: "Medical",
+        startDate: new Date(`${todayStr}T00:00:00.000Z`),
+        endDate: new Date(`${todayStr}T00:00:00.000Z`),
+        dates: [todayStr],
+        reason: "Dentist Appointment",
+        status: "approved",
+        submittedBy: staffC._id,
+        submittedFor: "staff",
+        isPartialDay: true,
+        startTime: "10:00",
+        endTime: "12:00",
+      });
+
+      // Staff member clocks in at 13:00 (afternoon)
+      await AttendancePunch.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffC._id,
+        punchType: "in",
+        punchAt: new Date(),
+        provider: "biometric",
+        mappingStatus: "mapped",
+      });
+
+      const calendarData =
+        await staffAvailabilityService.getStaffCalendarAvailability({
+          organizationId: orgId.toString(),
+          branchId: branchA._id.toString(),
+          date: todayStr,
+          staffId: staffC._id.toString(),
+        });
+
+      expect(calendarData.lanes.length).toBe(1);
+      const lane = calendarData.lanes[0];
+      // Operational status is present
+      expect(lane.attendanceDetails.status).toBe("present");
+      // Partial leave metadata is preserved
+      expect(lane.leave).toBeDefined();
+      expect(lane.leave.isPartialDay).toBe(true);
+      expect(lane.leave.startTime).toBe("10:00");
+      expect(lane.leave.endTime).toBe("12:00");
+    });
+
+    it("evaluates historical absence rules and respects rosters, non-working days, and branch closures", async () => {
+      const tz = branchA.timezone || "Asia/Kolkata";
+      const pastDateStr = "2026-10-01"; // known past date
+
+      const staffD = await Staff.create({
+        organizationId: orgId,
+        name: "Stylist Daisy",
+        phone: `+91915${Math.floor(1000000 + Math.random() * 9000000)}`,
+        email: `daisy_${Date.now()}_${Math.random()}@salon.com`,
+        designation: "Colorist",
+        staffCode: `STF-D-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        joiningDate: new Date(),
+        status: "active",
+        isDeleted: false,
+      });
+
+      await StaffBranch.create({
+        organizationId: orgId,
+        staffId: staffD._id,
+        branchId: branchA._id,
+        isActive: true,
+      });
+
+      // 1. Without roster configured on past date -> review_required (missing expectation, not assumed absent)
+      let calendarData =
+        await staffAvailabilityService.getStaffCalendarAvailability({
+          organizationId: orgId.toString(),
+          branchId: branchA._id.toString(),
+          date: pastDateStr,
+          staffId: staffD._id.toString(),
+        });
+      expect(calendarData.lanes[0].attendanceDetails.status).toBe(
+        "review_required",
+      );
+
+      // 2. Scheduled working day with no attendance in the past -> absent
+      const pastDateObj = new Date(`${pastDateStr}T12:00:00.000Z`);
+      const pastDayOfWeek = pastDateObj.getUTCDay();
+
+      const rosterD = await StaffRoster.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffD._id,
+        weeklySchedule: [0, 1, 2, 3, 4, 5, 6].map((d) => ({
+          dayOfWeek: d,
+          isWorkingDay: d === pastDayOfWeek,
+          shifts:
+            d === pastDayOfWeek
+              ? [{ startTime: "09:00", endTime: "17:00" }]
+              : [],
+        })),
+        isActive: true,
+      });
+
+      calendarData =
+        await staffAvailabilityService.getStaffCalendarAvailability({
+          organizationId: orgId.toString(),
+          branchId: branchA._id.toString(),
+          date: pastDateStr,
+          staffId: staffD._id.toString(),
+        });
+      expect(calendarData.lanes[0].attendanceDetails.status).toBe("absent");
+
+      // 3. Past non-working day for staff member -> not_started (not absent)
+      rosterD.weeklySchedule.find(
+        (w) => w.dayOfWeek === pastDayOfWeek,
+      ).isWorkingDay = false;
+      await StaffRoster.updateOne(
+        { _id: rosterD._id },
+        { weeklySchedule: rosterD.weeklySchedule },
+      );
+
+      calendarData =
+        await staffAvailabilityService.getStaffCalendarAvailability({
+          organizationId: orgId.toString(),
+          branchId: branchA._id.toString(),
+          date: pastDateStr,
+          staffId: staffD._id.toString(),
+        });
+      expect(calendarData.lanes[0].attendanceDetails.status).toBe(
+        "not_started",
+      );
+
+      // 4. Past date with approved full-day leave -> on_leave (not absent)
+      await Leave.create({
+        organizationId: orgId,
+        branchId: branchA._id,
+        staffId: staffD._id,
+        leaveCode: "LV-FULL-1",
+        leaveType: "Vacation",
+        startDate: new Date(`${pastDateStr}T00:00:00.000Z`),
+        endDate: new Date(`${pastDateStr}T00:00:00.000Z`),
+        dates: [pastDateStr],
+        reason: "Vacation Day",
+        status: "approved",
+        submittedBy: staffD._id,
+        submittedFor: "staff",
+        isPartialDay: false,
+      });
+
+      calendarData =
+        await staffAvailabilityService.getStaffCalendarAvailability({
+          organizationId: orgId.toString(),
+          branchId: branchA._id.toString(),
+          date: pastDateStr,
+          staffId: staffD._id.toString(),
+        });
+      expect(calendarData.lanes[0].attendanceDetails.status).toBe("on_leave");
     });
   });
 });

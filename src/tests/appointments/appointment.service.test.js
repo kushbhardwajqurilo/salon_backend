@@ -200,14 +200,14 @@ describe("AppointmentService Unit & Domain Tests", () => {
       };
 
       let updatedData = null;
-      jest.spyOn(AppointmentRepository.prototype, "findById").mockImplementation(async () => {
+      const findByIdSpy = jest.spyOn(AppointmentRepository.prototype, "findById").mockImplementation(async () => {
         if (updatedData) {
           return { ...walkInApt, ...updatedData, staffId: { _id: staffId, name: "Rahul" } };
         }
         return walkInApt;
       });
 
-      jest.spyOn(AppointmentRepository.prototype, "update").mockImplementation(async (id, data) => {
+      const updateSpy = jest.spyOn(AppointmentRepository.prototype, "update").mockImplementation(async (id, data) => {
         updatedData = data;
         return { ...walkInApt, ...data };
       });
@@ -222,6 +222,86 @@ describe("AppointmentService Unit & Domain Tests", () => {
       expect(updatedData).toBeDefined();
       expect(updatedData.startTime).toBe(currentBranchTime.timeStr);
       expect(updatedData.slotMinutes.length).toBe(30);
+
+      findByIdSpy.mockRestore();
+      updateSpy.mockRestore();
+    });
+
+    it("does not mutate or persist advanced walk-in time if staff availability check fails", async () => {
+      const { Branch } = await import("../../models/branches/branch.model.js");
+      const { Staff } = await import("../../models/staff/staff.model.js");
+      const { AppointmentRepository } = await import("../../repositories/appointments/appointment.repository.js");
+
+      // Use a fresh instance of AppointmentService
+      const freshAppointmentService = new AppointmentService();
+
+      const orgId = new mongoose.Types.ObjectId();
+      const branchId = new mongoose.Types.ObjectId();
+      const staffId = new mongoose.Types.ObjectId();
+      const aptId = new mongoose.Types.ObjectId();
+      const branchTz = "Asia/Kolkata";
+
+      jest.spyOn(Branch, "findOne").mockResolvedValue({ _id: branchId, organizationId: orgId, isActive: true, timezone: branchTz });
+      jest.spyOn(Staff, "findOne").mockResolvedValue({ _id: staffId, organizationId: orgId, isDeleted: false, status: "active" });
+
+      const currentBranchTime = formatUTCToLocal(new Date(), branchTz);
+      const originalStartTime = "06:00";
+      const originalEndTime = "06:30";
+
+      const walkInApt = {
+        _id: aptId,
+        organizationId: orgId,
+        branchId,
+        appointmentCode: "APT-WALK-FAIL",
+        customerId: new mongoose.Types.ObjectId(),
+        staffId: null,
+        bookingType: "walk_in",
+        status: "scheduled",
+        appointmentDate: currentBranchTime.dateStr,
+        startTime: originalStartTime,
+        endTime: originalEndTime,
+        totalDuration: 30,
+        startAt: parseLocalToUTC(currentBranchTime.dateStr, originalStartTime, branchTz),
+        endAt: parseLocalToUTC(currentBranchTime.dateStr, originalEndTime, branchTz),
+        slotMinutes: [],
+        services: [{ serviceId: new mongoose.Types.ObjectId(), name: "Haircut", duration: 30, price: 500 }],
+      };
+
+      let updateCalled = false;
+      jest.spyOn(AppointmentRepository.prototype, "findById").mockResolvedValue(walkInApt);
+      const updateSpy = jest.spyOn(AppointmentRepository.prototype, "update").mockImplementation(async () => {
+        updateCalled = true;
+      });
+
+      // Spy on freshAppointmentService.validateStaffAvailability to reject
+      const validateSpy = jest.spyOn(freshAppointmentService, "validateStaffAvailability").mockImplementation(async () => {
+        throw new AppError("Staff member has clocked out for the day", 400, {
+          code: "ATTENDANCE_CLOCKED_OUT",
+        });
+      });
+
+      let caughtErr = null;
+      try {
+        await freshAppointmentService.assignStaff(
+          aptId,
+          { branchId: branchId.toString(), staffId: staffId.toString() },
+          orgId
+        );
+      } catch (err) {
+        caughtErr = err;
+      }
+
+      expect(caughtErr).not.toBeNull();
+      expect(caughtErr.message).toBe("Staff member has clocked out for the day");
+
+      // Verify that validateStaffAvailability was called
+      expect(validateSpy).toHaveBeenCalled();
+
+      // Verify that appointmentRepo.update was NEVER called and original appointment remains unmutated
+      expect(updateCalled).toBe(false);
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(walkInApt.startTime).toBe(originalStartTime);
+      expect(walkInApt.endTime).toBe(originalEndTime);
     });
   });
 

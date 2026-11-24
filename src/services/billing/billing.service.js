@@ -2700,6 +2700,33 @@ export class BillingService {
     let loyaltyRedeemedPoints = 0;
     let loyaltyDiscountAmount = 0;
 
+    if (redeemLoyaltyPoints && Number(redeemLoyaltyPoints) > 0) {
+      // Preliminary calculation to find eligible uncovered amount before loyalty
+      let preSubtotal = 0;
+      let preSubCovered = 0;
+      for (const line of invoiceLines) {
+        preSubtotal = Number((preSubtotal + line.lineTotal).toFixed(2));
+        preSubCovered = Number(
+          (preSubCovered + (line.subscriptionCoveredAmount || 0)).toFixed(2),
+        );
+      }
+      const eligibleAmount = Math.max(
+        0,
+        Number((preSubtotal - preSubCovered - manualDiscount).toFixed(2)),
+      );
+
+      const preview = await loyaltyService.previewRedemption(
+        targetCustomerId,
+        eligibleAmount,
+        redeemLoyaltyPoints,
+        organizationId,
+        session,
+      );
+
+      loyaltyRedeemedPoints = preview.appliedPoints;
+      loyaltyDiscountAmount = preview.appliedDiscount;
+    }
+
     // Line totals and customerPayable have already accounted for in-cart membership discounts.
     // If additional manual discount or loyalty is applied, distribute across lines.
     const additionalDiscount = Number(

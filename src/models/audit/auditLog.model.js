@@ -151,5 +151,16 @@ const auditLogSchema = new mongoose.Schema(
 // Indexes
 auditLogSchema.index({ organizationId: 1, entityType: 1, entityId: 1, createdAt: -1 });
 auditLogSchema.index({ organizationId: 1, branchId: 1, createdAt: -1 });
+// Partial filter unique index for idempotent audit recovery operations (such as attendance conflict recovery)
+auditLogSchema.index(
+  { organizationId: 1, action: 1, entityId: 1, "metadata.idempotencyKey": 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      "metadata.idempotencyKey": { $exists: true },
+    },
+    name: "uniq_audit_idempotency_key",
+  }
+);
 
 export const AuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", auditLogSchema);

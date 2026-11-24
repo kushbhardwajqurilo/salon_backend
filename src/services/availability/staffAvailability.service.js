@@ -7,10 +7,8 @@ import { Leave } from "../../models/leaves/leave.model.js";
 import { Appointment } from "../../models/appointments/appointment.model.js";
 import { Attendance } from "../../models/attendance/attendance.model.js";
 import { AttendancePunch } from "../../models/attendance/attendancePunch.model.js";
-import {
-  parseLocalToUTC,
-  formatUTCToLocal,
-} from "../../utils/date.js";
+import { AttendanceBranchConflict } from "../../models/attendance/AttendanceLeaveAppointmentConflict.model.js";
+import { parseLocalToUTC, formatUTCToLocal } from "../../utils/date.js";
 import { deriveBusinessDate } from "../attendance/attendance.service.js";
 import { AppError } from "../../utils/errors.js";
 
@@ -42,6 +40,16 @@ export const REASON_CODES = {
 
 export const DEFAULT_TRAVEL_BUFFER_MINUTES = 30;
 
+export const DAY_MAP = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+];
+
 /**
  * Converts "HH:mm" string to minute of day (0..1439)
  */
@@ -65,7 +73,9 @@ const execQuery = async (query) => {
 };
 
 const isMethodMocked = (method) => {
-  return typeof method?.mock !== "undefined" || Boolean(method?._isMockFunction);
+  return (
+    typeof method?.mock !== "undefined" || Boolean(method?._isMockFunction)
+  );
 };
 
 const safeFindOne = async (model, filter) => {
@@ -83,7 +93,10 @@ const safeFind = async (model, filter) => {
 };
 
 const safeCount = async (model, filter) => {
-  if (mongoose.connection.readyState === 0 && !isMethodMocked(model.countDocuments)) {
+  if (
+    mongoose.connection.readyState === 0 &&
+    !isMethodMocked(model.countDocuments)
+  ) {
     return 0;
   }
   return await model.countDocuments(filter);
@@ -93,7 +106,10 @@ const safeCount = async (model, filter) => {
  * Checks if interval [startA, endA) overlaps with [startB, endB)
  */
 export const isIntervalOverlapping = (startA, endA, startB, endB) => {
-  return Math.max(startA.getTime(), startB.getTime()) < Math.min(endA.getTime(), endB.getTime());
+  return (
+    Math.max(startA.getTime(), startB.getTime()) <
+    Math.min(endA.getTime(), endB.getTime())
+  );
 };
 
 export class StaffAvailabilityService {
@@ -113,10 +129,16 @@ export class StaffAvailabilityService {
     options = {},
   }) {
     if (!staffId) {
-      throw new AppError("Staff ID is required for availability evaluation", 400);
+      throw new AppError(
+        "Staff ID is required for availability evaluation",
+        400,
+      );
     }
     if (!branchId) {
-      throw new AppError("Branch ID is required for availability evaluation", 400);
+      throw new AppError(
+        "Branch ID is required for availability evaluation",
+        400,
+      );
     }
     if (!date) {
       throw new AppError("Date is required for availability evaluation", 400);
@@ -234,7 +256,10 @@ export class StaffAvailabilityService {
     const dayOfWeek = dateObj.getUTCDay(); // 0 = Sunday
     const operatingHoursMap = branch.operatingHours;
     if (operatingHoursMap) {
-      const dayHours = operatingHoursMap instanceof Map ? operatingHoursMap.get(String(dayOfWeek)) : operatingHoursMap[dayOfWeek];
+      const dayHours =
+        operatingHoursMap instanceof Map
+          ? operatingHoursMap.get(String(dayOfWeek))
+          : operatingHoursMap[dayOfWeek];
       if (dayHours && dayHours.isOpen === false) {
         reasons.push(REASON_CODES.BRANCH_CLOSED);
         status = AVAILABILITY_STATUS.UNAVAILABLE;
@@ -282,7 +307,9 @@ export class StaffAvailabilityService {
       }
     } else {
       // Check date override first
-      const dateOverride = (roster.overrides || []).find((o) => o.date === dateStr);
+      const dateOverride = (roster.overrides || []).find(
+        (o) => o.date === dateStr,
+      );
       if (dateOverride) {
         if (!dateOverride.isWorkingDay) {
           reasons.push(REASON_CODES.STAFF_NOT_SCHEDULED);
@@ -302,7 +329,9 @@ export class StaffAvailabilityService {
         }
       } else {
         // Fall back to weekly schedule
-        const weeklyDay = (roster.weeklySchedule || []).find((d) => d.dayOfWeek === dayOfWeek);
+        const weeklyDay = (roster.weeklySchedule || []).find(
+          (d) => d.dayOfWeek === dayOfWeek,
+        );
         if (!weeklyDay || !weeklyDay.isWorkingDay) {
           reasons.push(REASON_CODES.STAFF_NOT_SCHEDULED);
           status = AVAILABILITY_STATUS.UNAVAILABLE;
@@ -330,7 +359,10 @@ export class StaffAvailabilityService {
       isDeleted: false,
       $or: [
         { dates: dateStr },
-        { startDate: { $lte: new Date(dateStr) }, endDate: { $gte: new Date(dateStr) } },
+        {
+          startDate: { $lte: new Date(dateStr) },
+          endDate: { $gte: new Date(dateStr) },
+        },
       ],
     });
 
@@ -353,7 +385,14 @@ export class StaffAvailabilityService {
           leaveEndAt = parseLocalToUTC(dateStr, eTime || "14:00", timezone);
         }
 
-        if (isIntervalOverlapping(startAt, endAt, new Date(leaveStartAt), new Date(leaveEndAt))) {
+        if (
+          isIntervalOverlapping(
+            startAt,
+            endAt,
+            new Date(leaveStartAt),
+            new Date(leaveEndAt),
+          )
+        ) {
           reasons.push(REASON_CODES.PARTIAL_DAY_LEAVE_CONFLICT);
           status = AVAILABILITY_STATUS.UNAVAILABLE;
           break;
@@ -384,13 +423,16 @@ export class StaffAvailabilityService {
     });
 
     const travelBufferMin =
-      options.travelBufferMinutes || branch.bufferMinutes || DEFAULT_TRAVEL_BUFFER_MINUTES;
+      options.travelBufferMinutes ||
+      branch.bufferMinutes ||
+      DEFAULT_TRAVEL_BUFFER_MINUTES;
 
     for (const appt of sameDayAppointments) {
       const apptStartAt = new Date(appt.startAt);
       const apptEndAt = new Date(appt.endAt);
-      const isTargetBranch = appt.branchId?._id?.toString() === branchId.toString() ||
-                             appt.branchId?.toString() === branchId.toString();
+      const isTargetBranch =
+        appt.branchId?._id?.toString() === branchId.toString() ||
+        appt.branchId?.toString() === branchId.toString();
 
       // Check Direct Time Overlap
       if (isIntervalOverlapping(startAt, endAt, apptStartAt, apptEndAt)) {
@@ -424,10 +466,13 @@ export class StaffAvailabilityService {
     // 10. Attendance-Aware Operational Evaluation
     const currentBranchDate = deriveBusinessDate(new Date(), timezone);
     if (dateStr === currentBranchDate) {
+      const attendanceDateUTC = new Date(`${dateStr}T00:00:00.000Z`);
+
       // Same-day operational evaluation
       const attendance = await safeFindOne(Attendance, {
         organizationId,
         staffId,
+        attendanceDate: attendanceDateUTC,
         isDeleted: false,
       });
 
@@ -442,34 +487,134 @@ export class StaffAvailabilityService {
         isDeleted: false,
       });
 
-      const todayPunches = punches.filter(
-        (p) => deriveBusinessDate(p.punchAt, timezone) === dateStr,
-      );
+      const todayPunches = punches
+        .filter((p) => deriveBusinessDate(p.punchAt, timezone) === dateStr)
+        .sort(
+          (a, b) =>
+            new Date(a.punchAt).getTime() - new Date(b.punchAt).getTime(),
+        );
 
       if (todayPunches.length > 0) {
+        // Build intervals of clocked-out / unavailable periods across the day
+        // A punch sequence of in -> out -> in -> out defines working intervals [in_1, out_1], [in_2, out_2]...
+        // Any time after an 'out' punch until the next 'in' punch is clocked-out time.
+        // If the appointment interval [startAt, endAt) overlaps with any clocked-out period, the staff is unavailable.
+        let isClockedOutDuringSlot = false;
+        let lastInTime = null;
+
+        for (const p of todayPunches) {
+          const punchTime = new Date(p.punchAt);
+          if (p.punchType === "in") {
+            lastInTime = punchTime;
+          } else if (p.punchType === "out") {
+            // Clocked out period starts at punchTime.
+            // Check if slot [startAt, endAt) starts at or after this punch and before any subsequent in punch.
+            // We check this with the final state below.
+          }
+        }
+
         const lastPunch = todayPunches[todayPunches.length - 1];
-        if (lastPunch.punchType === "out" && new Date(lastPunch.punchAt) <= startAt) {
+        if (lastPunch.punchType === "out") {
+          const outTime = new Date(lastPunch.punchAt);
+          // If the appointment overlaps or is scheduled after the staff clocked out
+          if (endAt > outTime && startAt >= outTime) {
+            isClockedOutDuringSlot = true;
+          } else if (startAt < outTime && endAt > outTime) {
+            // Clocked out during the appointment itself!
+            isClockedOutDuringSlot = true;
+          }
+        } else {
+          // If the last punch is "in", check if any previous "out" -> "in" gap overlapped with the appointment
+          for (let i = 0; i < todayPunches.length - 1; i++) {
+            const currentP = todayPunches[i];
+            const nextP = todayPunches[i + 1];
+            if (currentP.punchType === "out" && nextP.punchType === "in") {
+              const outGapStart = new Date(currentP.punchAt);
+              const outGapEnd = new Date(nextP.punchAt);
+              if (isIntervalOverlapping(startAt, endAt, outGapStart, outGapEnd)) {
+                isClockedOutDuringSlot = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (isClockedOutDuringSlot) {
           reasons.push(REASON_CODES.ATTENDANCE_CLOCKED_OUT);
           status = AVAILABILITY_STATUS.UNAVAILABLE;
         }
       }
 
+      // Also check for pending AttendanceBranchConflict on this date
+      const pendingBranchConflict = await safeFindOne(AttendanceBranchConflict, {
+        organizationId,
+        staffId,
+        date: dateStr,
+        conflictStatus: "pending",
+      });
+      if (pendingBranchConflict) {
+        reasons.push(REASON_CODES.ATTENDANCE_CONFLICT);
+        if (status === AVAILABILITY_STATUS.AVAILABLE) {
+          status = AVAILABILITY_STATUS.REQUIRES_REVIEW;
+        }
+      }
+
       if (attendance) {
-        if (attendance.conflictType && attendance.conflictType !== "none" && !attendance.isReconciled) {
+        if (
+          attendance.conflictType &&
+          attendance.conflictType !== "none" &&
+          !attendance.isReconciled
+        ) {
           reasons.push(REASON_CODES.ATTENDANCE_CONFLICT);
           if (status === AVAILABILITY_STATUS.AVAILABLE) {
             status = AVAILABILITY_STATUS.REQUIRES_REVIEW;
           }
-        } else if (attendance.status === "incomplete" && todayPunches.length === 0) {
+        } else if (
+          attendance.status === "incomplete" &&
+          todayPunches.length === 0
+        ) {
           reasons.push(REASON_CODES.ATTENDANCE_INCOMPLETE);
           if (status === AVAILABILITY_STATUS.AVAILABLE) {
             status = AVAILABILITY_STATUS.REQUIRES_REVIEW;
           }
         }
       } else {
-        // Missing attendance record: check if appointment is past without punch
-        if (startAt.getTime() < Date.now() && todayPunches.length === 0) {
-          warnings.push(REASON_CODES.ATTENDANCE_REVIEW_REQUIRED);
+        // Missing attendance record: check staff roster / shift start
+        const hasClockIn = todayPunches.some((p) => p.punchType === "in");
+        if (!hasClockIn) {
+          let expectedShiftStartStr = null;
+          const dateOverride = (roster?.overrides || []).find(
+            (o) => o.date === dateStr,
+          );
+          if (dateOverride?.shifts && dateOverride.shifts.length > 0) {
+            expectedShiftStartStr = dateOverride.shifts[0].startTime;
+          } else {
+            const weeklyDay = (roster?.weeklySchedule || []).find(
+              (d) => d.dayOfWeek === dayOfWeek,
+            );
+            if (weeklyDay?.shifts && weeklyDay.shifts.length > 0) {
+              expectedShiftStartStr = weeklyDay.shifts[0].startTime;
+            }
+          }
+
+          // Do not infer absence from branch opening hours when staff shifts are not configured.
+          // Only evaluate expected shift start if a specific staff roster/shift is actually configured.
+          if (expectedShiftStartStr) {
+            const expectedShiftStartUTC = parseLocalToUTC(
+              dateStr,
+              expectedShiftStartStr,
+              timezone,
+            );
+            if (
+              Date.now() >= expectedShiftStartUTC.getTime() ||
+              startAt.getTime() < Date.now()
+            ) {
+              reasons.push(REASON_CODES.ATTENDANCE_REVIEW_REQUIRED);
+              if (status === AVAILABILITY_STATUS.AVAILABLE) {
+                status = AVAILABILITY_STATUS.REQUIRES_REVIEW;
+              }
+            }
+          }
         }
       }
     }
@@ -510,7 +655,10 @@ export class StaffAvailabilityService {
     const isAllBranches = !branchId || branchId === "all";
 
     if (isAllBranches) {
-      const branches = await Branch.find({ organizationId, isActive: true }).lean();
+      const branches = await Branch.find({
+        organizationId,
+        isActive: true,
+      }).lean();
       authorizedBranchIds = branches.map((b) => b._id);
       branch = branches[0];
     } else {
@@ -546,7 +694,9 @@ export class StaffAvailabilityService {
     }
 
     const activeAssignments = await StaffBranch.find(staffBranchQuery).lean();
-    const assignedStaffIds = [...new Set(activeAssignments.map((ab) => ab.staffId.toString()))];
+    const assignedStaffIds = [
+      ...new Set(activeAssignments.map((ab) => ab.staffId.toString())),
+    ];
 
     if (assignedStaffIds.length === 0) {
       return {
@@ -600,7 +750,12 @@ export class StaffAvailabilityService {
       branchId: { $in: authorizedBranchIds },
       isActive: true,
     }).lean();
-    const rosterMap = new Map(rosters.map((r) => [`${r.staffId.toString()}_${r.branchId.toString()}`, r]));
+    const rosterMap = new Map(
+      rosters.map((r) => [
+        `${r.staffId.toString()}_${r.branchId.toString()}`,
+        r,
+      ]),
+    );
 
     // 6. Batch query approved leaves
     const leaves = await Leave.find({
@@ -610,7 +765,10 @@ export class StaffAvailabilityService {
       isDeleted: false,
       $or: [
         { dates: dateStr },
-        { startDate: { $lte: new Date(dateStr) }, endDate: { $gte: new Date(dateStr) } },
+        {
+          startDate: { $lte: new Date(dateStr) },
+          endDate: { $gte: new Date(dateStr) },
+        },
       ],
     }).lean();
     const leavesByStaff = new Map();
@@ -637,7 +795,10 @@ export class StaffAvailabilityService {
     const appointmentsByStaff = new Map();
     for (const appt of appointments) {
       const sid = appt.staffId.toString();
-      appointmentsByStaff.set(sid, [...(appointmentsByStaff.get(sid) || []), appt]);
+      appointmentsByStaff.set(sid, [
+        ...(appointmentsByStaff.get(sid) || []),
+        appt,
+      ]);
     }
 
     // 8. Batch query attendance if same-day
@@ -647,10 +808,12 @@ export class StaffAvailabilityService {
     let punchesByStaff = new Map();
 
     if (isSameDay) {
+      const attendanceDateUTC = new Date(`${dateStr}T00:00:00.000Z`);
       const [attendances, punches] = await Promise.all([
         Attendance.find({
           organizationId,
           staffId: { $in: validStaffIds },
+          attendanceDate: attendanceDateUTC,
           isDeleted: false,
         }).lean(),
         AttendancePunch.find({
@@ -661,15 +824,28 @@ export class StaffAvailabilityService {
             $lt: new Date(endAt.getTime() + 24 * 60 * 60 * 1000),
           },
           isDeleted: false,
-        }).sort({ punchAt: 1 }).lean(),
+        }).lean(),
       ]);
 
-      attendanceMap = new Map(attendances.map((a) => [a.staffId.toString(), a]));
+      attendanceMap = new Map(
+        attendances.map((a) => [a.staffId.toString(), a]),
+      );
       for (const p of punches) {
         if (deriveBusinessDate(p.punchAt, timezone) === dateStr) {
           const sid = p.staffId.toString();
           punchesByStaff.set(sid, [...(punchesByStaff.get(sid) || []), p]);
         }
+      }
+
+      // Ensure punches for each staff are sorted chronologically
+      for (const [sid, pList] of punchesByStaff.entries()) {
+        punchesByStaff.set(
+          sid,
+          pList.sort(
+            (a, b) =>
+              new Date(a.punchAt).getTime() - new Date(b.punchAt).getTime(),
+          ),
+        );
       }
     }
 
@@ -677,7 +853,10 @@ export class StaffAvailabilityService {
     const results = [];
     const dateObj = new Date(`${dateStr}T12:00:00Z`);
     const dayOfWeek = dateObj.getUTCDay();
-    const travelBufferMin = options.travelBufferMinutes || branch?.bufferMinutes || DEFAULT_TRAVEL_BUFFER_MINUTES;
+    const travelBufferMin =
+      options.travelBufferMinutes ||
+      branch?.bufferMinutes ||
+      DEFAULT_TRAVEL_BUFFER_MINUTES;
 
     for (const sid of assignedStaffIds) {
       const staffMember = staffMap.get(sid);
@@ -716,14 +895,18 @@ export class StaffAvailabilityService {
           status = AVAILABILITY_STATUS.UNAVAILABLE;
         }
       } else {
-        const dateOverride = (roster.overrides || []).find((o) => o.date === dateStr);
+        const dateOverride = (roster.overrides || []).find(
+          (o) => o.date === dateStr,
+        );
         if (dateOverride) {
           if (!dateOverride.isWorkingDay) {
             reasons.push(REASON_CODES.STAFF_NOT_SCHEDULED);
             status = AVAILABILITY_STATUS.UNAVAILABLE;
           } else if (dateOverride.shifts && dateOverride.shifts.length > 0) {
             const fits = dateOverride.shifts.some(
-              (s) => slotStartMin >= timeToMinutes(s.startTime) && slotEndMin <= timeToMinutes(s.endTime),
+              (s) =>
+                slotStartMin >= timeToMinutes(s.startTime) &&
+                slotEndMin <= timeToMinutes(s.endTime),
             );
             if (!fits) {
               reasons.push(REASON_CODES.STAFF_NOT_SCHEDULED);
@@ -731,13 +914,17 @@ export class StaffAvailabilityService {
             }
           }
         } else {
-          const weeklyDay = (roster.weeklySchedule || []).find((d) => d.dayOfWeek === dayOfWeek);
+          const weeklyDay = (roster.weeklySchedule || []).find(
+            (d) => d.dayOfWeek === dayOfWeek,
+          );
           if (!weeklyDay || !weeklyDay.isWorkingDay) {
             reasons.push(REASON_CODES.STAFF_NOT_SCHEDULED);
             status = AVAILABILITY_STATUS.UNAVAILABLE;
           } else if (weeklyDay.shifts && weeklyDay.shifts.length > 0) {
             const fits = weeklyDay.shifts.some(
-              (s) => slotStartMin >= timeToMinutes(s.startTime) && slotEndMin <= timeToMinutes(s.endTime),
+              (s) =>
+                slotStartMin >= timeToMinutes(s.startTime) &&
+                slotEndMin <= timeToMinutes(s.endTime),
             );
             if (!fits) {
               reasons.push(REASON_CODES.STAFF_NOT_SCHEDULED);
@@ -766,7 +953,14 @@ export class StaffAvailabilityService {
             lStart = parseLocalToUTC(dateStr, sTime || "09:00", timezone);
             lEnd = parseLocalToUTC(dateStr, eTime || "14:00", timezone);
           }
-          if (isIntervalOverlapping(startAt, endAt, new Date(lStart), new Date(lEnd))) {
+          if (
+            isIntervalOverlapping(
+              startAt,
+              endAt,
+              new Date(lStart),
+              new Date(lEnd),
+            )
+          ) {
             reasons.push(REASON_CODES.PARTIAL_DAY_LEAVE_CONFLICT);
             status = AVAILABILITY_STATUS.UNAVAILABLE;
             break;
@@ -783,12 +977,17 @@ export class StaffAvailabilityService {
       for (const appt of staffAppointments) {
         const aStart = new Date(appt.startAt);
         const aEnd = new Date(appt.endAt);
-        const isTarget = isAllBranches ||
+        const isTarget =
+          isAllBranches ||
           appt.branchId?._id?.toString() === branchId.toString() ||
           appt.branchId?.toString() === branchId.toString();
 
         if (isIntervalOverlapping(startAt, endAt, aStart, aEnd)) {
-          reasons.push(isTarget ? REASON_CODES.APPOINTMENT_CONFLICT : REASON_CODES.CROSS_BRANCH_CONFLICT);
+          reasons.push(
+            isTarget
+              ? REASON_CODES.APPOINTMENT_CONFLICT
+              : REASON_CODES.CROSS_BRANCH_CONFLICT,
+          );
           status = AVAILABILITY_STATUS.UNAVAILABLE;
           continue;
         }
@@ -814,24 +1013,106 @@ export class StaffAvailabilityService {
       if (isSameDay) {
         const staffPunches = punchesByStaff.get(sid) || [];
         if (staffPunches.length > 0) {
+          let isClockedOutDuringSlot = false;
           const lastPunch = staffPunches[staffPunches.length - 1];
-          if (lastPunch.punchType === "out" && new Date(lastPunch.punchAt) <= startAt) {
+          if (lastPunch.punchType === "out") {
+            const outTime = new Date(lastPunch.punchAt);
+            if (endAt > outTime && startAt >= outTime) {
+              isClockedOutDuringSlot = true;
+            } else if (startAt < outTime && endAt > outTime) {
+              isClockedOutDuringSlot = true;
+            }
+          } else {
+            for (let i = 0; i < staffPunches.length - 1; i++) {
+              const currentP = staffPunches[i];
+              const nextP = staffPunches[i + 1];
+              if (currentP.punchType === "out" && nextP.punchType === "in") {
+                const outGapStart = new Date(currentP.punchAt);
+                const outGapEnd = new Date(nextP.punchAt);
+                if (isIntervalOverlapping(startAt, endAt, outGapStart, outGapEnd)) {
+                  isClockedOutDuringSlot = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (isClockedOutDuringSlot) {
             reasons.push(REASON_CODES.ATTENDANCE_CLOCKED_OUT);
             status = AVAILABILITY_STATUS.UNAVAILABLE;
           }
         }
 
         const attendance = attendanceMap.get(sid);
+        // Also check for pending AttendanceBranchConflict on this date
+        const pendingBranchConflict = await safeFindOne(AttendanceBranchConflict, {
+          organizationId,
+          staffId: sid,
+          date: dateStr,
+          conflictStatus: "pending",
+        });
+        if (pendingBranchConflict) {
+          reasons.push(REASON_CODES.ATTENDANCE_CONFLICT);
+          if (status === AVAILABILITY_STATUS.AVAILABLE) {
+            status = AVAILABILITY_STATUS.REQUIRES_REVIEW;
+          }
+        }
+
         if (attendance) {
-          if (attendance.conflictType && attendance.conflictType !== "none" && !attendance.isReconciled) {
+          if (
+            attendance.conflictType &&
+            attendance.conflictType !== "none" &&
+            !attendance.isReconciled
+          ) {
             reasons.push(REASON_CODES.ATTENDANCE_CONFLICT);
             if (status === AVAILABILITY_STATUS.AVAILABLE) {
               status = AVAILABILITY_STATUS.REQUIRES_REVIEW;
             }
-          } else if (attendance.status === "incomplete" && staffPunches.length === 0) {
+          } else if (
+            attendance.status === "incomplete" &&
+            staffPunches.length === 0
+          ) {
             reasons.push(REASON_CODES.ATTENDANCE_INCOMPLETE);
             if (status === AVAILABILITY_STATUS.AVAILABLE) {
               status = AVAILABILITY_STATUS.REQUIRES_REVIEW;
+            }
+          }
+        } else {
+          // Missing attendance record: check staff roster / shift start
+          const hasClockIn = staffPunches.some((p) => p.punchType === "in");
+          if (!hasClockIn) {
+            let expectedShiftStartStr = null;
+            const dateOverride = (roster?.overrides || []).find(
+              (o) => o.date === dateStr,
+            );
+            if (dateOverride?.shifts && dateOverride.shifts.length > 0) {
+              expectedShiftStartStr = dateOverride.shifts[0].startTime;
+            } else {
+              const weeklyDay = (roster?.weeklySchedule || []).find(
+                (d) => d.dayOfWeek === dayOfWeek,
+              );
+              if (weeklyDay?.shifts && weeklyDay.shifts.length > 0) {
+                expectedShiftStartStr = weeklyDay.shifts[0].startTime;
+              }
+            }
+
+            // Do not infer absence from branch opening hours when staff shifts are not configured.
+            // Only evaluate expected shift start if a specific staff roster/shift is actually configured.
+            if (expectedShiftStartStr) {
+              const expectedShiftStartUTC = parseLocalToUTC(
+                dateStr,
+                expectedShiftStartStr,
+                timezone,
+              );
+              if (
+                Date.now() >= expectedShiftStartUTC.getTime() ||
+                startAt.getTime() < Date.now()
+              ) {
+                reasons.push(REASON_CODES.ATTENDANCE_REVIEW_REQUIRED);
+                if (status === AVAILABILITY_STATUS.AVAILABLE) {
+                  status = AVAILABILITY_STATUS.REQUIRES_REVIEW;
+                }
+              }
             }
           }
         }
@@ -861,12 +1142,15 @@ export class StaffAvailabilityService {
     };
 
     results.sort((a, b) => {
-      const orderDiff = (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3);
+      const orderDiff =
+        (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3);
       if (orderDiff !== 0) return orderDiff;
       return (a.staff?.name || "").localeCompare(b.staff?.name || "");
     });
 
-    const availableCount = results.filter((r) => r.status === AVAILABILITY_STATUS.AVAILABLE).length;
+    const availableCount = results.filter(
+      (r) => r.status === AVAILABILITY_STATUS.AVAILABLE,
+    ).length;
 
     return {
       date: dateStr,
@@ -900,7 +1184,10 @@ export class StaffAvailabilityService {
     }
 
     const branchIds = branches.map((b) => b._id);
-    const dateStr = date || startDate || deriveBusinessDate(new Date(), branches[0]?.timezone || "Asia/Kolkata");
+    const dateStr =
+      date ||
+      startDate ||
+      deriveBusinessDate(new Date(), branches[0]?.timezone || "Asia/Kolkata");
 
     // Fetch active staff-to-branch assignments
     const staffBranchQuery = {
@@ -912,8 +1199,12 @@ export class StaffAvailabilityService {
       staffBranchQuery.staffId = staffId;
     }
 
-    const assignments = await StaffBranch.find(staffBranchQuery).populate("branchId", "name timezone").lean();
-    const assignedStaffIds = [...new Set(assignments.map((a) => a.staffId.toString()))];
+    const assignments = await StaffBranch.find(staffBranchQuery)
+      .populate("branchId", "name timezone")
+      .lean();
+    const assignedStaffIds = [
+      ...new Set(assignments.map((a) => a.staffId.toString())),
+    ];
 
     const staffList = await Staff.find({
       _id: { $in: assignedStaffIds },
@@ -939,17 +1230,54 @@ export class StaffAvailabilityService {
       isDeleted: false,
       $or: [
         { dates: dateStr },
-        { startDate: { $lte: new Date(dateStr) }, endDate: { $gte: new Date(dateStr) } },
+        {
+          startDate: { $lte: new Date(dateStr) },
+          endDate: { $gte: new Date(dateStr) },
+        },
       ],
     }).lean();
 
     // Fetch attendance on date
+    const attendanceDateUTC = new Date(`${dateStr}T00:00:00.000Z`);
     const attendances = await Attendance.find({
       organizationId,
       staffId: { $in: assignedStaffIds },
-      attendanceDate: new Date(dateStr),
+      attendanceDate: attendanceDateUTC,
       isDeleted: false,
     }).lean();
+
+    // Fetch punches around this date (+/- 24h) for punch-level evaluations
+    const dayStart = attendanceDateUTC.getTime();
+    const punches = await AttendancePunch.find({
+      organizationId,
+      staffId: { $in: assignedStaffIds },
+      punchAt: {
+        $gte: new Date(dayStart - 24 * 60 * 60 * 1000),
+        $lt: new Date(dayStart + 48 * 60 * 60 * 1000),
+      },
+      isDeleted: false,
+    }).lean();
+
+    // Group punches by staffId and sort chronologically
+    const punchesByStaff = new Map();
+    for (const p of punches) {
+      const sid = p.staffId.toString();
+      const existing = punchesByStaff.get(sid) || [];
+      existing.push(p);
+      punchesByStaff.set(sid, existing);
+    }
+    for (const [sid, list] of punchesByStaff.entries()) {
+      list.sort(
+        (a, b) => new Date(a.punchAt).getTime() - new Date(b.punchAt).getTime(),
+      );
+    }
+
+    // Branch timezone map for resolving local time
+    const branchMap = new Map(branches.map((b) => [b._id.toString(), b]));
+    const primaryTimezone = branches[0]?.timezone || "Asia/Kolkata";
+    const currentBranchDate = deriveBusinessDate(new Date(), primaryTimezone);
+    const dateObj = new Date(`${dateStr}T12:00:00.000Z`);
+    const dayOfWeek = dateObj.getUTCDay();
 
     // Group branch assignments by staff
     const branchAssignmentsByStaff = new Map();
@@ -968,8 +1296,181 @@ export class StaffAvailabilityService {
       const sid = member._id.toString();
       const staffRoster = rosters.find((r) => r.staffId.toString() === sid);
       const staffLeave = leaves.find((l) => l.staffId.toString() === sid);
-      const staffAttendance = attendances.find((a) => a.staffId.toString() === sid);
+      const staffAttendance = attendances.find(
+        (a) => a.staffId.toString() === sid,
+      );
       const staffBranches = branchAssignmentsByStaff.get(sid) || [];
+
+      // Determine staff member's applicable branch timezone
+      const primaryStaffBranch =
+        staffBranches.find((b) => b.isPrimary) || staffBranches[0];
+      const branchDetails =
+        (primaryStaffBranch
+          ? branchMap.get(primaryStaffBranch.branchId)
+          : null) || branches[0];
+      const tz = branchDetails?.timezone || primaryTimezone;
+      const staffCurrentDate = deriveBusinessDate(new Date(), tz);
+
+      // Filter punches belonging to this local dateStr
+      const staffPunches = (punchesByStaff.get(sid) || []).filter(
+        (p) => deriveBusinessDate(p.punchAt, tz) === dateStr,
+      );
+
+      // Resolve scheduled shift and working day status for dateStr
+      let scheduledShiftStart = null;
+      let scheduledShiftEnd = null;
+      let isWorkingDay = true;
+      let hasRosterConfigured = Boolean(staffRoster);
+
+      // Check branch operating hours for closure
+      const dayKey = DAY_MAP[dayOfWeek];
+      const opHours =
+        branchDetails?.operatingHours instanceof Map
+          ? branchDetails.operatingHours.get(dayKey) ||
+            branchDetails.operatingHours.get(String(dayOfWeek))
+          : branchDetails?.operatingHours?.[dayKey] ||
+            branchDetails?.operatingHours?.[dayOfWeek];
+
+      const isBranchClosed = opHours?.isOpen === false;
+
+      const dateOverride = (staffRoster?.overrides || []).find(
+        (o) => o.date === dateStr,
+      );
+      if (dateOverride) {
+        isWorkingDay = dateOverride.isWorkingDay;
+        if (dateOverride.shifts && dateOverride.shifts.length > 0) {
+          scheduledShiftStart = dateOverride.shifts[0].startTime;
+          scheduledShiftEnd =
+            dateOverride.shifts[dateOverride.shifts.length - 1].endTime;
+        }
+      } else if (staffRoster) {
+        const weeklyDay = (staffRoster.weeklySchedule || []).find(
+          (d) => d.dayOfWeek === dayOfWeek,
+        );
+        if (weeklyDay) {
+          isWorkingDay = weeklyDay.isWorkingDay;
+          if (weeklyDay.shifts && weeklyDay.shifts.length > 0) {
+            scheduledShiftStart = weeklyDay.shifts[0].startTime;
+            scheduledShiftEnd =
+              weeklyDay.shifts[weeklyDay.shifts.length - 1].endTime;
+          }
+        }
+      }
+
+      if (
+        !scheduledShiftStart &&
+        !isBranchClosed &&
+        opHours?.isOpen !== false &&
+        opHours?.openTime &&
+        opHours?.closeTime
+      ) {
+        scheduledShiftStart = opHours.openTime;
+        scheduledShiftEnd = opHours.closeTime;
+      }
+
+      // First clock in and last clock out
+      const clockInPunch = staffPunches.find((p) => p.punchType === "in");
+      const clockInTime = clockInPunch
+        ? new Date(clockInPunch.punchAt).toISOString()
+        : null;
+      const lastPunch =
+        staffPunches.length > 0 ? staffPunches[staffPunches.length - 1] : null;
+      const clockOutTime =
+        lastPunch && lastPunch.punchType === "out"
+          ? new Date(lastPunch.punchAt).toISOString()
+          : null;
+
+      // Determine Normalized Attendance Status
+      let normalizedStatus = "not_started";
+      let reviewReason = null;
+
+      // Status Precedence Rules:
+      // 1. Approved full-day leave -> on_leave
+      // 2. Unreconciled attendance conflict -> review_required
+      // 3. Incomplete attendance without punches -> review_required
+      // 4. Punch evidence:
+      //    - If clocked in and not clocked out -> present (even if partial-day leave applies)
+      //    - If last punch is out -> clocked_out
+      // 5. Explicit attendance record status (present, late, early_departure)
+      // 6. Branch closed / Staff non-working day / Not scheduled / No roster:
+      //    - If branch closed -> not_started (closed)
+      //    - If not a working day -> not_started (off duty)
+      //    - If no roster configured and past/today -> review_required (missing expectation)
+      // 7. Missing attendance evidence:
+      //    - Future date -> not_started
+      //    - Past scheduled working date without attendance -> absent
+      //    - Today: if shift start has passed without clock-in -> absent; else not_started
+      if (
+        staffLeave &&
+        staffLeave.status === "approved" &&
+        !staffLeave.isPartialDay
+      ) {
+        normalizedStatus = "on_leave";
+      } else if (
+        staffAttendance &&
+        staffAttendance.conflictType &&
+        staffAttendance.conflictType !== "none" &&
+        !staffAttendance.isReconciled
+      ) {
+        normalizedStatus = "review_required";
+        reviewReason = `Attendance Conflict (${staffAttendance.conflictType})`;
+      } else if (
+        staffAttendance &&
+        staffAttendance.status === "incomplete" &&
+        staffPunches.length === 0
+      ) {
+        normalizedStatus = "review_required";
+        reviewReason = "Incomplete attendance record without punch evidence";
+      } else if (staffPunches.length > 0) {
+        if (lastPunch.punchType === "out") {
+          normalizedStatus = "clocked_out";
+        } else {
+          normalizedStatus = "present";
+        }
+      } else if (
+        staffAttendance &&
+        (staffAttendance.status === "present" ||
+          staffAttendance.status === "late")
+      ) {
+        normalizedStatus = "present";
+      } else if (
+        staffAttendance &&
+        staffAttendance.status === "early_departure"
+      ) {
+        normalizedStatus = "clocked_out";
+      } else {
+        // No attendance or punches recorded
+        if (isBranchClosed) {
+          normalizedStatus = "not_started";
+        } else if (!isWorkingDay) {
+          normalizedStatus = "not_started";
+        } else if (!hasRosterConfigured && dateStr <= staffCurrentDate) {
+          normalizedStatus = "review_required";
+          reviewReason = "No roster configured to establish expected shift";
+        } else if (dateStr > staffCurrentDate) {
+          // Future date: not started
+          normalizedStatus = "not_started";
+        } else if (dateStr < staffCurrentDate) {
+          // Past date with scheduled shift and no attendance: absent
+          normalizedStatus = "absent";
+        } else {
+          // Today: check if shift start has passed
+          if (scheduledShiftStart) {
+            const shiftStartUTC = parseLocalToUTC(
+              dateStr,
+              scheduledShiftStart,
+              tz,
+            );
+            if (Date.now() >= shiftStartUTC.getTime()) {
+              normalizedStatus = "absent";
+            } else {
+              normalizedStatus = "not_started";
+            }
+          } else {
+            normalizedStatus = "not_started";
+          }
+        }
+      }
 
       return {
         id: sid,
@@ -1004,6 +1505,15 @@ export class StaffAvailabilityService {
               conflictType: staffAttendance.conflictType,
             }
           : null,
+        attendanceDetails: {
+          status: normalizedStatus,
+          attendanceDate: dateStr,
+          scheduledShiftStart,
+          scheduledShiftEnd,
+          clockInTime,
+          clockOutTime,
+          reviewReason,
+        },
       };
     });
 
@@ -1078,8 +1588,16 @@ export class StaffAvailabilityService {
       staffId: staffId ? staffId.toString() : null,
       branchId: branchId ? branchId.toString() : null,
       date,
-      startAt: startAt ? (startAt instanceof Date ? startAt.toISOString() : startAt) : null,
-      endAt: endAt ? (endAt instanceof Date ? endAt.toISOString() : endAt) : null,
+      startAt: startAt
+        ? startAt instanceof Date
+          ? startAt.toISOString()
+          : startAt
+        : null,
+      endAt: endAt
+        ? endAt instanceof Date
+          ? endAt.toISOString()
+          : endAt
+        : null,
       status,
       isAvailable: status === AVAILABILITY_STATUS.AVAILABLE,
       reasons,
@@ -1087,7 +1605,9 @@ export class StaffAvailabilityService {
       evaluatedAt: new Date().toISOString(),
       staff: staffDetails
         ? {
-            id: staffDetails._id ? staffDetails._id.toString() : staffDetails.id,
+            id: staffDetails._id
+              ? staffDetails._id.toString()
+              : staffDetails.id,
             name: staffDetails.name,
             designation: staffDetails.designation,
             status: staffDetails.status,
@@ -1096,7 +1616,9 @@ export class StaffAvailabilityService {
         : null,
       branch: branchDetails
         ? {
-            id: branchDetails._id ? branchDetails._id.toString() : branchDetails.id,
+            id: branchDetails._id
+              ? branchDetails._id.toString()
+              : branchDetails.id,
             name: branchDetails.name,
             timezone: branchDetails.timezone || "Asia/Kolkata",
           }
