@@ -588,6 +588,7 @@ describe("Salon ERP Phase 3 — Staging Validation & Multi-Branch Business Intel
       startAt: new Date(now.getTime() - 30 * 60000),
       endAt: new Date(now.getTime() + 60 * 60000), // Active now!
       status: "in_progress",
+      slotMinutes: [new Date(now.getTime() - 30 * 60000).toISOString()],
       bookingType: "advance",
       pricing: { subtotal: 4500, discount: 0, total: 4500 },
       services: [
@@ -1478,7 +1479,7 @@ describe("Salon ERP Phase 3 — Staging Validation & Multi-Branch Business Intel
     it("Scenario J: Payment reversal integrity across months (Nov completed, Dec reversed)", async () => {
       // Inv Rev: ₹2,500 finalized & completed on Nov 15.
       // In Dec 10: Reversal recorded with type: "refund" of ₹2,500.
-      // Verify: November collections still contain ₹2,500 (historical audit trail preserved)
+      // Verify: November reflects the billed sales (2500) and collections (2500), but 0 refunds (historical audit trail preserved)
       const novRes = await request(app)
         .get(
           "/api/v1/dashboard/overview?startDate=2026-11-01&endDate=2026-11-30",
@@ -1489,8 +1490,12 @@ describe("Salon ERP Phase 3 — Staging Validation & Multi-Branch Business Intel
       // Total Nov collections at Branch A:
       // Pay A (4000) + Pay C1 (3000) + Pay C2 (3000) + Pay D (2000) + Pay E (1500) + Pay Rev (2500) + Pay Precision (0.1 + 0.2) = ₹16,000.30
       expect(novRes.body.kpis.collections.current).toBe(16000.3);
+      expect(novRes.body.kpis.refunds.current).toBe(2000); // Only Nov refunds (Pay D partial 500 + Pay E full 1500)
+      expect(novRes.body.kpis.netCollections.current).toBe(14000.3);
+      // Net billed sales for November remains intact and does not deduct December's refund:
+      expect(novRes.body.kpis.netSales.current).toBe(17000.3);
 
-      // Verify: December reflects the reversal without touching November's historic ledger
+      // Verify: December reflects the Dec refund without touching November's historic ledger
       const decRes = await request(app)
         .get(
           "/api/v1/dashboard/overview?startDate=2026-12-01&endDate=2026-12-31",
@@ -1499,6 +1504,7 @@ describe("Salon ERP Phase 3 — Staging Validation & Multi-Branch Business Intel
         .set("X-Branch-Id", branchA._id.toString());
 
       // In Dec: Pay B received (5000), Refund Dec Reversal (2500). Net collections = 2500.
+      expect(decRes.body.kpis.netSales.current).toBe(0); // No invoices finalized in Dec at Branch A
       expect(decRes.body.kpis.collections.current).toBe(5000);
       expect(decRes.body.kpis.refunds.current).toBe(2500);
       expect(decRes.body.kpis.netCollections.current).toBe(2500);
