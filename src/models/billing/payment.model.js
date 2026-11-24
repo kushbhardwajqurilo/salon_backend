@@ -61,6 +61,21 @@ paymentSchema.index(
 );
 paymentSchema.index({ organizationId: 1, invoiceId: 1, createdAt: -1 });
 paymentSchema.index({ organizationId: 1, branchId: 1, createdAt: -1 });
+// Compound Index for Dashboard Collections & Refunds Aggregations (with branch filtering)
+paymentSchema.index({
+  organizationId: 1,
+  branchId: 1,
+  status: 1,
+  paymentDate: 1,
+  type: 1,
+});
+// Compound Index for Consolidated Multi-Branch Dashboard Aggregations (org-wide without branch filter)
+paymentSchema.index({
+  organizationId: 1,
+  status: 1,
+  paymentDate: 1,
+  type: 1,
+});
 
 paymentSchema.set("toJSON", {
   transform: (doc, ret) => {

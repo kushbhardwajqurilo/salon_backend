@@ -6,6 +6,8 @@ import { Organization } from "../../../src/models/organizations/organization.mod
 import { Branch } from "../../../src/models/branches/branch.model.js";
 import { Customer } from "../../../src/models/customers/customer.model.js";
 import { Staff } from "../../../src/models/staff/staff.model.js";
+import { StaffBranch } from "../../../src/models/staff/staffBranch.model.js";
+import { StaffService } from "../../../src/models/staff/staffService.model.js";
 import { Service } from "../../../src/models/services/service.model.js";
 import { ServiceCategory } from "../../../src/models/services/serviceCategory.model.js";
 import { Role } from "../../../src/models/roles/role.model.js";
@@ -112,6 +114,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
     const ownerRole = await Role.create({
       name: "owner",
       description: "Owner Role",
+      isSystem: true,
       permissions: perms.map((p) => p._id),
     });
 
@@ -177,11 +180,35 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       status: "active",
       organizationId: orgId,
     });
+
+    await StaffBranch.create({
+      staffId: staffA._id,
+      branchId: branchAId,
+      organizationId: orgId,
+      isPrimary: true,
+      isActive: true,
+    });
+
+    await StaffService.create({
+      staffId: staffA._id,
+      serviceId: serviceHaircut._id,
+      organizationId: orgId,
+      isActive: true,
+    });
+
+    await StaffService.create({
+      staffId: staffA._id,
+      serviceId: serviceColor._id,
+      organizationId: orgId,
+      isActive: true,
+    });
   });
 
   afterEach(async () => {
     await Appointment.deleteMany({});
     await Leave.deleteMany({});
+    await StaffBranch.deleteMany({});
+    await StaffService.deleteMany({});
     await Service.deleteMany({});
     await ServiceCategory.deleteMany({});
     await Staff.deleteMany({});
@@ -1458,6 +1485,7 @@ describe("Appointment Module Comprehensive Test Suite", () => {
       });
       const staffRole = await Role.create({
         name: "staff_member",
+        isSystem: true,
         permissions: staffPerms.map((p) => p._id),
       });
       const staffUser = await User.create({
@@ -1736,6 +1764,13 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         },
       });
 
+      await StaffBranch.create({
+        staffId: staffA._id,
+        branchId: branchSunday._id,
+        organizationId: orgId,
+        isActive: true,
+      });
+
       const targetDate = getFutureDayOfWeekStr("sunday", 4);
       const aptRes = await request(app)
         .post("/api/v1/appointments")
@@ -1777,6 +1812,13 @@ describe("Appointment Module Comprehensive Test Suite", () => {
         operatingHours: {
           sunday: { openTime: "09:00", closeTime: "19:00", isOpen: true },
         },
+      });
+
+      await StaffBranch.create({
+        staffId: staffA._id,
+        branchId: branchBoundary._id,
+        organizationId: orgId,
+        isActive: true,
       });
 
       const targetDate = getFutureDayOfWeekStr("sunday", 4);

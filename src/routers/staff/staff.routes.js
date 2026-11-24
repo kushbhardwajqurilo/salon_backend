@@ -12,6 +12,11 @@ import {
   assignBranchSchema,
   assignServiceSchema,
 } from "../../validation/staff/staff.validation.js";
+import {
+  getStaffRoster,
+  updateStaffRoster,
+} from "../../controllers/availability/staffAvailability.controller.js";
+import { updateStaffRosterSchema } from "../../validation/availability/staffAvailability.validation.js";
 
 const router = express.Router();
 
@@ -145,6 +150,23 @@ router.get(
   requireBranchScope,
   authorize("employees.view"),
   controller.getStaffServices
+);
+
+router.get(
+  "/:id/roster",
+  authenticate,
+  requireOrganizationScope,
+  authorize("employees.view"),
+  getStaffRoster
+);
+
+router.put(
+  "/:id/roster",
+  authenticate,
+  requireOrganizationScope,
+  authorize("employees.update"),
+  validate(updateStaffRosterSchema),
+  updateStaffRoster
 );
 
 export default router;

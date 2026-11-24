@@ -221,41 +221,44 @@ class ReportsService {
       const { startUtc: cmpStartUtc } = getUTCDayRange(meta.comparisonStartDate, meta.timezone);
       const { endUtc: cmpEndUtc } = getUTCDayRange(meta.comparisonEndDate, meta.timezone);
 
-      const [cmpInvoice] = await Invoice.aggregate([
-        {
-          $match: {
-            ...this._buildScope(organizationId, branchId),
-            status: "finalized",
-            finalizedAt: { $gte: cmpStartUtc, $lte: cmpEndUtc },
+      const [cmpInvoiceDocs, cmpPayments] = await Promise.all([
+        Invoice.aggregate([
+          {
+            $match: {
+              ...this._buildScope(organizationId, branchId),
+              status: "finalized",
+              finalizedAt: { $gte: cmpStartUtc, $lte: cmpEndUtc },
+            },
           },
-        },
-        {
-          $group: {
-            _id: null,
-            grossBilled: { $sum: "$subtotal" },
-            totalDiscounts: { $sum: "$discountTotal" },
-            subscriptionCoveredValue: { $sum: "$subscriptionCoveredAmount" },
-            netBilled: { $sum: "$payableAmount" },
-            outstandingReceivables: { $sum: "$amountDue" },
+          {
+            $group: {
+              _id: null,
+              grossBilled: { $sum: "$subtotal" },
+              totalDiscounts: { $sum: "$discountTotal" },
+              subscriptionCoveredValue: { $sum: "$subscriptionCoveredAmount" },
+              netBilled: { $sum: "$payableAmount" },
+              outstandingReceivables: { $sum: "$amountDue" },
+            },
           },
-        },
+        ]),
+        Payment.aggregate([
+          {
+            $match: {
+              ...this._buildScope(organizationId, branchId),
+              status: "completed",
+              paymentDate: { $gte: cmpStartUtc, $lte: cmpEndUtc },
+            },
+          },
+          {
+            $group: {
+              _id: "$type",
+              total: { $sum: "$amount" },
+            },
+          },
+        ]),
       ]);
 
-      const [cmpPayment] = await Payment.aggregate([
-        {
-          $match: {
-            ...this._buildScope(organizationId, branchId),
-            status: "completed",
-            paymentDate: { $gte: cmpStartUtc, $lte: cmpEndUtc },
-          },
-        },
-        {
-          $group: {
-            _id: "$type",
-            total: { $sum: "$amount" },
-          },
-        },
-      ]);
+      const cmpInvoice = cmpInvoiceDocs?.[0];
 
       prevSummary = cmpInvoice || {
         grossBilled: 0,
@@ -267,7 +270,7 @@ class ReportsService {
 
       let pCollected = 0;
       let pRefunded = 0;
-      (cmpPayment || []).forEach((p) => {
+      (cmpPayments || []).forEach((p) => {
         if (p._id === "payment") pCollected = p.total;
         if (p._id === "refund") pRefunded = Math.abs(p.total);
       });

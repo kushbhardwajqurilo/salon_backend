@@ -21,6 +21,7 @@ const createQueryMock = (resolvedValue) => {
     sort: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
+    lean: jest.fn().mockResolvedValue(resolvedValue),
     exec: jest.fn().mockResolvedValue(resolvedValue),
     then: function (onResolve, onReject) {
       return Promise.resolve(resolvedValue).then(onResolve, onReject);
@@ -42,6 +43,17 @@ describe("Staff Backend Module Unit & Lifecycle Tests", () => {
       commitTransaction: jest.fn(),
       abortTransaction: jest.fn(),
       endSession: jest.fn(),
+      withTransaction: jest.fn().mockImplementation(async (cb) => {
+        return await cb();
+      }),
+    };
+
+    // Mock topology type so isTransactionSupported returns true in unit test isolation
+    if (!mongoose.connection.client) {
+      mongoose.connection.client = {};
+    }
+    mongoose.connection.client.topology = {
+      description: { type: "ReplicaSetWithPrimary" },
     };
 
     jest.spyOn(mongoose.connection, "startSession").mockResolvedValue(mockSession);
@@ -104,6 +116,11 @@ describe("Staff Backend Module Unit & Lifecycle Tests", () => {
       }
       if (name === "StaffService") {
         return mockStaffServiceModel;
+      }
+      if (name === "Appointment") {
+        return {
+          find: jest.fn().mockImplementation(() => createQueryMock([])),
+        };
       }
       return {};
     });
@@ -202,7 +219,7 @@ describe("Staff Backend Module Unit & Lifecycle Tests", () => {
         }),
         "org-1",
         "actor-1",
-        null
+        expect.anything()
       );
     });
 
@@ -231,6 +248,11 @@ describe("Staff Backend Module Unit & Lifecycle Tests", () => {
         }
         if (name === "StaffService") {
           return { insertMany: staffServiceInsertManyMock };
+        }
+        if (name === "Appointment") {
+          return {
+            find: jest.fn().mockImplementation(() => createQueryMock([])),
+          };
         }
         return {};
       });
@@ -272,7 +294,7 @@ describe("Staff Backend Module Unit & Lifecycle Tests", () => {
             updatedBy: "actor-1",
           },
         ],
-        { session: null }
+        expect.objectContaining({ session: expect.anything() })
       );
     });
 

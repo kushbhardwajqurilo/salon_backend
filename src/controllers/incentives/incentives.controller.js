@@ -607,6 +607,7 @@ export const listLedgerEntries = async (req, res, next) => {
         .populate("staffId", "name staffCode")
         .populate("branchId", "name")
         .populate("schemeId", "name code schemeType")
+        .populate("invoiceId", "invoiceNumber status totalAmount")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit))

@@ -84,7 +84,7 @@ export class AppointmentRepository {
   async softDelete(id, organizationId) {
     return await Appointment.findOneAndUpdate(
       { _id: id, organizationId, isDeleted: false },
-      { $set: { isDeleted: true, deletedAt: new Date() } },
+      { $set: { isDeleted: true, deletedAt: new Date(), slotMinutes: [] } },
       { new: true },
     );
   }

@@ -91,7 +91,22 @@ const appointmentSchema = new mongoose.Schema(
     totalDuration: { type: Number, required: true }, // Sum of service durations (minutes)
 
     // Concurrency Serialization Buckets (1-minute ISO resolution)
-    slotMinutes: { type: [String], default: [] },
+    slotMinutes: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: function (val) {
+          // If appointment is active and assigned to a staff member, slotMinutes MUST be a non-empty array of strings
+          const isActive = !this.isDeleted && ["scheduled", "in_progress"].includes(this.status);
+          const hasStaff = Boolean(this.staffId);
+          if (isActive && hasStaff) {
+            return Array.isArray(val) && val.length > 0 && val.every((s) => typeof s === "string" && s.length > 0);
+          }
+          return true;
+        },
+        message: "Active appointments assigned to a staff member must have a non-empty slotMinutes array.",
+      },
+    },
 
     status: {
       type: String,
@@ -207,11 +222,11 @@ appointmentSchema.index(
   { organizationId: 1, staffId: 1, slotMinutes: 1 },
   {
     unique: true,
+    name: "organizationId_1_staffId_1_slotMinutes_1",
     partialFilterExpression: {
       isDeleted: false,
       status: { $in: ["scheduled", "in_progress"] },
       staffId: { $type: "objectId" },
-      slotMinutes: { $type: "string" },
     },
   },
 );

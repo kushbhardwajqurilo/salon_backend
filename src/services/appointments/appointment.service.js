@@ -25,6 +25,11 @@ import {
 import { MembershipPlan } from "../../models/memberships/membershipPlan.model.js";
 import { CustomerMembership } from "../../models/memberships/customerMembership.model.js";
 import { isServiceEligibleForMembershipBenefits } from "../billing/billing.service.js";
+import {
+  staffAvailabilityService,
+  AVAILABILITY_STATUS,
+  REASON_CODES,
+} from "../availability/staffAvailability.service.js";
 
 const appointmentRepo = new AppointmentRepository();
 
@@ -36,63 +41,17 @@ const getReferenceIdString = (value) => {
   return id === null || id === undefined ? null : id.toString();
 };
 
-/**
- * Resolves IANA timezone offset string or branch timezone, defaulting to 'Asia/Kolkata'
- */
-const DEFAULT_TIMEZONE = "Asia/Kolkata";
-
-/**
- * Helper to compute timezone offset in milliseconds for a target date and timezone
- */
-const getTimezoneOffsetMs = (date, timezone = DEFAULT_TIMEZONE) => {
-  const tz = timezone || DEFAULT_TIMEZONE;
-  try {
-    const utcDate = new Date(date.toLocaleString("en-US", { timeZone: "UTC" }));
-    const tzDate = new Date(date.toLocaleString("en-US", { timeZone: tz }));
-    return tzDate.getTime() - utcDate.getTime();
-  } catch (err) {
-    // Fallback to Asia/Kolkata offset (+05:30) if timezone is invalid
-    return 5.5 * 60 * 60 * 1000;
-  }
-};
-
-/**
- * Converts local date string ("YYYY-MM-DD") and time string ("HH:mm") to canonical UTC Date timestamp
- */
-export const parseLocalToUTC = (
-  dateStr,
-  timeStr,
-  timezone = DEFAULT_TIMEZONE,
-) => {
-  const tz = timezone || DEFAULT_TIMEZONE;
-  const [year, month, day] = dateStr.split("-").map(Number);
-  const [hours, minutes] = timeStr.split(":").map(Number);
-
-  // Construct nominal UTC instant assuming input was UTC
-  const nominalUtc = new Date(
-    Date.UTC(year, month - 1, day, hours, minutes, 0, 0),
-  );
-  const offsetMs = getTimezoneOffsetMs(nominalUtc, tz);
-  return new Date(nominalUtc.getTime() - offsetMs);
-};
-
-/**
- * Formats canonical UTC Date timestamp to local date ("YYYY-MM-DD") and local time ("HH:mm") strings
- */
-export const formatUTCToLocal = (utcDate, timezone = DEFAULT_TIMEZONE) => {
-  const tz = timezone || DEFAULT_TIMEZONE;
-  const offsetMs = getTimezoneOffsetMs(utcDate, tz);
-  const localDate = new Date(utcDate.getTime() + offsetMs);
-  const year = localDate.getUTCFullYear();
-  const month = String(localDate.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(localDate.getUTCDate()).padStart(2, "0");
-  const hours = String(localDate.getUTCHours()).padStart(2, "0");
-  const minutes = String(localDate.getUTCMinutes()).padStart(2, "0");
-
-  return {
-    dateStr: `${year}-${month}-${day}`,
-    timeStr: `${hours}:${minutes}`,
-  };
+import {
+  DEFAULT_TIMEZONE,
+  getTimezoneOffsetMs,
+  parseLocalToUTC,
+  formatUTCToLocal,
+} from "../../utils/date.js";
+export {
+  DEFAULT_TIMEZONE,
+  getTimezoneOffsetMs,
+  parseLocalToUTC,
+  formatUTCToLocal,
 };
 
 /**
@@ -455,7 +414,7 @@ export class AppointmentService {
   }
 
   /**
-   * Helper to check staff availability and leave status
+   * Helper to check staff availability and leave status using centralized availability engine
    */
   async validateStaffAvailability(
     staffId,
@@ -465,60 +424,64 @@ export class AppointmentService {
     startAt,
     endAt,
     excludeAppointmentId = null,
+    serviceIds = [],
+    options = {},
   ) {
     if (!staffId) return;
-    // 1. Verify staff exists, belongs to organization, and is active
-    const staff = await Staff.findOne({
-      _id: staffId,
+
+    const evaluation = await staffAvailabilityService.checkStaffSlotAvailability({
       organizationId,
-      isDeleted: false,
-    });
-
-    if (!staff) {
-      throw new AppError("Staff member not found", 404);
-    }
-
-    if (staff.status !== "active") {
-      throw new AppError(
-        `Cannot assign staff with status '${staff.status}'`,
-        400,
-      );
-    }
-
-    // 2. Leave check (only approved leaves block appointment booking. Partial-day leaves block only their applicable interval)
-    const conflictingLeave = await Leave.findOne({
-      organizationId,
+      branchId,
       staffId,
-      status: "approved",
-      isDeleted: false,
-      $or: [
-        // Case A: Partial-day leave with interval overlap
-        {
-          isPartialDay: true,
-          startAt: { $lt: endAt },
-          endAt: { $gt: startAt },
-        },
-        // Case B: Full-day leave covering dateStr
-        {
-          isPartialDay: false,
-          dates: dateStr,
-        },
-        // Case C: Legacy leaves where isPartialDay is not set
-        {
-          isPartialDay: { $exists: false },
-          dates: dateStr,
-        },
-      ],
+      date: dateStr,
+      excludeAppointmentId,
+      serviceIds,
+      options: {
+        startAt,
+        endAt,
+        ...options,
+      },
     });
 
-    if (conflictingLeave) {
-      if (conflictingLeave.isPartialDay) {
-        throw new AppError(
-          `Staff member is on partial-day leave (${conflictingLeave.startTime || ""} - ${conflictingLeave.endTime || ""}) during this time slot`,
-          400,
-        );
+    if (evaluation.status !== AVAILABILITY_STATUS.AVAILABLE) {
+      const reasons = evaluation.reasons || [];
+      if (reasons.includes(REASON_CODES.STAFF_NOT_FOUND)) {
+        throw new AppError("Staff member not found", 404, { code: REASON_CODES.STAFF_NOT_FOUND });
       }
-      throw new AppError(`Staff member is on leave on date ${dateStr}`, 400);
+      if (reasons.includes(REASON_CODES.STAFF_INACTIVE)) {
+        throw new AppError("Cannot assign inactive staff member", 400, { code: REASON_CODES.STAFF_INACTIVE });
+      }
+      if (reasons.includes(REASON_CODES.BRANCH_NOT_ASSIGNED)) {
+        throw new AppError("This staff member is not assigned to this branch", 400, { code: REASON_CODES.BRANCH_NOT_ASSIGNED });
+      }
+      if (reasons.includes(REASON_CODES.SERVICE_NOT_SUPPORTED)) {
+        throw new AppError("Staff member is not qualified for one or more selected services", 400, { code: REASON_CODES.SERVICE_NOT_SUPPORTED });
+      }
+      if (reasons.includes(REASON_CODES.BRANCH_CLOSED)) {
+        throw new AppError("Branch is closed during the selected appointment interval", 400, { code: REASON_CODES.BRANCH_CLOSED });
+      }
+      if (reasons.includes(REASON_CODES.STAFF_NOT_SCHEDULED)) {
+        throw new AppError("Staff member is not scheduled at this branch at this time", 400, { code: REASON_CODES.STAFF_NOT_SCHEDULED });
+      }
+      if (reasons.includes(REASON_CODES.APPROVED_LEAVE)) {
+        throw new AppError(`Staff member is on leave on date ${dateStr}`, 400, { code: REASON_CODES.APPROVED_LEAVE });
+      }
+      if (reasons.includes(REASON_CODES.PARTIAL_DAY_LEAVE_CONFLICT)) {
+        throw new AppError("Staff member is on partial-day leave during this time slot", 400, { code: REASON_CODES.PARTIAL_DAY_LEAVE_CONFLICT });
+      }
+      if (reasons.includes(REASON_CODES.APPOINTMENT_CONFLICT) || reasons.includes(REASON_CODES.CROSS_BRANCH_CONFLICT)) {
+        throw new AppError("Staff member has an overlapping appointment during this time window", 409, { code: reasons[0] });
+      }
+      if (reasons.includes(REASON_CODES.TRAVEL_TIME_CONFLICT)) {
+        throw new AppError("There is not enough transition time between appointments at different branches", 409, { code: REASON_CODES.TRAVEL_TIME_CONFLICT });
+      }
+      if (reasons.includes(REASON_CODES.ATTENDANCE_CLOCKED_OUT)) {
+        throw new AppError("Staff member has clocked out for the day", 400, { code: REASON_CODES.ATTENDANCE_CLOCKED_OUT });
+      }
+      if (reasons.includes(REASON_CODES.ATTENDANCE_CONFLICT) || reasons.includes(REASON_CODES.ATTENDANCE_INCOMPLETE)) {
+        throw new AppError("Attendance needs manager review before assigning this staff member", 400, { code: REASON_CODES.ATTENDANCE_REVIEW_REQUIRED });
+      }
+      throw new AppError("Staff member is not available for this appointment slot", 400, { code: reasons[0] || "STAFF_UNAVAILABLE" });
     }
   }
 
@@ -1002,6 +965,8 @@ export class AppointmentService {
 
     // 5. Staff Availability & Leave Validation
     if (staffId) {
+      const registeredServiceIds = (extractedIds || []).map((id) => id.toString());
+
       await this.validateStaffAvailability(
         staffId,
         organizationId,
@@ -1009,11 +974,53 @@ export class AppointmentService {
         targetDate,
         startAt,
         endAt,
+        null,
+        registeredServiceIds,
       );
     }
 
+    // Resolve customer membership benefits for automatic discount assignment
+    const { membershipService } = await import("../memberships/membership.service.js");
+    const activeMembership = await membershipService.resolveActiveMembershipForCustomer(
+      customerId,
+      branchId,
+      organizationId,
+    );
+
+    let totalMembershipDiscount = 0;
+    if (activeMembership && activeMembership.planSnapshot?.benefits) {
+      const discountPct = Number(activeMembership.planSnapshot.benefits.serviceDiscountPercentage || 0);
+      if (discountPct > 0) {
+        for (const line of serviceSnapshots) {
+          if (!line.appliedSubscriptionId && !line.isRedeemedViaSubscription) {
+            const isCustom = line.serviceType === "custom" || !line.serviceId;
+            let isEligible = false;
+            if (isCustom) {
+              isEligible = true;
+            } else {
+              const dbServ = dbServices.find((ds) => ds._id.toString() === line.serviceId?.toString());
+              isEligible = isServiceEligibleForMembershipBenefits(
+                { _id: line.serviceId, categoryId: dbServ?.categoryId },
+                activeMembership.planSnapshot.benefits,
+              );
+            }
+            if (isEligible) {
+              const lineDisc = Number(((line.price * discountPct) / 100).toFixed(2));
+              line.appliedCustomerMembershipId = activeMembership._id.toString();
+              line.membershipCode = activeMembership.membershipCode;
+              line.membershipDiscountPercentage = discountPct;
+              line.membershipDiscountAmount = lineDisc;
+              totalMembershipDiscount += lineDisc;
+            }
+          }
+        }
+      }
+    }
+
     // 6. Calculate Pricing
-    const total = Math.max(0, Number((subtotal - discount).toFixed(2)));
+    const baseDiscount = Number((discount || 0).toFixed(2));
+    const effectiveDiscount = Number((baseDiscount + totalMembershipDiscount).toFixed(2));
+    const total = Math.max(0, Number((subtotal - effectiveDiscount).toFixed(2)));
 
     // 7. Generate Code & Minute Buckets
     const appointmentCode = await this.generateAppointmentCode(organizationId);
@@ -1053,7 +1060,7 @@ export class AppointmentService {
         bookingType,
         pricing: {
           subtotal: Number(subtotal.toFixed(2)),
-          discount: Number(discount.toFixed(2)),
+          discount: effectiveDiscount,
           total,
         },
         notes,
@@ -1396,8 +1403,13 @@ export class AppointmentService {
       };
     }
 
+    let staffAvailabilityValidated = false;
     if (staffId !== undefined && staffId !== appointment.staffId?.toString()) {
       if (staffId) {
+        const registeredServiceIds = (updates.services || appointment.services || [])
+          .filter((s) => s.serviceType === "registered" && s.serviceId)
+          .map((s) => s.serviceId.toString());
+
         await this.validateStaffAvailability(
           staffId,
           organizationId,
@@ -1406,7 +1418,9 @@ export class AppointmentService {
           appointment.startAt,
           updates.endAt || appointment.endAt,
           id,
+          registeredServiceIds,
         );
+        staffAvailabilityValidated = true;
         updates.staffId = staffId;
         updates.slotMinutes = generateSlotMinutes(
           appointment.startAt,
@@ -1415,7 +1429,27 @@ export class AppointmentService {
       } else {
         updates.staffId = null;
         updates.slotMinutes = [];
+        staffAvailabilityValidated = true;
       }
+    }
+
+    // Re-validate staff availability if service duration or qualifications changed for an existing assigned staff
+    const activeStaffId = updates.staffId !== undefined ? updates.staffId : appointment.staffId;
+    if (!staffAvailabilityValidated && updates.services && activeStaffId) {
+      const registeredServiceIds = (updates.services || [])
+        .filter((s) => s.serviceType === "registered" && s.serviceId)
+        .map((s) => s.serviceId.toString());
+
+      await this.validateStaffAvailability(
+        activeStaffId,
+        organizationId,
+        branchId,
+        appointment.appointmentDate,
+        appointment.startAt,
+        updates.endAt || appointment.endAt,
+        id,
+        registeredServiceIds,
+      );
     }
 
     try {
@@ -1494,6 +1528,10 @@ export class AppointmentService {
     }
 
     if (appointment.staffId) {
+      const registeredServiceIds = (appointment.services || [])
+        .filter((s) => s.serviceType === "registered" && s.serviceId)
+        .map((s) => s.serviceId.toString());
+
       await this.validateStaffAvailability(
         appointment.staffId,
         organizationId,
@@ -1502,6 +1540,7 @@ export class AppointmentService {
         startAt,
         endAt,
         id,
+        registeredServiceIds,
       );
     }
 
@@ -1643,6 +1682,10 @@ export class AppointmentService {
     }
 
     if (staffId) {
+      const registeredServiceIds = (appointment.services || [])
+        .filter((s) => s.serviceType === "registered" && s.serviceId)
+        .map((s) => s.serviceId.toString());
+
       await this.validateStaffAvailability(
         staffId,
         organizationId,
@@ -1651,6 +1694,7 @@ export class AppointmentService {
         updatedStartAt,
         updatedEndAt,
         id,
+        registeredServiceIds,
       );
       slotMinutes = generateSlotMinutes(updatedStartAt, updatedEndAt);
     }
@@ -3160,12 +3204,18 @@ export class AppointmentService {
       const discountPct = Number(activeMembership.planSnapshot.benefits.serviceDiscountPercentage || 0);
       if (discountPct > 0) {
         for (const line of proposedServiceSnapshots) {
-          if (line.serviceType === "registered" && !line.appliedSubscriptionId && !line.isRedeemedViaSubscription) {
-            const dbServ = dbServices.find((ds) => ds._id.toString() === line.serviceId?.toString());
-            const isEligible = isServiceEligibleForMembershipBenefits(
-              { _id: line.serviceId, categoryId: dbServ?.categoryId },
-              activeMembership.planSnapshot.benefits
-            );
+          if (!line.appliedSubscriptionId && !line.isRedeemedViaSubscription) {
+            const isCustom = line.serviceType === "custom" || !line.serviceId;
+            let isEligible = false;
+            if (isCustom) {
+              isEligible = true;
+            } else {
+              const dbServ = dbServices.find((ds) => ds._id.toString() === line.serviceId?.toString());
+              isEligible = isServiceEligibleForMembershipBenefits(
+                { _id: line.serviceId, categoryId: dbServ?.categoryId },
+                activeMembership.planSnapshot.benefits
+              );
+            }
             if (isEligible) {
               const lineDisc = Number(((line.price * discountPct) / 100).toFixed(2));
               line.appliedCustomerMembershipId = activeMembership._id.toString();
@@ -4185,11 +4235,17 @@ export class AppointmentService {
 
           for (const line of appointment.services || []) {
             if (!line.isRedeemedViaSubscription && !line.appliedSubscriptionId) {
-              const dbServ = dbServices.find((ds) => ds._id.toString() === line.serviceId?.toString());
-              const isEligible = isServiceEligibleForMembershipBenefits(
-                { serviceId: line.serviceId, categoryId: dbServ?.categoryId },
-                benefits
-              );
+              const isCustom = line.serviceType === "custom" || !line.serviceId;
+              let isEligible = false;
+              if (isCustom) {
+                isEligible = true;
+              } else {
+                const dbServ = dbServices.find((ds) => ds._id.toString() === line.serviceId?.toString());
+                isEligible = isServiceEligibleForMembershipBenefits(
+                  { serviceId: line.serviceId, categoryId: dbServ?.categoryId },
+                  benefits
+                );
+              }
               if (isEligible) {
                 const lineDiscount = Number(((line.price * discountPct) / 100).toFixed(2));
                 line.appliedCustomerMembershipId = targetCustomerMembership._id;

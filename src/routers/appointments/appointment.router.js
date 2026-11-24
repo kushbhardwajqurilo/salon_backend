@@ -35,6 +35,14 @@ import {
   upsellSubscription,
   upsellMembership,
 } from "../../controllers/appointments/appointment.controller.js";
+import {
+  getStaffAvailability,
+  getCalendarAvailability,
+} from "../../controllers/availability/staffAvailability.controller.js";
+import {
+  getStaffAvailabilityQuerySchema,
+  getCalendarAvailabilityQuerySchema,
+} from "../../validation/availability/staffAvailability.validation.js";
 import { asyncHandler } from "../../utils/errors.js";
 import { AppError } from "../../utils/errors.js";
 
@@ -79,6 +87,20 @@ router.use(authenticate);
 router.use(requireOrganizationScope);
 
 // READ Operations
+router.get(
+  "/availability/staff",
+  validate(getStaffAvailabilityQuerySchema),
+  requirePermission("appointments.view"),
+  getStaffAvailability
+);
+
+router.get(
+  "/calendar/staff-availability",
+  validate(getCalendarAvailabilityQuerySchema),
+  requirePermission("appointments.view"),
+  getCalendarAvailability
+);
+
 router.get(
   "/",
   requireBranchScope,
