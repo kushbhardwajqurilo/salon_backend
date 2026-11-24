@@ -183,7 +183,10 @@ export class StocktakeService {
     ]);
 
     return {
-      stocktakes,
+      stocktakes: stocktakes.map((st) => ({
+        ...st,
+        id: st._id.toString(),
+      })),
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -217,9 +220,29 @@ export class StocktakeService {
       .sort({ "productId.name": 1, stockDomain: 1 })
       .lean();
 
+    const formattedItems = items.map((item) => {
+      const isPopulatedProd = item.productId && typeof item.productId === "object";
+      return {
+        ...item,
+        id: item._id.toString(),
+        product: isPopulatedProd
+          ? {
+              id: item.productId._id.toString(),
+              name: item.productId.name,
+              sku: item.productId.sku,
+              stockUnit: item.productId.stockUnit,
+              usageType: item.productId.usageType,
+              category: item.productId.category,
+            }
+          : undefined,
+        productId: isPopulatedProd ? item.productId._id.toString() : item.productId?.toString(),
+      };
+    });
+
     return {
       ...stocktake,
-      items,
+      id: stocktake._id.toString(),
+      items: formattedItems,
     };
   }
 
@@ -385,9 +408,16 @@ export class StocktakeService {
         discrepanciesCount++;
       }
 
+      const prodObj = item.productId && typeof item.productId === "object" ? item.productId : null;
+      const prodName = prodObj?.name || "Product";
+      const sku = prodObj?.sku || "";
+
       return {
         _id: item._id,
+        itemId: item._id.toString(),
         productId: item.productId,
+        productName: prodName,
+        sku,
         stockDomain: item.stockDomain,
         stockUnit: item.stockUnit,
         snapshotQuantity: item.snapshotQuantity,
@@ -400,15 +430,35 @@ export class StocktakeService {
       };
     });
 
+    const isPostable = uncountedCount === 0 && ["draft", "in_progress"].includes(stocktake.status);
+    const recountRequiredCount = items.filter((i) => i.status === "recount_required").length;
+    const blockers = [];
+    if (uncountedCount > 0) {
+      blockers.push(`${uncountedCount} line item(s) are uncounted. All lines must be counted before posting.`);
+    }
+    if (recountRequiredCount > 0) {
+      blockers.push(`${recountRequiredCount} line item(s) require physical recount due to intervening inventory movements.`);
+    }
+    if (!["draft", "in_progress"].includes(stocktake.status)) {
+      blockers.push(`Stocktake is currently in '${stocktake.status}' status and cannot be posted.`);
+    }
+
     return {
       stocktakeId: stocktake._id,
       stocktakeNumber: stocktake.stocktakeNumber,
       status: stocktake.status,
       totalItems: stocktake.totalItems,
       uncountedCount,
+      uncountedItems: uncountedCount,
       discrepanciesCount,
-      isPostable: uncountedCount === 0 && ["draft", "in_progress"].includes(stocktake.status),
+      discrepantItems: discrepanciesCount,
+      matchedItems: Math.max(0, stocktake.totalItems - discrepanciesCount - uncountedCount),
+      recountRequiredCount,
+      isPostable,
+      canPost: isPostable && recountRequiredCount === 0,
+      blockers,
       items: previewItems,
+      discrepancies: previewItems,
     };
   }
 

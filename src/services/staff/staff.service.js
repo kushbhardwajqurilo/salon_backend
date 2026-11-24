@@ -959,6 +959,37 @@ export class StaffService {
         throw new AppError("Branch assignment not found", 404);
       }
 
+      // Safety Invariant: Check for future active appointments at this branch before deactivating
+      const Appointment = mongoose.model("Appointment");
+      const futureAppointments = await Appointment.find({
+        organizationId,
+        staffId: id,
+        branchId,
+        isDeleted: false,
+        status: { $in: ["scheduled", "in_progress"] },
+        startAt: { $gte: new Date() },
+      })
+        .select("appointmentCode appointmentDate startTime endTime")
+        .session(session)
+        .lean();
+
+      if (futureAppointments.length > 0) {
+        throw new AppError(
+          `Cannot remove branch assignment: staff has ${futureAppointments.length} future active appointment(s) at this branch. Please reassign or reschedule these appointments first.`,
+          409,
+          {
+            conflictType: "STAFF_BRANCH_REMOVAL_CONFLICT",
+            futureAppointmentCount: futureAppointments.length,
+            appointments: futureAppointments.map((a) => ({
+              id: a._id.toString(),
+              appointmentCode: a.appointmentCode,
+              date: a.appointmentDate,
+              time: `${a.startTime} - ${a.endTime}`,
+            })),
+          },
+        );
+      }
+
       const wasPrimary = assignment.isPrimary;
       assignment.isActive = false;
       assignment.isPrimary = false;

@@ -1,5 +1,5 @@
 /**
- * Canonical date utilities for the Leaves module.
+ * Canonical date utilities for the Leaves and Appointments modules.
  *
  * Conventions (per LEAVES_BACKEND_ARCHITECTURE_AND_IMPLEMENTATION_PLAN v1.0 FINAL §9):
  * - API accepts "YYYY-MM-DD" strings only.
@@ -12,6 +12,8 @@ const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Maximum number of calendar days a single leave may cover (v1). */
 export const MAX_LEAVE_DAYS = 365;
+
+export const DEFAULT_TIMEZONE = "Asia/Kolkata";
 
 /**
  * Validates a "YYYY-MM-DD" string and returns true if it is a real calendar date.
@@ -86,4 +88,58 @@ export const enumerateDates = (startDate, endDate) => {
     }
 
     return out;
+};
+
+/**
+ * Helper to compute timezone offset in milliseconds for a target date and timezone
+ */
+export const getTimezoneOffsetMs = (date, timezone = DEFAULT_TIMEZONE) => {
+  const tz = timezone || DEFAULT_TIMEZONE;
+  try {
+    const utcDate = new Date(date.toLocaleString("en-US", { timeZone: "UTC" }));
+    const tzDate = new Date(date.toLocaleString("en-US", { timeZone: tz }));
+    return tzDate.getTime() - utcDate.getTime();
+  } catch (err) {
+    // Fallback to Asia/Kolkata offset (+05:30) if timezone is invalid
+    return 5.5 * 60 * 60 * 1000;
+  }
+};
+
+/**
+ * Converts local date string ("YYYY-MM-DD") and time string ("HH:mm") to canonical UTC Date timestamp
+ */
+export const parseLocalToUTC = (
+  dateStr,
+  timeStr,
+  timezone = DEFAULT_TIMEZONE,
+) => {
+  const tz = timezone || DEFAULT_TIMEZONE;
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const [hours, minutes] = timeStr.split(":").map(Number);
+
+  // Construct nominal UTC instant assuming input was UTC
+  const nominalUtc = new Date(
+    Date.UTC(year, month - 1, day, hours, minutes, 0, 0),
+  );
+  const offsetMs = getTimezoneOffsetMs(nominalUtc, tz);
+  return new Date(nominalUtc.getTime() - offsetMs);
+};
+
+/**
+ * Formats canonical UTC Date timestamp to local date ("YYYY-MM-DD") and local time ("HH:mm") strings
+ */
+export const formatUTCToLocal = (utcDate, timezone = DEFAULT_TIMEZONE) => {
+  const tz = timezone || DEFAULT_TIMEZONE;
+  const offsetMs = getTimezoneOffsetMs(utcDate, tz);
+  const localDate = new Date(utcDate.getTime() + offsetMs);
+  const year = localDate.getUTCFullYear();
+  const month = String(localDate.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(localDate.getUTCDate()).padStart(2, "0");
+  const hours = String(localDate.getUTCHours()).padStart(2, "0");
+  const minutes = String(localDate.getUTCMinutes()).padStart(2, "0");
+
+  return {
+    dateStr: `${year}-${month}-${day}`,
+    timeStr: `${hours}:${minutes}`,
+  };
 };

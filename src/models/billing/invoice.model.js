@@ -475,6 +475,19 @@ invoiceSchema.index({ organizationId: 1, customerId: 1, createdAt: -1 });
 invoiceSchema.index({ organizationId: 1, "lines.appliedCustomerMembershipId": 1, createdAt: -1 });
 invoiceSchema.index({ appointmentId: 1, status: 1 });
 invoiceSchema.index({ subscriptionId: 1, status: 1 });
+// Compound Index for Dashboard Billed Sales Aggregations (with branch filtering)
+invoiceSchema.index({
+  organizationId: 1,
+  branchId: 1,
+  status: 1,
+  finalizedAt: 1,
+});
+// Compound Index for Consolidated Multi-Branch Dashboard Aggregations (org-wide without branch filter)
+invoiceSchema.index({
+  organizationId: 1,
+  status: 1,
+  finalizedAt: 1,
+});
 
 invoiceSchema.set("toJSON", {
   transform: (doc, ret) => {
