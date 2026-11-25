@@ -19,6 +19,7 @@ export const createSupplierSchema = z.object({
         bankName: z.string().trim().optional(),
       })
       .optional(),
+    metadata: z.record(z.unknown()).optional(),
   }),
 });
 
@@ -41,6 +42,7 @@ export const updateSupplierSchema = z.object({
       })
       .optional(),
     status: z.enum(["active", "inactive"]).optional(),
+    metadata: z.record(z.unknown()).optional(),
   }),
 });
 
@@ -82,13 +84,27 @@ export const updatePurchaseOrderStatusSchema = z.object({
   }),
 });
 
+const PO_STATUSES = [
+  "draft",
+  "ordered",
+  "partially_received",
+  "received",
+  "cancelled",
+];
+
 export const listPurchaseOrdersSchema = z.object({
   query: z.object({
     page: z.string().regex(/^\d+$/).optional(),
     limit: z.string().regex(/^\d+$/).optional(),
     branchId: objectIdSchema.optional(),
     supplierId: objectIdSchema.optional(),
-    status: z.enum(["draft", "ordered", "partially_received", "received", "cancelled"]).optional(),
+    status: z
+      .string()
+      .refine(
+        (val) => val.split(",").every((s) => PO_STATUSES.includes(s.trim())),
+        { message: "Invalid purchase order status filter" },
+      )
+      .optional(),
     search: z.string().optional(),
   }),
 });
@@ -127,8 +143,16 @@ export const createSupplierInvoiceSchema = z.object({
   body: z.object({
     branchId: objectIdSchema.optional(),
     supplierId: objectIdSchema,
-    purchaseOrderId: objectIdSchema.optional().nullable(),
-    goodsReceiptId: objectIdSchema.optional().nullable(),
+    purchaseOrderId: objectIdSchema
+      .optional()
+      .nullable()
+      .or(z.literal(""))
+      .transform((v) => (v === "" ? undefined : v)),
+    goodsReceiptId: objectIdSchema
+      .optional()
+      .nullable()
+      .or(z.literal(""))
+      .transform((v) => (v === "" ? undefined : v)),
     supplierInvoiceRef: z.string().trim().optional(),
     invoiceDate: z.string().datetime().optional().or(z.string().optional()),
     dueDate: z.string().datetime().optional().or(z.string()),

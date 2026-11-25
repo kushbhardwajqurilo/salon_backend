@@ -29,7 +29,7 @@ export class ProcurementService {
   // ---------------------------------------------------------
   // 1. SUPPLIERS
   // ---------------------------------------------------------
-  async createSupplier(data, organizationId, userId) {
+  async createSupplier(data, organizationId, userId, branchId = null) {
     const supplier = await supplierRepository.create({
       ...data,
       organizationId,
@@ -39,6 +39,7 @@ export class ProcurementService {
 
     const audit = new AuditLog({
       organizationId,
+      branchId,
       actorId: userId,
       action: AUDIT_ACTIONS.PROCUREMENT_SUPPLIER_CREATED,
       entityType: "Supplier",
@@ -51,7 +52,7 @@ export class ProcurementService {
     return supplier;
   }
 
-  async updateSupplier(id, data, organizationId, userId) {
+  async updateSupplier(id, data, organizationId, userId, branchId = null) {
     const existing = await supplierRepository.findById(id, organizationId);
     if (!existing) {
       throw new AppError("Supplier not found", 404);
@@ -64,6 +65,7 @@ export class ProcurementService {
 
     const audit = new AuditLog({
       organizationId,
+      branchId,
       actorId: userId,
       action: AUDIT_ACTIONS.PROCUREMENT_SUPPLIER_UPDATED,
       entityType: "Supplier",
@@ -84,9 +86,41 @@ export class ProcurementService {
     return supplier;
   }
 
+  async deleteSupplier(id, organizationId, userId, branchId = null) {
+    const existing = await supplierRepository.findById(id, organizationId);
+    if (!existing) {
+      throw new AppError("Supplier not found", 404);
+    }
+
+    const deleted = await supplierRepository.update(id, organizationId, {
+      isDeleted: true,
+      updatedBy: userId,
+    });
+
+    const audit = new AuditLog({
+      organizationId,
+      branchId,
+      actorId: userId,
+      action: AUDIT_ACTIONS.PROCUREMENT_SUPPLIER_DELETED,
+      entityType: "Supplier",
+      entityId: existing._id,
+      description: `Supplier deleted: ${existing.name}`,
+      metadata: { name: existing.name, phone: existing.phone },
+    });
+    await audit.save();
+
+    return deleted;
+  }
+
   async listSuppliers(filter, pagination) {
     const query = { organizationId: filter.organizationId, isDeleted: false };
-    if (filter.status) query.status = filter.status;
+    if (filter.status) {
+      const statuses = String(filter.status)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      query.status = statuses.length > 1 ? { $in: statuses } : statuses[0];
+    }
     if (filter.search) {
       query.$or = [
         { name: { $regex: filter.search, $options: "i" } },
@@ -125,46 +159,68 @@ export class ProcurementService {
       throw new AppError("Branch ID is required for purchase orders", 400);
     }
 
-    const supplier = await supplierRepository.findById(payload.supplierId, organizationId);
+    const supplier = await supplierRepository.findById(
+      payload.supplierId,
+      organizationId,
+    );
     if (!supplier) {
       throw new AppError("Supplier not found", 404);
     }
     if (supplier.status !== "active") {
-      throw new AppError("Cannot issue purchase order to an inactive supplier", 400);
+      throw new AppError(
+        "Cannot issue purchase order to an inactive supplier",
+        400,
+      );
     }
 
     let totalAmount = 0;
     const validatedItems = [];
 
     for (const item of payload.items) {
-      const product = await productRepository.findById(item.productId, organizationId);
+      const product = await productRepository.findById(
+        item.productId,
+        organizationId,
+      );
       if (!product) {
         throw new AppError(`Product not found: ${item.productId}`, 404);
       }
       if (product.status !== "active") {
-        throw new AppError(`Cannot order inactive product '${product.name}'`, 400);
+        throw new AppError(
+          `Cannot order inactive product '${product.name}'`,
+          400,
+        );
       }
 
       // Check domain match against product usageType
-      if (item.targetDomain === "salon_consumables" && !["salon_consumption", "both"].includes(product.usageType)) {
+      if (
+        item.targetDomain === "salon_consumables" &&
+        !["salon_consumption", "both"].includes(product.usageType)
+      ) {
         throw new AppError(
           `Product '${product.name}' (${product.usageType}) cannot be assigned to Salon Consumables domain`,
-          400
+          400,
         );
       }
-      if (item.targetDomain === "retail_products" && !["retail_sale", "both"].includes(product.usageType)) {
+      if (
+        item.targetDomain === "retail_products" &&
+        !["retail_sale", "both"].includes(product.usageType)
+      ) {
         throw new AppError(
           `Product '${product.name}' (${product.usageType}) cannot be assigned to Retail Products domain`,
-          400
+          400,
         );
       }
 
-      const unitCheck = validateQuantityForUnit(item.orderedQuantity, product.stockUnit);
+      const unitCheck = validateQuantityForUnit(
+        item.orderedQuantity,
+        product.stockUnit,
+      );
       if (!unitCheck.valid) {
         throw new AppError(unitCheck.message, 400);
       }
 
-      const lineTotal = Math.round(item.orderedQuantity * item.unitCostPrice * 100) / 100;
+      const lineTotal =
+        Math.round(item.orderedQuantity * item.unitCostPrice * 100) / 100;
       totalAmount += lineTotal;
 
       validatedItems.push({
@@ -177,7 +233,8 @@ export class ProcurementService {
       });
     }
 
-    const orderCount = await purchaseOrderRepository.countByOrganization(organizationId);
+    const orderCount =
+      await purchaseOrderRepository.countByOrganization(organizationId);
     const poNumber = this.generateNumber("PO", orderCount);
 
     const po = await purchaseOrderRepository.create({
@@ -188,7 +245,9 @@ export class ProcurementService {
       items: validatedItems,
       totalAmount: Math.round(totalAmount * 100) / 100,
       status: "draft",
-      expectedDeliveryDate: payload.expectedDeliveryDate ? new Date(payload.expectedDeliveryDate) : null,
+      expectedDeliveryDate: payload.expectedDeliveryDate
+        ? new Date(payload.expectedDeliveryDate)
+        : null,
       notes: payload.notes || "",
       createdBy: userId,
       updatedBy: userId,
@@ -202,21 +261,33 @@ export class ProcurementService {
       entityType: "PurchaseOrder",
       entityId: po._id,
       description: `Purchase order created: ${poNumber} for ${supplier.name}`,
-      metadata: { poNumber, totalAmount: po.totalAmount, itemsCount: validatedItems.length },
+      metadata: {
+        poNumber,
+        totalAmount: po.totalAmount,
+        itemsCount: validatedItems.length,
+      },
     });
     await audit.save();
 
     return po;
   }
 
-  async updatePurchaseOrderStatus(id, { status, cancelReason }, organizationId, userId) {
+  async updatePurchaseOrderStatus(
+    id,
+    { status, cancelReason },
+    organizationId,
+    userId,
+  ) {
     const po = await purchaseOrderRepository.findById(id, organizationId);
     if (!po) {
       throw new AppError("Purchase order not found", 404);
     }
 
     if (po.status === "received") {
-      throw new AppError("Cannot change status of a fully received purchase order", 400);
+      throw new AppError(
+        "Cannot change status of a fully received purchase order",
+        400,
+      );
     }
     if (po.status === "cancelled") {
       throw new AppError("Purchase order is already cancelled", 400);
@@ -226,13 +297,19 @@ export class ProcurementService {
 
     if (status === "ordered") {
       if (po.status !== "draft") {
-        throw new AppError(`Cannot mark as ordered from status '${po.status}'`, 400);
+        throw new AppError(
+          `Cannot mark as ordered from status '${po.status}'`,
+          400,
+        );
       }
       updateData.status = "ordered";
       updateData.orderedAt = new Date();
     } else if (status === "cancelled") {
       if (po.items.some((it) => it.receivedQuantity > 0)) {
-        throw new AppError("Cannot cancel a purchase order with partially received items", 400);
+        throw new AppError(
+          "Cannot cancel a purchase order with partially received items",
+          400,
+        );
       }
       updateData.status = "cancelled";
       updateData.cancelledAt = new Date();
@@ -242,7 +319,11 @@ export class ProcurementService {
       throw new AppError(`Invalid status transition to '${status}'`, 400);
     }
 
-    const updated = await purchaseOrderRepository.update(id, organizationId, updateData);
+    const updated = await purchaseOrderRepository.update(
+      id,
+      organizationId,
+      updateData,
+    );
 
     const audit = new AuditLog({
       organizationId,
@@ -271,7 +352,13 @@ export class ProcurementService {
     const query = { organizationId: filter.organizationId };
     if (filter.branchId) query.branchId = filter.branchId;
     if (filter.supplierId) query.supplierId = filter.supplierId;
-    if (filter.status) query.status = filter.status;
+    if (filter.status) {
+      const statuses = String(filter.status)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      query.status = statuses.length > 1 ? { $in: statuses } : statuses[0];
+    }
     if (filter.search) {
       query.poNumber = { $regex: filter.search, $options: "i" };
     }
@@ -306,7 +393,7 @@ export class ProcurementService {
     if (idempotencyKey) {
       const existingGRN = await goodsReceiptRepository.findByIdempotencyKey(
         organizationId,
-        idempotencyKey
+        idempotencyKey,
       );
       if (existingGRN) {
         return {
@@ -319,13 +406,19 @@ export class ProcurementService {
 
     return await runInTransaction(async (session) => {
       // 2. Fetch Purchase Order inside session
-      const po = await PurchaseOrder.findOne({ _id: poId, organizationId }).session(session);
+      const po = await PurchaseOrder.findOne({
+        _id: poId,
+        organizationId,
+      }).session(session);
       if (!po) {
         throw new AppError("Purchase order not found", 404);
       }
 
       if (["draft", "cancelled"].includes(po.status)) {
-        throw new AppError(`Cannot receive goods for purchase order in '${po.status}' status`, 400);
+        throw new AppError(
+          `Cannot receive goods for purchase order in '${po.status}' status`,
+          400,
+        );
       }
 
       const receivedItemsRecord = [];
@@ -333,34 +426,47 @@ export class ProcurementService {
 
       for (const receiveItem of items) {
         const poLine = po.items.find(
-          (line) => line.productId.toString() === receiveItem.productId.toString()
+          (line) =>
+            line.productId.toString() === receiveItem.productId.toString(),
         );
         if (!poLine) {
           throw new AppError(
             `Product ${receiveItem.productId} is not part of Purchase Order ${po.poNumber}`,
-            400
+            400,
           );
         }
 
-        const remainingQty = this.roundQuantity(poLine.orderedQuantity - poLine.receivedQuantity);
+        const remainingQty = this.roundQuantity(
+          poLine.orderedQuantity - poLine.receivedQuantity,
+        );
         if (receiveItem.receivedQuantity > remainingQty) {
           throw new AppError(
             `Cannot receive ${receiveItem.receivedQuantity}. Remaining quantity for product is ${remainingQty}`,
-            400
+            400,
           );
         }
 
-        const product = await productRepository.findById(poLine.productId, organizationId, session);
+        const product = await productRepository.findById(
+          poLine.productId,
+          organizationId,
+          session,
+        );
         if (!product) {
           throw new AppError(`Product not found: ${poLine.productId}`, 404);
         }
 
-        const unitCheck = validateQuantityForUnit(receiveItem.receivedQuantity, product.stockUnit);
+        const unitCheck = validateQuantityForUnit(
+          receiveItem.receivedQuantity,
+          product.stockUnit,
+        );
         if (!unitCheck.valid) {
           throw new AppError(unitCheck.message, 400);
         }
 
-        const lineAmount = Math.round(receiveItem.receivedQuantity * poLine.unitCostPrice * 100) / 100;
+        const lineAmount =
+          Math.round(
+            receiveItem.receivedQuantity * poLine.unitCostPrice * 100,
+          ) / 100;
         totalReceivedAmount += lineAmount;
 
         // Atomic stock balance increment across aggregate onHand and domain-specific onHand
@@ -382,7 +488,7 @@ export class ProcurementService {
             },
             $set: { lastMovementAt: new Date() },
           },
-          { session, upsert: true, new: true, setDefaultsOnInsert: true }
+          { session, upsert: true, new: true, setDefaultsOnInsert: true },
         );
 
         // Immutable StockMovement ledger entry
@@ -402,12 +508,16 @@ export class ProcurementService {
             },
             actorId: userId,
             notes: `Goods received for PO #${po.poNumber} [${poLine.targetDomain}]`,
-            idempotencyKey: idempotencyKey ? `${idempotencyKey}_${product._id}` : null,
+            idempotencyKey: idempotencyKey
+              ? `${idempotencyKey}_${product._id}`
+              : null,
           },
-          session
+          session,
         );
 
-        poLine.receivedQuantity = this.roundQuantity(poLine.receivedQuantity + receiveItem.receivedQuantity);
+        poLine.receivedQuantity = this.roundQuantity(
+          poLine.receivedQuantity + receiveItem.receivedQuantity,
+        );
 
         receivedItemsRecord.push({
           productId: product._id,
@@ -420,14 +530,15 @@ export class ProcurementService {
 
       // Update PO Status
       const allFullyReceived = po.items.every(
-        (line) => line.receivedQuantity >= line.orderedQuantity
+        (line) => line.receivedQuantity >= line.orderedQuantity,
       );
       po.status = allFullyReceived ? "received" : "partially_received";
       po.updatedBy = userId;
       await po.save({ session });
 
       // Create Goods Receipt Note record
-      const grnCount = await goodsReceiptRepository.countByOrganization(organizationId);
+      const grnCount =
+        await goodsReceiptRepository.countByOrganization(organizationId);
       const grnNumber = this.generateNumber("GRN", grnCount);
 
       const grn = await goodsReceiptRepository.create(
@@ -444,7 +555,7 @@ export class ProcurementService {
           notes: notes || "",
           idempotencyKey: idempotencyKey || null,
         },
-        session
+        session,
       );
 
       // Create StockBatch records for each received line item
@@ -525,25 +636,36 @@ export class ProcurementService {
       throw new AppError("Branch ID is required for supplier invoices", 400);
     }
 
-    const supplier = await supplierRepository.findById(payload.supplierId, organizationId);
+    const supplier = await supplierRepository.findById(
+      payload.supplierId,
+      organizationId,
+    );
     if (!supplier) {
       throw new AppError("Supplier not found", 404);
     }
 
     if (payload.purchaseOrderId) {
-      const po = await purchaseOrderRepository.findById(payload.purchaseOrderId, organizationId);
+      const po = await purchaseOrderRepository.findById(
+        payload.purchaseOrderId,
+        organizationId,
+      );
       if (!po) {
         throw new AppError("Purchase order not found", 404);
       }
     }
 
-    const invCount = await supplierInvoiceRepository.countByOrganization(organizationId);
+    const invCount =
+      await supplierInvoiceRepository.countByOrganization(organizationId);
     const invoiceNumber = this.generateNumber("SINV", invCount);
 
-    const invoiceDate = payload.invoiceDate ? new Date(payload.invoiceDate) : new Date();
+    const invoiceDate = payload.invoiceDate
+      ? new Date(payload.invoiceDate)
+      : new Date();
     const dueDate = payload.dueDate
       ? new Date(payload.dueDate)
-      : new Date(invoiceDate.getTime() + (supplier.paymentTermsDays || 30) * 86400000);
+      : new Date(
+          invoiceDate.getTime() + (supplier.paymentTermsDays || 30) * 86400000,
+        );
 
     const invoice = await supplierInvoiceRepository.create({
       organizationId,
@@ -578,7 +700,10 @@ export class ProcurementService {
   }
 
   async getSupplierInvoiceById(id, organizationId) {
-    const invoice = await supplierInvoiceRepository.findById(id, organizationId);
+    const invoice = await supplierInvoiceRepository.findById(
+      id,
+      organizationId,
+    );
     if (!invoice) {
       throw new AppError("Supplier invoice not found", 404);
     }
@@ -589,7 +714,13 @@ export class ProcurementService {
     const query = { organizationId: filter.organizationId };
     if (filter.branchId) query.branchId = filter.branchId;
     if (filter.supplierId) query.supplierId = filter.supplierId;
-    if (filter.status) query.status = filter.status;
+    if (filter.status) {
+      const statuses = String(filter.status)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      query.status = statuses.length > 1 ? { $in: statuses } : statuses[0];
+    }
 
     const page = pagination.page || 1;
     const limit = pagination.limit || 20;
@@ -615,14 +746,22 @@ export class ProcurementService {
   // 5. SUPPLIER PAYMENTS
   // ---------------------------------------------------------
   async recordSupplierPayment(payload, organizationId, branchId, userId) {
-    const { supplierInvoiceId, amount, paymentMethod, referenceNote, paymentDate, idempotencyKey } = payload;
+    const {
+      supplierInvoiceId,
+      amount,
+      paymentMethod,
+      referenceNote,
+      paymentDate,
+      idempotencyKey,
+    } = payload;
 
     // Idempotency check
     if (idempotencyKey) {
-      const existingPayment = await supplierPaymentRepository.findByIdempotencyKey(
-        organizationId,
-        idempotencyKey
-      );
+      const existingPayment =
+        await supplierPaymentRepository.findByIdempotencyKey(
+          organizationId,
+          idempotencyKey,
+        );
       if (existingPayment) {
         return {
           idempotentReplay: true,
@@ -646,23 +785,32 @@ export class ProcurementService {
         throw new AppError("Invoice is already fully paid", 400);
       }
       if (invoice.status === "cancelled") {
-        throw new AppError("Cannot record payment for a cancelled invoice", 400);
-      }
-
-      const outstanding = Math.max(0, invoice.totalAmount - (invoice.amountPaid || 0));
-      if (amount > outstanding) {
         throw new AppError(
-          `Payment amount (${amount}) exceeds outstanding invoice balance (${outstanding})`,
-          400
+          "Cannot record payment for a cancelled invoice",
+          400,
         );
       }
 
-      const newAmountPaid = Math.round(((invoice.amountPaid || 0) + amount) * 100) / 100;
+      const outstanding = Math.max(
+        0,
+        invoice.totalAmount - (invoice.amountPaid || 0),
+      );
+      if (amount > outstanding) {
+        throw new AppError(
+          `Payment amount (${amount}) exceeds outstanding invoice balance (${outstanding})`,
+          400,
+        );
+      }
+
+      const newAmountPaid =
+        Math.round(((invoice.amountPaid || 0) + amount) * 100) / 100;
       invoice.amountPaid = newAmountPaid;
-      invoice.status = newAmountPaid >= invoice.totalAmount ? "paid" : "partially_paid";
+      invoice.status =
+        newAmountPaid >= invoice.totalAmount ? "paid" : "partially_paid";
       await invoice.save({ session });
 
-      const payCount = await supplierPaymentRepository.countByOrganization(organizationId);
+      const payCount =
+        await supplierPaymentRepository.countByOrganization(organizationId);
       const paymentNumber = this.generateNumber("SPAY", payCount);
 
       const payment = await supplierPaymentRepository.create(
@@ -679,7 +827,7 @@ export class ProcurementService {
           recordedBy: userId,
           idempotencyKey: idempotencyKey || null,
         },
-        session
+        session,
       );
 
       const audit = new AuditLog({
@@ -710,7 +858,8 @@ export class ProcurementService {
     const query = { organizationId: filter.organizationId };
     if (filter.branchId) query.branchId = filter.branchId;
     if (filter.supplierId) query.supplierId = filter.supplierId;
-    if (filter.supplierInvoiceId) query.supplierInvoiceId = filter.supplierInvoiceId;
+    if (filter.supplierInvoiceId)
+      query.supplierInvoiceId = filter.supplierInvoiceId;
 
     const page = pagination.page || 1;
     const limit = pagination.limit || 20;
@@ -736,7 +885,11 @@ export class ProcurementService {
   // 6. PROCUREMENT DASHBOARD OVERVIEW METRICS
   // ---------------------------------------------------------
   async getProcurementOverview(organizationId, branchId = null) {
-    const supplierFilter = { organizationId, isDeleted: false, status: "active" };
+    const supplierFilter = {
+      organizationId,
+      isDeleted: false,
+      status: "active",
+    };
     const poFilter = { organizationId };
     const invFilter = { organizationId };
 
@@ -758,8 +911,14 @@ export class ProcurementService {
       supplierRepository.list(supplierFilter, { limit: 1 }),
       PurchaseOrder.countDocuments({ ...poFilter, status: "draft" }),
       PurchaseOrder.countDocuments({ ...poFilter, status: "ordered" }),
-      PurchaseOrder.countDocuments({ ...poFilter, status: "partially_received" }),
-      SupplierInvoice.countDocuments({ ...invFilter, status: { $in: ["unpaid", "partially_paid"] } }),
+      PurchaseOrder.countDocuments({
+        ...poFilter,
+        status: "partially_received",
+      }),
+      SupplierInvoice.countDocuments({
+        ...invFilter,
+        status: { $in: ["unpaid", "partially_paid"] },
+      }),
       SupplierInvoice.find(invFilter).select("totalAmount amountPaid status"),
       purchaseOrderRepository.list(poFilter, { limit: 5 }),
       goodsReceiptRepository.list(poFilter, { limit: 5 }),
@@ -768,7 +927,10 @@ export class ProcurementService {
     let outstandingBalance = 0;
     for (const inv of allInvoices) {
       if (inv.status !== "cancelled") {
-        outstandingBalance += Math.max(0, (inv.totalAmount || 0) - (inv.amountPaid || 0));
+        outstandingBalance += Math.max(
+          0,
+          (inv.totalAmount || 0) - (inv.amountPaid || 0),
+        );
       }
     }
 
@@ -786,4 +948,3 @@ export class ProcurementService {
 }
 
 export const procurementService = new ProcurementService();
-

@@ -44,6 +44,7 @@ import {
   sanitizeData,
 } from "./src/middleware/security.js";
 import { globalErrorHandler } from "./src/utils/errors.js";
+import { auditFallbackMiddleware } from "./src/middleware/auditFallback.js";
 
 const app = express();
 
@@ -68,6 +69,9 @@ app.use((req, res, next) => {
   );
   next();
 });
+
+// Global Audit Context & Fallback Middleware (ensures no mutating API route goes unaudited)
+app.use(auditFallbackMiddleware);
 
 // block common attack paths(.env)
 app.use((req, res, next) => {

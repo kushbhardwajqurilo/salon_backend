@@ -220,11 +220,33 @@ export class StocktakeService {
       .sort({ "productId.name": 1, stockDomain: 1 })
       .lean();
 
+    const productIds = items.map((it) =>
+      it.productId && typeof it.productId === "object" ? it.productId._id : it.productId,
+    );
+    const liveBalances = await StockBalance.find({
+      organizationId,
+      branchId: stocktake.branchId,
+      productId: { $in: productIds },
+    }).lean();
+
+    const balMap = new Map();
+    liveBalances.forEach((b) => balMap.set(b.productId.toString(), b));
+
     const formattedItems = items.map((item) => {
       const isPopulatedProd = item.productId && typeof item.productId === "object";
+      const prodIdStr = isPopulatedProd
+        ? item.productId._id.toString()
+        : item.productId?.toString();
+      const bal = prodIdStr ? balMap.get(prodIdStr) : undefined;
+      const liveDomainBalance =
+        item.stockDomain === "salon_consumables"
+          ? bal?.onHandConsumables || 0
+          : bal?.onHandRetail || 0;
+
       return {
         ...item,
         id: item._id.toString(),
+        liveBalance: this._roundQuantity(liveDomainBalance),
         product: isPopulatedProd
           ? {
               id: item.productId._id.toString(),
@@ -235,7 +257,7 @@ export class StocktakeService {
               category: item.productId.category,
             }
           : undefined,
-        productId: isPopulatedProd ? item.productId._id.toString() : item.productId?.toString(),
+        productId: prodIdStr,
       };
     });
 

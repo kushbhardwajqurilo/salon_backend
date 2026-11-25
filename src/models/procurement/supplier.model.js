@@ -50,6 +50,10 @@ const supplierSchema = new mongoose.Schema(
       default: "active",
       index: true,
     },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
     isDeleted: {
       type: Boolean,
       default: false,

@@ -336,20 +336,6 @@ export class AuthService {
       if (deviceInfo) session.deviceInfo = deviceInfo;
       await session.save();
 
-      await this.auditLogService?.createAuditLog?.(
-        {
-          action: AUDIT_ACTIONS.AUTH_TOKEN_REFRESHED,
-          entityType: "User",
-          entityId: user._id,
-          description: "Access token refreshed",
-          source: "web",
-          ipAddress,
-          userAgent: deviceInfo,
-        },
-        user.organizationId || null,
-        user._id
-      ).catch((e) => logger.error(`[SECURITY_AUDIT_PERSISTENCE_FAILED] refresh: ${e.message}`));
-
       return {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,

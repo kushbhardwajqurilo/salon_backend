@@ -75,6 +75,14 @@ router.put(
   procurementController.updateSupplier
 );
 
+router.delete(
+  "/suppliers/:id",
+  authenticate,
+  authorize("procurement.suppliers.manage"),
+  validate(withIdParam()),
+  procurementController.deleteSupplier
+);
+
 // ---------------------------------------------------------
 // PURCHASE ORDERS
 // ---------------------------------------------------------
@@ -160,6 +168,14 @@ router.get(
   authorize("procurement.orders.view"),
   validate(withIdParam()),
   procurementController.getSupplierInvoice
+);
+
+router.get(
+  "/invoices/:id/pdf",
+  authenticate,
+  authorize("procurement.orders.view"),
+  validate(withIdParam()),
+  procurementController.getSupplierInvoicePdf
 );
 
 // ---------------------------------------------------------

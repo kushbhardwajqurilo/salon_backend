@@ -289,7 +289,10 @@ class MembershipService {
       query.payerCustomerId = filter.payerCustomerId;
     }
     if (filter.status) {
-      query.status = filter.status;
+      query.status =
+        filter.status === "active"
+          ? { $in: ["active", "pending_payment"] }
+          : filter.status;
     }
     if (filter.membershipPlanId) {
       query.membershipPlanId = filter.membershipPlanId;
@@ -469,7 +472,11 @@ class MembershipService {
   async getMembershipReports(filter = {}, organizationId) {
     const query = { organizationId, isDeleted: false };
     if (filter.branchId && filter.branchId !== "all") {
-      query.permittedBranchIds = filter.branchId;
+      query.$or = [
+        { permittedBranchIds: { $exists: false } },
+        { permittedBranchIds: { $size: 0 } },
+        { permittedBranchIds: filter.branchId },
+      ];
     }
 
     const now = new Date();
@@ -490,7 +497,10 @@ class MembershipService {
       plansCount,
     ] = await Promise.all([
       CustomerMembership.countDocuments(query),
-      CustomerMembership.countDocuments({ ...query, status: "active" }),
+      CustomerMembership.countDocuments({
+        ...query,
+        status: { $in: ["active", "pending_payment"] },
+      }),
       CustomerMembership.countDocuments({ ...query, status: "expired" }),
       CustomerMembership.countDocuments({ ...query, status: "cancelled" }),
       CustomerMembership.countDocuments({ ...query, status: "suspended" }),
@@ -504,7 +514,7 @@ class MembershipService {
       }),
       CustomerMembership.countDocuments({
         ...query,
-        status: "active",
+        status: { $in: ["active", "pending_payment"] },
         endDate: { $gte: now, $lte: thirtyDaysFromNow },
       }),
       MembershipPlan.countDocuments({
@@ -521,8 +531,21 @@ class MembershipService {
     );
 
     // Calculate total revenue from active/paid memberships
+    const aggMatch = {
+      organizationId: new mongoose.Types.ObjectId(organizationId),
+      isDeleted: false,
+      status: { $in: ["active", "expired"] },
+    };
+    if (filter.branchId && filter.branchId !== "all") {
+      aggMatch.$or = [
+        { permittedBranchIds: { $exists: false } },
+        { permittedBranchIds: { $size: 0 } },
+        { permittedBranchIds: new mongoose.Types.ObjectId(filter.branchId) },
+      ];
+    }
+
     const revenueAgg = await CustomerMembership.aggregate([
-      { $match: { ...query, status: { $in: ["active", "expired"] } } },
+      { $match: aggMatch },
       { $group: { _id: null, totalRevenue: { $sum: "$planSnapshot.price" } } },
     ]);
     const totalRevenue = revenueAgg[0]?.totalRevenue || 0;
@@ -1222,7 +1245,8 @@ class MembershipService {
    */
   async getMembershipUsageHistory(membershipId, organizationId, options = {}) {
     const { page = 1, limit = 20 } = options;
-    const skip = (Math.max(1, parseInt(page, 10)) - 1) * Math.max(1, parseInt(limit, 10));
+    const skip =
+      (Math.max(1, parseInt(page, 10)) - 1) * Math.max(1, parseInt(limit, 10));
     const take = Math.min(100, Math.max(1, parseInt(limit, 10)));
 
     // Verify membership belongs to this organization
@@ -1256,7 +1280,9 @@ class MembershipService {
       .populate("customerId", "name phone")
       .populate("lines.serviceId", "name duration")
       .populate("lines.productId", "name sku")
-      .select("invoiceNumber status paymentStatus branchId customerId createdAt lines payableAmount amountPaid");
+      .select(
+        "invoiceNumber status paymentStatus branchId customerId createdAt lines payableAmount amountPaid",
+      );
 
     // Extract individual line benefit applications
     const usageRecords = [];
@@ -1264,20 +1290,39 @@ class MembershipService {
       for (const line of inv.lines || []) {
         if (
           line.appliedCustomerMembershipId &&
-          line.appliedCustomerMembershipId.toString() === membership._id.toString()
+          line.appliedCustomerMembershipId.toString() ===
+            membership._id.toString()
         ) {
           usageRecords.push({
-            id: line._id ? line._id.toString() : `${inv._id.toString()}_${usageRecords.length}`,
+            id: line._id
+              ? line._id.toString()
+              : `${inv._id.toString()}_${usageRecords.length}`,
             invoiceId: inv._id.toString(),
             invoiceNumber: inv.invoiceNumber,
             invoiceStatus: inv.status,
             paymentStatus: inv.paymentStatus,
             usedAt: inv.createdAt,
-            branch: inv.branchId ? { id: inv.branchId._id.toString(), name: inv.branchId.name, code: inv.branchId.code } : null,
-            customer: inv.customerId ? { id: inv.customerId._id.toString(), name: inv.customerId.name, phone: inv.customerId.phone } : null,
+            branch: inv.branchId
+              ? {
+                  id: inv.branchId._id.toString(),
+                  name: inv.branchId.name,
+                  code: inv.branchId.code,
+                }
+              : null,
+            customer: inv.customerId
+              ? {
+                  id: inv.customerId._id.toString(),
+                  name: inv.customerId.name,
+                  phone: inv.customerId.phone,
+                }
+              : null,
             itemType: line.lineType,
             itemId: line.serviceId?._id || line.productId?._id || null,
-            itemName: line.nameSnapshot || line.serviceId?.name || line.productId?.name || "Item",
+            itemName:
+              line.nameSnapshot ||
+              line.serviceId?.name ||
+              line.productId?.name ||
+              "Item",
             quantity: line.quantity,
             unitPrice: line.unitPrice,
             subtotal: line.subtotal ?? line.lineTotal ?? 0,
@@ -1294,8 +1339,10 @@ class MembershipService {
         id: membership._id.toString(),
         membershipCode: membership.membershipCode,
         status: membership.status,
-        planName: membership.planSnapshot?.name || membership.membershipPlanId?.name,
-        tier: membership.planSnapshot?.tier || membership.membershipPlanId?.tier,
+        planName:
+          membership.planSnapshot?.name || membership.membershipPlanId?.name,
+        tier:
+          membership.planSnapshot?.tier || membership.membershipPlanId?.tier,
         beneficiary: membership.customerId,
         payer: membership.payerCustomerId,
       },
@@ -1330,7 +1377,10 @@ class MembershipService {
 
     // Reminders are only eligible for active or pending_payment memberships
     if (!["active", "pending_payment"].includes(membership.status)) {
-      throw new AppError(`Cannot send renewal reminder for membership with status '${membership.status}'`, 400);
+      throw new AppError(
+        `Cannot send renewal reminder for membership with status '${membership.status}'`,
+        400,
+      );
     }
 
     // Check duplicate reminder prevention
@@ -1351,20 +1401,27 @@ class MembershipService {
           $set: {
             "renewalReminder.status": "failed",
             "renewalReminder.failedAt": new Date(),
-            "renewalReminder.failureReason": "Recipient contact information (phone/email) is missing",
+            "renewalReminder.failureReason":
+              "Recipient contact information (phone/email) is missing",
             "renewalReminder.channel": channel,
           },
-        }
+        },
       );
-      throw new AppError("Recipient has no phone or email configured for reminders", 400);
+      throw new AppError(
+        "Recipient has no phone or email configured for reminders",
+        400,
+      );
     }
 
     const planName = membership.planSnapshot?.name || "Membership";
-    const expiryDateStr = new Date(membership.endDate).toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    const expiryDateStr = new Date(membership.endDate).toLocaleDateString(
+      "en-IN",
+      {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      },
+    );
 
     const message = `Dear ${recipient.name || "Customer"}, your ${planName} membership (${membership.membershipCode}) expires on ${expiryDateStr}. Renew today to continue enjoying exclusive member benefits!`;
 
@@ -1392,7 +1449,7 @@ class MembershipService {
             "renewalReminder.failureReason": null,
             "renewalReminder.channel": channel,
           },
-        }
+        },
       );
 
       return {
@@ -1400,7 +1457,9 @@ class MembershipService {
         channel,
         sentTo: recipient.phone || recipient.email,
         expiryDate: membership.endDate,
-        deliveryOutcome: dispatchResult?.devMode ? "simulated_dev_mode" : "dispatched",
+        deliveryOutcome: dispatchResult?.devMode
+          ? "simulated_dev_mode"
+          : "dispatched",
       };
     } catch (err) {
       await CustomerMembership.updateOne(
@@ -1409,12 +1468,16 @@ class MembershipService {
           $set: {
             "renewalReminder.status": "failed",
             "renewalReminder.failedAt": new Date(),
-            "renewalReminder.failureReason": err.message || "Failed to dispatch reminder",
+            "renewalReminder.failureReason":
+              err.message || "Failed to dispatch reminder",
             "renewalReminder.channel": channel,
           },
-        }
+        },
       );
-      throw new AppError(`Failed to send renewal reminder: ${err.message}`, 500);
+      throw new AppError(
+        `Failed to send renewal reminder: ${err.message}`,
+        500,
+      );
     }
   }
 }

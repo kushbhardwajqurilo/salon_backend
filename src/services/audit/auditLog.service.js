@@ -1,4 +1,5 @@
 import { AuditLogRepository } from "../../repositories/audit/auditLog.repository.js";
+import { getAuditContext, markRequestAudited } from "../../utils/auditContext.js";
 
 const SENSITIVE_KEYS = new Set([
   "password",
@@ -67,7 +68,13 @@ export class AuditLogService {
 
   async createAuditLog(data, organizationId, userId, session = null) {
     try {
+      markRequestAudited();
+      const ctx = getAuditContext();
       const sanitizedData = {
+        ...(ctx?.ipAddress && !data.ipAddress ? { ipAddress: ctx.ipAddress } : {}),
+        ...(ctx?.userAgent && !data.userAgent ? { userAgent: ctx.userAgent } : {}),
+        ...(ctx?.source && !data.source ? { source: ctx.source } : {}),
+        ...(ctx?.actorType && !data.actorType ? { actorType: ctx.actorType } : {}),
         ...data,
         metadata: sanitizeAuditMetadata(data.metadata || {}),
       };
