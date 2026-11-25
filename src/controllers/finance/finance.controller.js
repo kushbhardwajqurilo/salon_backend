@@ -1,5 +1,9 @@
 import { FinanceService } from "../../services/finance/finance.service.js";
 import { asyncHandler, AppError } from "../../utils/errors.js";
+import { AuditLogService, extractAuditContext } from "../../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
+
+const auditLogService = new AuditLogService();
 
 export const getSystemTotals = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
@@ -24,6 +28,19 @@ export const submitDayClosure = asyncHandler(async (req, res) => {
     req.user._id,
     req.body
   );
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.CASH_REGISTER_CLOSED,
+      entityType: "DayClosure",
+      entityId: result._id || result.id,
+      branchId: branchId || null,
+      description: `Day closure submitted`,
+      ...extractAuditContext(req),
+      metadata: { businessDate: req.body?.businessDate },
+    },
+    organizationId,
+    req.user._id
+  );
   res.status(201).json({ success: true, data: result });
 });
 
@@ -39,6 +56,19 @@ export const approveDayClosure = asyncHandler(async (req, res) => {
     branchId,
     req.user._id,
     managerNotes
+  );
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.FINANCE_RECONCILED,
+      entityType: "DayClosure",
+      entityId: closureId,
+      branchId: result?.branchId || branchId || null,
+      description: `Day closure approved and reconciled`,
+      ...extractAuditContext(req),
+      metadata: { managerNotes },
+    },
+    organizationId,
+    req.user._id
   );
   res.status(200).json({ success: true, data: result });
 });
@@ -151,6 +181,20 @@ export const exportFinancialReport = asyncHandler(async (req, res) => {
     organizationId,
     branchId,
     { ...req.query, format: "csv" }
+  );
+
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.SENSITIVE_DATA_EXPORTED,
+      entityType: "FinancialReport",
+      entityId: null,
+      branchId: branchId || null,
+      description: `Financial report exported (${result.filename})`,
+      ...extractAuditContext(req),
+      metadata: { filename: result.filename, format: "csv" },
+    },
+    organizationId,
+    req.user._id
   );
 
   res.setHeader("Content-Type", "text/csv");

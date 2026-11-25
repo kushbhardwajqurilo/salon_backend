@@ -78,6 +78,11 @@ describe("LeaveService Phase 4", () => {
     auditLogService = {
       createAuditLog: jest.fn().mockResolvedValue({}),
     };
+    const entitlementService = {
+      evaluateLeaveEntitlement: jest.fn().mockResolvedValue({ source: "legacy" }),
+      applyApprovalDeduction: jest.fn().mockResolvedValue(null),
+      reverseApprovalDeduction: jest.fn().mockResolvedValue(null),
+    };
 
     service = new LeaveService({
       leaveRepo,
@@ -86,6 +91,7 @@ describe("LeaveService Phase 4", () => {
       userRepo,
       roleRepo,
       auditLogService,
+      entitlementService,
     });
 
     service.runTransaction = jest.fn(async (operation) => operation("session-1"));

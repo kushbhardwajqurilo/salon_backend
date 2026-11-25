@@ -6,6 +6,8 @@ import { Staff } from "../../models/staff/staff.model.js";
 import { Service } from "../../models/services/service.model.js";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Leave } from "../../models/leaves/leave.model.js";
+import { getOperatingHoursForDay } from "../../utils/operatingHours.js";
+import { SettingsResolverService } from "../settings/settingsResolver.service.js";
 import { Subscription } from "../../models/subscriptions/subscription.model.js";
 import { SubscriptionUsage } from "../../models/subscriptions/subscriptionUsage.model.js";
 import { SubscriptionConsumptionChallenge } from "../../models/subscriptions/subscriptionConsumptionChallenge.model.js";
@@ -1021,6 +1023,30 @@ export class AppointmentService {
     const tz = branch.timezone || "Asia/Kolkata";
     const currentBranchTime = formatUTCToLocal(new Date(), tz);
 
+    const settingsResolver = new SettingsResolverService();
+    const effectiveSettings = await settingsResolver.resolveEffectiveSettings(
+      organizationId,
+      branchId,
+    );
+    if (
+      bookingType === "walk_in" &&
+      effectiveSettings?.appointments?.allowWalkIns?.value === false
+    ) {
+      throw new AppError(
+        "Walk-in appointments are disabled for this branch",
+        403,
+      );
+    }
+    if (
+      bookingType === "advance" &&
+      effectiveSettings?.appointments?.allowAdvanceBookings?.value === false
+    ) {
+      throw new AppError(
+        "Advance bookings are disabled for this branch",
+        403,
+      );
+    }
+
     // 1. Walk-in Date/Time Locking: Walk-ins strictly belong to today's date in branch timezone
     if (bookingType === "walk_in" && targetDate !== currentBranchTime.dateStr) {
       throw new AppError(
@@ -1141,7 +1167,10 @@ export class AppointmentService {
     const reminderConfig = {
       enabled: isWalkIn ? false : (reminder.enabled ?? true),
       channel: reminder.channel || "sms",
-      offsetMinutes: reminder.offsetMinutes || 60,
+      offsetMinutes:
+        reminder.offsetMinutes ??
+        effectiveSettings?.appointments?.reminderDefaultOffsetMinutes?.value ??
+        60,
       status: isWalkIn ? "cancelled" : "pending",
     };
 
@@ -3676,11 +3705,9 @@ export class AppointmentService {
         })
         .toLowerCase();
 
-      const hoursForDay = branch.operatingHours.get
-        ? branch.operatingHours.get(dayOfWeek)
-        : branch.operatingHours[dayOfWeek];
+      const hoursForDay = getOperatingHoursForDay(branch.operatingHours, dayOfWeek);
 
-      if (hoursForDay) {
+      if (hoursForDay.isConfigured) {
         if (hoursForDay.isOpen === false) {
           conflicts.push({
             appointmentId: appointment._id.toString(),
@@ -3800,11 +3827,9 @@ export class AppointmentService {
               })
               .toLowerCase(); // e.g. "friday"
 
-            const hoursForDay = branch.operatingHours.get
-              ? branch.operatingHours.get(dayOfWeek)
-              : branch.operatingHours[dayOfWeek];
+            const hoursForDay = getOperatingHoursForDay(branch.operatingHours, dayOfWeek);
 
-            if (hoursForDay) {
+            if (hoursForDay.isConfigured) {
               if (hoursForDay.isOpen === false) {
                 conflicts.push({
                   appointmentId: nextApt._id.toString(),

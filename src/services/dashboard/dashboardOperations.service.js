@@ -140,14 +140,18 @@ export class DashboardOperationsService {
     });
 
     // Detect currently ongoing appointments to map in-service staff
-    const ongoingAppts = await Appointment.find({
+    const ongoingApptScope = {
       organizationId: new mongoose.Types.ObjectId(organizationId),
       staffId: { $in: staffIds },
       status: { $in: ["in_progress", "scheduled"] },
       startAt: { $lte: now },
       endAt: { $gte: now },
       isDeleted: { $ne: true },
-    }).lean();
+    };
+    if (branchId) {
+      ongoingApptScope.branchId = new mongoose.Types.ObjectId(branchId);
+    }
+    const ongoingAppts = await Appointment.find(ongoingApptScope).lean();
 
     const ongoingApptByStaff = {};
     ongoingAppts.forEach((oa) => {
@@ -216,11 +220,13 @@ export class DashboardOperationsService {
     const [pendingLeavesCount, unreconciledAttendanceCount] = await Promise.all([
       Leave.countDocuments({
         organizationId: new mongoose.Types.ObjectId(organizationId),
+        ...(branchId ? { staffId: { $in: staffIds } } : {}),
         status: "pending",
         isDeleted: { $ne: true },
       }),
       Attendance.countDocuments({
         organizationId: new mongoose.Types.ObjectId(organizationId),
+        ...(branchId ? { branchId: new mongoose.Types.ObjectId(branchId) } : {}),
         attendanceDate: { $lte: endUtc },
         isReconciled: false,
         conflictType: { $ne: "none" },

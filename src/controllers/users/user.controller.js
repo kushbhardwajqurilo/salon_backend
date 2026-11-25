@@ -14,10 +14,13 @@ import { logger } from "../../utils/logger.js";
 
 import { assertCanManageBranches } from "../../utils/branchAuthorization.js";
 import { validateUserUpdate } from "../../utils/userValidation.js";
+import { AuditLogService, extractAuditContext } from "../../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 
 const userRepo = new UserRepository();
 const roleRepo = new RoleRepository();
 const userService = new UserService();
+const auditLogService = new AuditLogService();
 
 export const listUsers = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
@@ -198,6 +201,19 @@ export const createUser = asyncHandler(async (req, res) => {
     );
   }
 
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.USER_CREATED,
+      entityType: "User",
+      entityId: user._id,
+      description: `User '${user.email || user.username}' created with role '${user.role}'`,
+      ...extractAuditContext(req),
+      metadata: { role: user.role, email: user.email, username: user.username },
+    },
+    req.organizationId || user.organizationId,
+    req.user?.userId || req.user?.id
+  );
+
   return sendResponse(
     res,
     201,
@@ -349,6 +365,18 @@ export const updateUser = asyncHandler(async (req, res) => {
     organizationId,
     req.user.id,
   );
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.USER_UPDATED,
+      entityType: "User",
+      entityId: updatedUser._id,
+      description: `User '${updatedUser.email || updatedUser.username}' updated`,
+      ...extractAuditContext(req),
+      metadata: { updatedFields: Object.keys(updateData) },
+    },
+    organizationId,
+    req.user?.userId || req.user?.id
+  );
   return sendResponse(
     res,
     200,
@@ -366,6 +394,19 @@ export const updateUserStatus = asyncHandler(async (req, res) => {
     status,
     organizationId,
     req.user.id,
+  );
+
+  await auditLogService.createAuditLog(
+    {
+      action: status === "active" ? AUDIT_ACTIONS.USER_ACTIVATED : AUDIT_ACTIONS.USER_DEACTIVATED,
+      entityType: "User",
+      entityId: updatedUser._id,
+      description: `User status updated to '${status}'`,
+      ...extractAuditContext(req),
+      metadata: { after: { status } },
+    },
+    organizationId,
+    req.user?.userId || req.user?.id
   );
 
   return sendResponse(

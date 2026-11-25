@@ -14,6 +14,9 @@ import { Branch } from "../../models/branches/branch.model.js";
 import { Staff } from "../../models/staff/staff.model.js";
 import { StaffBranch } from "../../models/staff/staffBranch.model.js";
 import { Leave } from "../../models/leaves/leave.model.js";
+import { StaffRoster } from "../../models/staff/staffRoster.model.js";
+import { CalendarResolverService } from "../holidays/calendarResolver.service.js";
+import { SettingsResolverService } from "../settings/settingsResolver.service.js";
 import { Appointment } from "../../models/appointments/appointment.model.js";
 import { AuditLog } from "../../models/audit/auditLog.model.js";
 import providerRegistry from "../../providers/attendance/provider.registry.js";
@@ -2265,31 +2268,41 @@ async function reconcileAttendanceStatusFromPunches({
         deriveBusinessDate(punch.punchAt, branchTimezone) === attendanceDate,
     )
     .sort((left, right) => new Date(left.punchAt) - new Date(right.punchAt));
-  // Optional schedule lookup from branch operating hours
+  // Resolve schedule from StaffRoster (employee shifts) + SettingsResolverService (graceMinutes),
+  // NOT from branch.operatingHours.
   let scheduleOptions = { timezone: branchTimezone };
   try {
-    const branch = await Branch.findById(branchId)
-      .select("operatingHours bufferMinutes timezone")
-      .lean();
-    if (branch?.operatingHours) {
-      const punchDateObj = new Date(`${attendanceDate}T12:00:00.000Z`);
-      const dayName = new Intl.DateTimeFormat("en-US", {
-        timeZone: branch.timezone || branchTimezone,
-        weekday: "long",
-      })
-        .format(punchDateObj)
-        .toLowerCase();
-      const dayHours =
-        branch.operatingHours instanceof Map
-          ? branch.operatingHours.get(dayName)
-          : branch.operatingHours[dayName];
-      if (dayHours?.isOpen && dayHours?.openTime && dayHours?.closeTime) {
-        scheduleOptions = {
-          scheduledOpenTime: dayHours.openTime,
-          scheduledCloseTime: dayHours.closeTime,
-          timezone: branch.timezone || branchTimezone,
-          graceMinutes: branch.bufferMinutes || 15,
-        };
+    const settingsResolver = new SettingsResolverService();
+    const [roster, effectiveSettings] = await Promise.all([
+      StaffRoster.findOne({
+        organizationId,
+        branchId,
+        staffId,
+        isActive: true,
+      }).lean(),
+      settingsResolver.resolveEffectiveSettings(organizationId, branchId),
+    ]);
+
+    const tz = effectiveSettings?.regional?.timezone?.value || branchTimezone;
+    const graceMinutes = effectiveSettings?.attendance?.graceMinutes?.value ?? 15;
+    scheduleOptions = { timezone: tz, graceMinutes };
+
+    if (roster) {
+      const dateOverride = (roster.overrides || []).find((o) => o.date === attendanceDate);
+      if (dateOverride) {
+        if (dateOverride.isWorkingDay && dateOverride.shifts?.length > 0) {
+          scheduleOptions.scheduledOpenTime = dateOverride.shifts[0].startTime;
+          scheduleOptions.scheduledCloseTime =
+            dateOverride.shifts[dateOverride.shifts.length - 1].endTime;
+        }
+      } else {
+        const dayOfWeek = new Date(`${attendanceDate}T12:00:00.000Z`).getUTCDay();
+        const weeklyDay = (roster.weeklySchedule || []).find((d) => d.dayOfWeek === dayOfWeek);
+        if (weeklyDay && weeklyDay.isWorkingDay && weeklyDay.shifts?.length > 0) {
+          scheduleOptions.scheduledOpenTime = weeklyDay.shifts[0].startTime;
+          scheduleOptions.scheduledCloseTime =
+            weeklyDay.shifts[weeklyDay.shifts.length - 1].endTime;
+        }
       }
     }
   } catch {
@@ -2705,6 +2718,27 @@ async function getMonthlyMusterRoll({
     datesInMonth.push(`${monthYear}-${String(d).padStart(2, "0")}`);
   }
 
+  // Resolve branch calendar (holidays, closures, weekly offs, special working days)
+  const calendarResolver = new CalendarResolverService();
+  const resolvedCalendar = await calendarResolver.resolveCalendarRange({
+    organizationId,
+    branchId: branchId || null,
+    startDate: datesInMonth[0],
+    endDate: datesInMonth[datesInMonth.length - 1],
+  });
+  const calendarDayMap = new Map(resolvedCalendar.days.map((d) => [d.date, d]));
+
+  // Fetch active StaffRosters for evaluated staff
+  const staffRosters = activeStaffIds.length
+    ? await StaffRoster.find({
+        organizationId,
+        staffId: { $in: activeStaffIds },
+        ...(branchId ? { branchId } : {}),
+        isActive: true,
+      }).lean()
+    : [];
+  const rosterByStaff = new Map(staffRosters.map((r) => [r.staffId.toString(), r]));
+
   // Today in branch timezone for accurate local absence bounding
   const currentBranchLocalToday = deriveBusinessDate(
     new Date(),
@@ -2785,13 +2819,15 @@ async function getMonthlyMusterRoll({
         const isUnpaid =
           activeLeave.isUnpaid === true ||
           (typeof activeLeave.leaveType === "string" &&
-            activeLeave.leaveType.toLowerCase().includes("unpaid"));
+            (activeLeave.leaveType.toLowerCase().includes("unpaid") ||
+              activeLeave.leaveType.toLowerCase().includes("lop")));
         if (isUnpaid) {
           unpaidLeaveCount++;
           dailyBreakdown[dateStr] = {
             status: "unpaid_leave",
             date: dateStr,
             leaveId: activeLeave._id,
+            isHalfDay: Boolean(activeLeave.isPartialDay),
           };
         } else {
           paidLeaveCount++;
@@ -2799,15 +2835,43 @@ async function getMonthlyMusterRoll({
             status: "paid_leave",
             date: dateStr,
             leaveId: activeLeave._id,
+            isHalfDay: Boolean(activeLeave.isPartialDay),
           };
         }
-      } else if (dateStr < currentBranchLocalToday) {
-        // Day has fully elapsed with no attendance and no leave -> absent
-        absentCount++;
-        dailyBreakdown[dateStr] = { status: "absent", date: dateStr };
       } else {
-        // Today without attendance yet or future day -> scheduled (not absent)
-        dailyBreakdown[dateStr] = { status: "scheduled", date: dateStr };
+        const calDay = calendarDayMap.get(dateStr);
+        const staffRoster = rosterByStaff.get(sId);
+        let rosterOff = false;
+        if (staffRoster && calDay?.status !== "special_working_day") {
+          const override = (staffRoster.overrides || []).find((o) => o.date === dateStr);
+          if (override) {
+            rosterOff = !override.isWorkingDay;
+          } else {
+            const dow = new Date(`${dateStr}T12:00:00.000Z`).getUTCDay();
+            const wd = (staffRoster.weeklySchedule || []).find((w) => w.dayOfWeek === dow);
+            if (wd && !wd.isWorkingDay) rosterOff = true;
+          }
+        }
+
+        if (calDay?.status === "branch_closure") {
+          dailyBreakdown[dateStr] = { status: "branch_closure", date: dateStr, isWorkingDay: false };
+        } else if (calDay?.status === "holiday") {
+          dailyBreakdown[dateStr] = {
+            status: "holiday",
+            date: dateStr,
+            isWorkingDay: false,
+            eventName: calDay.event?.name || null,
+          };
+        } else if (calDay?.status === "weekly_off" || rosterOff) {
+          dailyBreakdown[dateStr] = { status: "weekly_off", date: dateStr, isWorkingDay: false };
+        } else if (dateStr < currentBranchLocalToday) {
+          // Day has fully elapsed with no attendance, no leave, and is a working day -> absent
+          absentCount++;
+          dailyBreakdown[dateStr] = { status: "absent", date: dateStr };
+        } else {
+          // Today without attendance yet or future day -> scheduled (not absent)
+          dailyBreakdown[dateStr] = { status: "scheduled", date: dateStr };
+        }
       }
     }
 

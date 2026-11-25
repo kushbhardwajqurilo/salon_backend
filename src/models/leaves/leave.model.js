@@ -136,6 +136,36 @@ const leaveSchema = new mongoose.Schema(
             default: null,
             index: true,
         },
+        // Policy & entitlement snapshot extensions (nullable for legacy compatibility)
+        leavePolicyId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "LeavePolicy",
+            default: null,
+        },
+        isUnpaid: {
+            type: Boolean,
+            default: null,
+        },
+        chargeableDays: {
+            type: Number,
+            default: null,
+        },
+        paidDays: {
+            type: Number,
+            default: null,
+        },
+        unpaidDays: {
+            type: Number,
+            default: null,
+        },
+        managerConfirmedSplit: {
+            type: Boolean,
+            default: false,
+        },
+        policySnapshot: {
+            type: mongoose.Schema.Types.Mixed,
+            default: null,
+        },
     },
     {
         timestamps: true,

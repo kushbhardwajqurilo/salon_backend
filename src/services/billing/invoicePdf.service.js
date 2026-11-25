@@ -1,4 +1,269 @@
 import puppeteer from "puppeteer";
+import dns from "node:dns";
+import net from "node:net";
+import https from "node:https";
+
+const MAX_DATA_URL_LENGTH = 512 * 1024; // 512 KB
+const LOGO_FETCH_TIMEOUT_MS = 4000;
+const PDF_RENDER_TIMEOUT_MS = 15000;
+const ALLOWED_DATA_IMAGE_PREFIXES = [
+  "data:image/png;base64,",
+  "data:image/jpeg;base64,",
+  "data:image/jpg;base64,",
+  "data:image/webp;base64,",
+];
+
+export function getTrustedLogoOrigins() {
+  const origins = new Set(["https://res.cloudinary.com"]);
+  const extra = process.env.TRUSTED_ASSET_ORIGINS || "";
+  for (const item of extra.split(",")) {
+    const trimmed = item.trim();
+    if (trimmed) {
+      try {
+        origins.add(new URL(trimmed).origin);
+      } catch {
+        // Ignore malformed env origin
+      }
+    }
+  }
+  return origins;
+}
+
+export function isPrivateOrReservedIp(ip) {
+  if (!ip || typeof ip !== "string") return true;
+  let normalized = ip.trim().toLowerCase();
+  if (normalized.startsWith("::ffff:")) {
+    normalized = normalized.slice(7);
+  }
+
+  if (net.isIPv4(normalized)) {
+    const parts = normalized.split(".").map(Number);
+    const [a, b] = parts;
+    if (a === 10) return true; // 10.0.0.0/8
+    if (a === 127) return true; // 127.0.0.0/8 (loopback)
+    if (a === 0) return true; // 0.0.0.0/8
+    if (a === 169 && b === 254) return true; // 169.254.0.0/16 (link-local / cloud metadata)
+    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+    if (a === 192 && b === 168) return true; // 192.168.0.0/16
+    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 (CGNAT)
+    return false;
+  }
+
+  if (net.isIPv6(normalized)) {
+    if (normalized === "::1" || normalized === "::") return true;
+    if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // fc00::/7
+    if (normalized.startsWith("fe80")) return true; // fe80::/10
+    return false;
+  }
+
+  return true;
+}
+
+export function isSafeDataImageUrl(rawUrl) {
+  if (typeof rawUrl !== "string") return false;
+  const trimmed = rawUrl.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_DATA_URL_LENGTH) return false;
+  const lower = trimmed.toLowerCase();
+  return ALLOWED_DATA_IMAGE_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
+
+export function isTrustedLogoUrl(rawUrl, trustedOrigins = getTrustedLogoOrigins()) {
+  if (typeof rawUrl !== "string") return false;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return false;
+
+  if (trimmed.toLowerCase().startsWith("data:")) {
+    return isSafeDataImageUrl(trimmed);
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== "https:") return false;
+  if (parsed.username || parsed.password) return false;
+  if (parsed.port && parsed.port !== "443") return false;
+  const host = parsed.hostname.toLowerCase();
+  if (host === "localhost" || net.isIP(host)) return false;
+
+  return trustedOrigins.has(parsed.origin);
+}
+
+export function hasValidImageSignature(buffer, contentType = "") {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return false;
+  const mime = contentType.split(";")[0].trim().toLowerCase();
+
+  if (mime === "image/png") {
+    return (
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47 &&
+      buffer[4] === 0x0d &&
+      buffer[5] === 0x0a &&
+      buffer[6] === 0x1a &&
+      buffer[7] === 0x0a
+    );
+  }
+  if (mime === "image/jpeg" || mime === "image/jpg") {
+    return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  }
+  if (mime === "image/webp") {
+    return (
+      buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+      buffer.subarray(8, 12).toString("ascii") === "WEBP"
+    );
+  }
+  return false;
+}
+
+export async function fetchAndValidateLogoDataUri(
+  rawUrl,
+  {
+    dnsLookup = dns.promises.lookup,
+    httpsRequest = https.request,
+    trustedOrigins = getTrustedLogoOrigins(),
+    timeoutMs = LOGO_FETCH_TIMEOUT_MS,
+    maxBytes = MAX_DATA_URL_LENGTH,
+  } = {},
+) {
+  if (typeof rawUrl !== "string") return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.toLowerCase().startsWith("data:")) {
+    return isSafeDataImageUrl(trimmed) ? trimmed : null;
+  }
+
+  if (!isTrustedLogoUrl(trimmed, trustedOrigins)) {
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return null;
+  }
+
+  let pinnedAddress;
+  let pinnedFamily;
+  try {
+    const records = await dnsLookup(parsed.hostname, { all: true });
+    if (!Array.isArray(records) || records.length === 0) return null;
+    if (!records.every((rec) => !isPrivateOrReservedIp(rec.address))) {
+      return null;
+    }
+    pinnedAddress = records[0].address;
+    pinnedFamily = records[0].family || (net.isIPv6(pinnedAddress) ? 6 : 4);
+  } catch {
+    return null;
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (val) => {
+      if (!settled) {
+        settled = true;
+        resolve(val);
+      }
+    };
+
+    const req = httpsRequest(
+      {
+        protocol: "https:",
+        hostname: parsed.hostname,
+        port: 443,
+        path: `${parsed.pathname}${parsed.search}`,
+        method: "GET",
+        rejectUnauthorized: true,
+        servername: parsed.hostname,
+        lookup: (_host, _opts, cb) => cb(null, pinnedAddress, pinnedFamily),
+        headers: {
+          Accept: "image/png,image/jpeg,image/webp",
+        },
+      },
+      (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400) {
+          res.resume();
+          return finish(null);
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          return finish(null);
+        }
+
+        const contentType = String(res.headers["content-type"] || "")
+          .split(";")[0]
+          .trim()
+          .toLowerCase();
+        if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(contentType)) {
+          res.resume();
+          return finish(null);
+        }
+
+        const chunks = [];
+        let totalBytes = 0;
+
+        res.on("data", (chunk) => {
+          totalBytes += chunk.length;
+          if (totalBytes > maxBytes) {
+            res.destroy();
+            return finish(null);
+          }
+          chunks.push(chunk);
+        });
+
+        res.on("end", () => {
+          const buffer = Buffer.concat(chunks, totalBytes);
+          if (!hasValidImageSignature(buffer, contentType)) {
+            return finish(null);
+          }
+          const normalizedMime = contentType === "image/jpg" ? "image/jpeg" : contentType;
+          return finish(`data:${normalizedMime};base64,${buffer.toString("base64")}`);
+        });
+
+        res.on("error", () => finish(null));
+      },
+    );
+
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      finish(null);
+    });
+    req.on("error", () => finish(null));
+    req.end();
+  });
+}
+
+export async function validateLogoRequestUrl(
+  requestUrl,
+  dnsLookup = dns.promises.lookup,
+  trustedOrigins = getTrustedLogoOrigins(),
+) {
+  if (requestUrl === "about:blank") return true;
+  if (typeof requestUrl !== "string") return false;
+
+  if (requestUrl.toLowerCase().startsWith("data:")) {
+    return isSafeDataImageUrl(requestUrl);
+  }
+
+  if (!isTrustedLogoUrl(requestUrl, trustedOrigins)) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(requestUrl);
+    const records = await dnsLookup(parsed.hostname, { all: true });
+    if (!Array.isArray(records) || records.length === 0) return false;
+    return records.every((rec) => !isPrivateOrReservedIp(rec.address));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Format currency in Indian Rupees style (₹10,000.00)
@@ -70,7 +335,7 @@ export function generateInvoiceHtml({
 
   // Document Title
   const documentTitle = isFinalized
-    ? "TAX INVOICE"
+    ? "INVOICE"
     : isDraft
       ? "DRAFT INVOICE / ESTIMATE"
       : "CANCELLED INVOICE";
@@ -123,23 +388,61 @@ export function generateInvoiceHtml({
   // Services / Items rows
   const serviceRows = (invoice.lines || [])
     .map((line, index) => {
-      const isSubscriptionItem = line.lineType === "subscription";
-      const isCovered = line.isCoveredBySubscription;
-      const subInfo = isSubscriptionItem
-        ? `<div class="sub-benefit">Membership / Subscription Package</div>`
-        : isCovered
-          ? `<div class="sub-benefit">100% Covered via Plan${
-              line.appliedSubscriptionId?.subscriptionCode
-                ? `: ${escapeHtml(line.appliedSubscriptionId.subscriptionCode)}`
-                : line.appliedSubscriptionId?.planId?.name
-                  ? `: ${escapeHtml(line.appliedSubscriptionId.planId.name)}`
-                  : ""
-            }</div>`
-          : `<span class="text-muted">—</span>`;
+      const lineType = line.lineType || "service";
+      const isSubscriptionItem = lineType === "subscription";
+      const isProductItem = lineType === "product";
+      const isMembershipItem = lineType === "membership";
+      const isCovered = Boolean(line.isCoveredBySubscription);
+      const qty = line.quantity ?? 1;
+      const staffName =
+        line.staffId && typeof line.staffId === "object" && line.staffId.name
+          ? line.staffId.name
+          : null;
 
-      const detailText = isSubscriptionItem
-        ? `<div class="text-sm text-muted">Qty: ${line.quantity}</div>`
-        : `<div class="text-sm text-muted">${line.duration || 0} mins</div>`;
+      let benefitHtml = `<span class="text-muted">—</span>`;
+      if (isSubscriptionItem) {
+        benefitHtml = `<div class="sub-benefit">Membership / Subscription Package</div>`;
+      } else if (isCovered) {
+        const planLabel = line.appliedSubscriptionId?.subscriptionCode
+          ? `: ${escapeHtml(line.appliedSubscriptionId.subscriptionCode)}`
+          : line.appliedSubscriptionId?.planId?.name
+            ? `: ${escapeHtml(line.appliedSubscriptionId.planId.name)}`
+            : "";
+        benefitHtml = `<div class="sub-benefit">100% Covered via Plan${planLabel}</div>`;
+      } else {
+        const badges = [];
+        if (line.membershipDiscountAmount > 0) {
+          badges.push(`<div class="sub-benefit">Membership Disc: -${formatCurrency(line.membershipDiscountAmount)}</div>`);
+        }
+        if (line.lineDiscountTotal > 0) {
+          badges.push(`<div class="text-sm text-muted">Line Disc: -${formatCurrency(line.lineDiscountTotal)}</div>`);
+        }
+        if (badges.length > 0) {
+          benefitHtml = badges.join("");
+        }
+      }
+
+      const metaParts = [];
+      if (isProductItem) {
+        if (line.sku) metaParts.push(`SKU: ${escapeHtml(line.sku)}`);
+        metaParts.push(`Qty: ${qty}${line.stockUnit ? ` ${escapeHtml(line.stockUnit)}` : ""}`);
+      } else if (isMembershipItem) {
+        if (line.membershipTierSnapshot) metaParts.push(`Tier: ${escapeHtml(line.membershipTierSnapshot)}`);
+        metaParts.push(`Qty: ${qty}`);
+      } else if (isSubscriptionItem) {
+        metaParts.push(`Qty: ${qty}`);
+      } else {
+        metaParts.push(`Qty: ${qty}`);
+        if (line.duration > 0) metaParts.push(`${line.duration} mins`);
+      }
+      if (staffName) {
+        metaParts.push(`Staff: ${escapeHtml(staffName)}`);
+      }
+
+      const detailText =
+        metaParts.length > 0
+          ? `<div class="text-sm text-muted">${metaParts.join(" • ")}</div>`
+          : "";
 
       return `
         <tr>
@@ -149,27 +452,33 @@ export function generateInvoiceHtml({
             ${detailText}
           </td>
           <td class="text-right font-mono">${formatCurrency(line.unitPrice)}</td>
-          <td>${subInfo}</td>
+          <td>${benefitHtml}</td>
           <td class="text-right font-mono font-bold">${formatCurrency(line.customerPayable)}</td>
         </tr>
       `;
     })
     .join("");
 
-  // Payments rows (for finalized / partial invoices)
+  // Payments & Refunds rows
   const paymentRows =
     payments && payments.length > 0
       ? payments
           .map((pay) => {
             const isVoided = pay.status === "voided";
+            const isRefund = pay.type === "refund";
+            const typeLabel = isRefund ? "REFUND" : "PAYMENT";
             const payStatusBadge = isVoided
               ? `<span class="badge badge-voided">VOIDED</span>`
-              : `<span class="badge badge-success">SUCCESS</span>`;
+              : isRefund
+                ? `<span class="badge badge-voided">REFUNDED</span>`
+                : `<span class="badge badge-success">COMPLETED</span>`;
 
             return `
               <tr>
+                <td class="font-mono text-sm">${escapeHtml(pay.paymentNumber || "—")}</td>
                 <td class="font-mono text-sm">${formatDateTime(pay.paymentDate || pay.createdAt, timezone)}</td>
                 <td class="font-bold uppercase text-sm">${escapeHtml(pay.method)}</td>
+                <td class="font-bold text-sm">${typeLabel}</td>
                 <td class="text-sm text-muted">${escapeHtml(pay.referenceNote || "—")}</td>
                 <td class="text-right font-mono font-bold ${isVoided ? "line-through text-muted" : ""}">${formatCurrency(pay.amount)}</td>
                 <td class="text-center">${payStatusBadge}</td>
@@ -177,7 +486,7 @@ export function generateInvoiceHtml({
             `;
           })
           .join("")
-      : `<tr><td colspan="5" class="text-center text-muted py-3">No payments recorded yet.</td></tr>`;
+      : `<tr><td colspan="7" class="text-center text-muted py-3">No payments recorded yet.</td></tr>`;
 
   // Paid in full stamp (when amountDue === 0 and status is not cancelled)
   const isPaidInFull = invoice.amountDue === 0 && !isCancelled;
@@ -322,6 +631,20 @@ export function generateInvoiceHtml({
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 24px;
+      table-layout: fixed;
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
+    }
+    table.data-table thead {
+      display: table-header-group;
+    }
+    table.data-table tr,
+    .meta-card,
+    .summary-box,
+    .ledger-container,
+    .footer-section {
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
     table.data-table th {
       background: #0f172a;
@@ -444,12 +767,34 @@ export function generateInvoiceHtml({
   <table class="header-table">
     <tr>
       <td>
-        <div class="company-title">Glam Salon</div>
-        <div class="company-subtitle">
-          <strong>${escapeHtml(branch.name || "Main Branch")}</strong><br/>
-          ${escapeHtml(branch.address || "Salon & Spa Center")}<br/>
-          Contact: ${escapeHtml(branch.phone || "+91 99999 99999")}
-        </div>
+        ${(() => {
+          const orgDisplayName = organization?.displayName || organization?.name || "";
+          const orgLegalName =
+            organization?.name &&
+            organization?.displayName &&
+            organization.name !== organization.displayName
+              ? organization.name
+              : null;
+          const rawLogo = typeof organization?.logo === "string" ? organization.logo.trim() : "";
+          const isValidLogo = isTrustedLogoUrl(rawLogo);
+          const logoHtml = isValidLogo
+            ? `<img src="${escapeHtml(rawLogo)}" alt="" onerror="this.style.display='none'" style="max-height: 48px; max-width: 180px; object-fit: contain; margin-bottom: 8px; display: block;" />`
+            : "";
+
+          const subtitleParts = [];
+          if (orgLegalName) subtitleParts.push(`<span>${escapeHtml(orgLegalName)}</span>`);
+          if (branch?.name) subtitleParts.push(`<strong>${escapeHtml(branch.name)}</strong>`);
+          if (branch?.address) subtitleParts.push(escapeHtml(branch.address));
+          if (branch?.phone) subtitleParts.push(`Contact: ${escapeHtml(branch.phone)}`);
+          if (organization?.email) subtitleParts.push(`Email: ${escapeHtml(organization.email)}`);
+          if (organization?.website) subtitleParts.push(`Web: ${escapeHtml(organization.website)}`);
+
+          return `
+            ${logoHtml}
+            ${orgDisplayName ? `<div class="company-title">${escapeHtml(orgDisplayName)}</div>` : ""}
+            ${subtitleParts.length > 0 ? `<div class="company-subtitle">${subtitleParts.join("<br/>")}</div>` : ""}
+          `;
+        })()}
       </td>
       <td class="doc-type">
         <div class="doc-title">${documentTitle}</div>
@@ -568,6 +913,22 @@ export function generateInvoiceHtml({
               : ""
           }
           ${
+            invoice.coupon?.code && invoice.coupon?.calculatedDiscountAmount > 0
+              ? `<div class="summary-row text-muted" style="font-size: 11px; padding-left: 22px;">
+                  <span>↳ Coupon (${escapeHtml(invoice.coupon.code)}):</span>
+                  <span class="font-mono">- ${formatCurrency(invoice.coupon.calculatedDiscountAmount)}</span>
+                </div>`
+              : ""
+          }
+          ${
+            invoice.loyaltyDiscountAmount > 0
+              ? `<div class="summary-row text-muted" style="font-size: 11px; padding-left: 22px;">
+                  <span>↳ Loyalty (${invoice.loyaltyRedeemedPoints || 0} pts):</span>
+                  <span class="font-mono">- ${formatCurrency(invoice.loyaltyDiscountAmount)}</span>
+                </div>`
+              : ""
+          }
+          ${
             invoice.subscriptionCoveredAmount > 0
               ? `<div class="summary-row sub-benefit">
                   <span>Subscription Waived:</span>
@@ -600,11 +961,13 @@ export function generateInvoiceHtml({
         <table class="data-table">
           <thead>
             <tr>
-              <th style="width: 25%;">Date & Time</th>
-              <th style="width: 15%;">Method</th>
-              <th style="width: 30%;">Reference / Note</th>
-              <th style="width: 18%;" class="text-right">Amount</th>
-              <th style="width: 12%;" class="text-center">Status</th>
+              <th style="width: 16%;">Payment #</th>
+              <th style="width: 20%;">Date & Time</th>
+              <th style="width: 11%;">Method</th>
+              <th style="width: 11%;">Type</th>
+              <th style="width: 20%;">Reference / Note</th>
+              <th style="width: 12%;" class="text-right">Amount</th>
+              <th style="width: 10%;" class="text-center">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -631,7 +994,19 @@ export function generateInvoiceHtml({
  * Generate a PDF Buffer from Invoice data using Puppeteer
  */
 export async function generateInvoicePdf(data) {
-  const htmlContent = generateInvoiceHtml(data);
+  let safeData = data;
+  if (data?.organization?.logo) {
+    const resolvedLogoDataUri = await fetchAndValidateLogoDataUri(data.organization.logo);
+    safeData = {
+      ...data,
+      organization: {
+        ...data.organization,
+        logo: resolvedLogoDataUri,
+      },
+    };
+  }
+
+  const htmlContent = generateInvoiceHtml(safeData);
 
   let browser = null;
   try {
@@ -646,8 +1021,21 @@ export async function generateInvoicePdf(data) {
     });
 
     const page = await browser.newPage();
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      const url = req.url();
+      if (url === "about:blank" && req.resourceType() === "document") {
+        return req.continue();
+      }
+      if (req.resourceType() === "image" && isSafeDataImageUrl(url)) {
+        return req.continue();
+      }
+      return req.abort();
+    });
+
     await page.setContent(htmlContent, {
       waitUntil: "networkidle0",
+      timeout: PDF_RENDER_TIMEOUT_MS,
     });
 
     const pdfBuffer = await page.pdf({

@@ -59,7 +59,12 @@ export class DashboardAlertsService {
             category: "inventory",
             severity: "critical",
             title: `${outOfStockItems.length} Products Completely Out of Stock`,
-            description: `${outOfStockItems.map((i) => i.product.name).slice(0, 3).join(", ")}${outOfStockItems.length > 3 ? " and others" : ""} have zero quantity on hand. Immediate replenishment required.`,
+            description: `${outOfStockItems
+              .map((i) => i.product.name)
+              .slice(0, 3)
+              .join(
+                ", ",
+              )}${outOfStockItems.length > 3 ? " and others" : ""} have zero quantity on hand. Immediate replenishment required.`,
             sourceModule: "Inventory",
             targetUrl: "/inventory",
             actionLabel: "Reorder Stock",
@@ -100,7 +105,10 @@ export class DashboardAlertsService {
             category: "inventory",
             severity: "warning",
             title: `${lowStockItems.length} Products Below Reorder Level`,
-            description: `${lowStockItems.map((i) => i.product.name).slice(0, 3).join(", ")} are nearing depletion.`,
+            description: `${lowStockItems
+              .map((i) => i.product.name)
+              .slice(0, 3)
+              .join(", ")} are nearing depletion.`,
             sourceModule: "Inventory",
             targetUrl: "/inventory",
             actionLabel: "View Inventory",
@@ -156,7 +164,9 @@ export class DashboardAlertsService {
             $group: {
               _id: null,
               count: { $sum: 1 },
-              totalOverdue: { $sum: { $subtract: ["$totalAmount", "$amountPaid"] } },
+              totalOverdue: {
+                $sum: { $subtract: ["$totalAmount", "$amountPaid"] },
+              },
             },
           },
         ]);
@@ -183,15 +193,21 @@ export class DashboardAlertsService {
     // 4. Customer Memberships Expiring Soon (Requires memberships.view)
     if (userPermissions.includes("memberships.view")) {
       try {
-        const sevenDaysFuture = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const sevenDaysFuture = new Date(
+          now.getTime() + 7 * 24 * 60 * 60 * 1000,
+        );
         const memScope = {
           organizationId: new mongoose.Types.ObjectId(organizationId),
-          status: "active",
+          status: { $in: ["active", "pending_payment"] },
+          startDate: { $lte: now },
           endDate: { $gte: now, $lte: sevenDaysFuture },
           isDeleted: { $ne: true },
         };
         if (branchId) {
-          memScope.permittedBranchIds = new mongoose.Types.ObjectId(branchId);
+          memScope.$or = [
+            { permittedBranchIds: new mongoose.Types.ObjectId(branchId) },
+            { permittedBranchIds: { $size: 0 } },
+          ];
         }
 
         const expiringCount = await CustomerMembership.countDocuments(memScope);
@@ -219,6 +235,9 @@ export class DashboardAlertsService {
       try {
         const unreconciledConflicts = await Attendance.countDocuments({
           organizationId: new mongoose.Types.ObjectId(organizationId),
+          ...(branchId
+            ? { branchId: new mongoose.Types.ObjectId(branchId) }
+            : {}),
           isReconciled: false,
           conflictType: { $ne: "none" },
           isDeleted: { $ne: true },
@@ -245,7 +264,9 @@ export class DashboardAlertsService {
 
     // Sort alerts: critical first, then warning, then info
     const priority = { critical: 1, warning: 2, info: 3 };
-    alerts.sort((a, b) => (priority[a.severity] || 4) - (priority[b.severity] || 4));
+    alerts.sort(
+      (a, b) => (priority[a.severity] || 4) - (priority[b.severity] || 4),
+    );
 
     return {
       success: true,

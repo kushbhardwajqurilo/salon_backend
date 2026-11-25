@@ -1,12 +1,63 @@
-import mongoose from "mongoose";
 import { AuditLogRepository } from "../../repositories/audit/auditLog.repository.js";
 
-const toObjectIdOrSelf = (val) => {
-  if (!val) return val;
-  if (typeof val === "string" && mongoose.Types.ObjectId.isValid(val)) {
-    return new mongoose.Types.ObjectId(val);
+const SENSITIVE_KEYS = new Set([
+  "password",
+  "passwordhash",
+  "newpassword",
+  "oldpassword",
+  "currentpassword",
+  "otp",
+  "otpcode",
+  "token",
+  "accesstoken",
+  "refreshtoken",
+  "resettoken",
+  "secret",
+  "apikey",
+  "authorization",
+  "cookie",
+]);
+
+export const sanitizeAuditMetadata = (value) => {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(sanitizeAuditMetadata);
+  if (value instanceof Date || typeof value !== "object") return value;
+
+  const sanitized = {};
+  for (const [key, val] of Object.entries(value)) {
+    if (SENSITIVE_KEYS.has(key.toLowerCase())) {
+      sanitized[key] = "[REDACTED]";
+    } else if (val && typeof val === "object" && !(val instanceof Date)) {
+      sanitized[key] = sanitizeAuditMetadata(val);
+    } else {
+      sanitized[key] = val;
+    }
   }
-  return val;
+  return sanitized;
+};
+
+export const buildBeforeAfterMetadata = (before = {}, after = {}, fields = null) => {
+  const keys = fields || Array.from(new Set([...Object.keys(before || {}), ...Object.keys(after || {})]));
+  const diffBefore = {};
+  const diffAfter = {};
+  for (const key of keys) {
+    const bVal = before?.[key];
+    const aVal = after?.[key];
+    if (JSON.stringify(bVal) !== JSON.stringify(aVal)) {
+      diffBefore[key] = bVal;
+      diffAfter[key] = aVal;
+    }
+  }
+  return sanitizeAuditMetadata({ before: diffBefore, after: diffAfter });
+};
+
+export const extractAuditContext = (req) => {
+  if (!req) return {};
+  return {
+    ipAddress: req.ip || req.headers?.["x-forwarded-for"] || null,
+    userAgent: req.headers?.["user-agent"] || null,
+    source: "web",
+  };
 };
 
 export class AuditLogService {
@@ -15,7 +66,23 @@ export class AuditLogService {
   }
 
   async createAuditLog(data, organizationId, userId, session = null) {
-    return this.auditRepo.create(data, organizationId, userId, session);
+    try {
+      const sanitizedData = {
+        ...data,
+        metadata: sanitizeAuditMetadata(data.metadata || {}),
+      };
+      return await this.auditRepo.create(sanitizedData, organizationId, userId, session);
+    } catch (error) {
+      // Structured logging for audit persistence failures; never silently swallow
+      console.error("[AUDIT_LOG_PERSISTENCE_ERROR]", {
+        action: data?.action,
+        entityType: data?.entityType,
+        entityId: data?.entityId,
+        organizationId,
+        error: error.message,
+      });
+      throw error;
+    }
   }
 
   async getAuditLogs(filter = {}, options = {}, organizationId) {

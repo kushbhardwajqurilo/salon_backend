@@ -24,7 +24,6 @@ export const connectDB = async () => {
       throw new Error(`Atlas-only policy: Host '${cleanHost}' is not a valid MongoDB Atlas domain (*.mongodb.net).`);
     }
     const conn = await mongoose.connect(env.MONGO_URI);
-    await mongoose.connection.syncIndexes();
     logger.info(`💾 MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     console.log("Databse Error", error);

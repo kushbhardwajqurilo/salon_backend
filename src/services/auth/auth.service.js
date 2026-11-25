@@ -15,6 +15,7 @@ import {
 
 import { logger } from "../../utils/logger.js";
 import { AuditLogService } from "../audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 
 export class AuthService {
   constructor(
@@ -146,6 +147,19 @@ export class AuthService {
       name: user.name,
     });
 
+    await this.auditLogService?.createAuditLog?.(
+      {
+        action: AUDIT_ACTIONS.AUTH_REGISTER,
+        entityType: "User",
+        entityId: user._id,
+        description: `User registered: ${user.email || user.username}`,
+        source: "web",
+        metadata: { username: user.username, roleName },
+      },
+      user.organizationId || null,
+      user._id
+    ).catch((e) => logger.error(`[SECURITY_AUDIT_PERSISTENCE_FAILED] register: ${e.message}`));
+
     return {
       id: user._id,
       username: user.username,
@@ -167,6 +181,20 @@ export class AuthService {
       );
     }
     if (!user) {
+      await this.auditLogService?.createAuditLog?.(
+        {
+          action: AUDIT_ACTIONS.AUTH_LOGIN_FAILED,
+          entityType: "Auth",
+          entityId: null,
+          description: `Failed login attempt for unknown identifier: ${identifier}`,
+          source: "web",
+          ipAddress,
+          userAgent: deviceInfo,
+          metadata: { identifier, reason: "user_not_found" },
+        },
+        null,
+        null
+      ).catch(() => {});
       throw new AppError("Invalid email or password", 401);
     }
 
@@ -193,12 +221,29 @@ export class AuthService {
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       user.failedLoginAttempts += 1;
-      if (user.failedLoginAttempts >= 5) {
+      const isLocked = user.failedLoginAttempts >= 5;
+      if (isLocked) {
         user.status = "locked";
         user.lockUntil = new Date(Date.now() + 15 * 60 * 1000);
         await this.sessionRepo.invalidateAllUserSessions(user._id);
       }
       await user.save();
+      await this.auditLogService?.createAuditLog?.(
+        {
+          action: isLocked ? AUDIT_ACTIONS.AUTH_ACCOUNT_LOCKED : AUDIT_ACTIONS.AUTH_LOGIN_FAILED,
+          entityType: "User",
+          entityId: user._id,
+          description: isLocked
+            ? `Account locked after ${user.failedLoginAttempts} failed login attempts`
+            : `Failed login attempt (${user.failedLoginAttempts}/5)`,
+          source: "web",
+          ipAddress,
+          userAgent: deviceInfo,
+          metadata: { failedLoginAttempts: user.failedLoginAttempts, locked: isLocked },
+        },
+        user.organizationId || null,
+        user._id
+      ).catch(() => {});
       throw new AppError("Invalid email or password", 401);
     }
 
@@ -238,6 +283,21 @@ export class AuthService {
       expiresAt,
     });
 
+    await this.auditLogService?.createAuditLog?.(
+      {
+        action: AUDIT_ACTIONS.AUTH_LOGIN_SUCCESS,
+        entityType: "User",
+        entityId: user._id,
+        description: `User logged in successfully`,
+        source: "web",
+        ipAddress,
+        userAgent: deviceInfo,
+        metadata: { role: user.role },
+      },
+      user.organizationId || null,
+      user._id
+    ).catch(() => {});
+
     return {
       accessToken,
       refreshToken,
@@ -276,6 +336,20 @@ export class AuthService {
       if (deviceInfo) session.deviceInfo = deviceInfo;
       await session.save();
 
+      await this.auditLogService?.createAuditLog?.(
+        {
+          action: AUDIT_ACTIONS.AUTH_TOKEN_REFRESHED,
+          entityType: "User",
+          entityId: user._id,
+          description: "Access token refreshed",
+          source: "web",
+          ipAddress,
+          userAgent: deviceInfo,
+        },
+        user.organizationId || null,
+        user._id
+      ).catch((e) => logger.error(`[SECURITY_AUDIT_PERSISTENCE_FAILED] refresh: ${e.message}`));
+
       return {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
@@ -296,6 +370,18 @@ export class AuthService {
 
   async logoutAllDevices(userId) {
     await this.sessionRepo.invalidateAllUserSessions(userId);
+    const user = await this.userRepo.findById?.(userId).catch(() => null);
+    await this.auditLogService?.createAuditLog?.(
+      {
+        action: AUDIT_ACTIONS.AUTH_LOGOUT_ALL,
+        entityType: "User",
+        entityId: userId,
+        description: "Logged out from all devices",
+        source: "web",
+      },
+      user?.organizationId || null,
+      userId
+    ).catch(() => {});
   }
 
   async verifyEmail(token) {
@@ -308,6 +394,18 @@ export class AuthService {
     user.emailVerificationToken = null;
     user.emailVerificationExpires = null;
     await user.save();
+
+    await this.auditLogService?.createAuditLog?.(
+      {
+        action: AUDIT_ACTIONS.AUTH_EMAIL_VERIFIED,
+        entityType: "User",
+        entityId: user._id,
+        description: "Email address verified",
+        source: "web",
+      },
+      user.organizationId || null,
+      user._id
+    ).catch(() => {});
 
     return { message: "Email verified successfully" };
   }
@@ -332,6 +430,18 @@ export class AuthService {
       name: user.name,
     });
 
+    await this.auditLogService?.createAuditLog?.(
+      {
+        action: AUDIT_ACTIONS.AUTH_PASSWORD_RESET_REQUESTED,
+        entityType: "User",
+        entityId: user._id,
+        description: "Password reset requested",
+        source: "web",
+      },
+      user.organizationId || null,
+      user._id
+    ).catch(() => {});
+
     return { message: "Reset token sent to email" };
   }
 
@@ -349,6 +459,18 @@ export class AuthService {
     await user.save();
 
     await this.sessionRepo.invalidateAllUserSessions(user._id);
+
+    await this.auditLogService?.createAuditLog?.(
+      {
+        action: AUDIT_ACTIONS.AUTH_PASSWORD_RESET_COMPLETED,
+        entityType: "User",
+        entityId: user._id,
+        description: "Password reset completed and all sessions invalidated",
+        source: "web",
+      },
+      user.organizationId || null,
+      user._id
+    ).catch(() => {});
 
     return { message: "Password updated successfully" };
   }
@@ -369,6 +491,19 @@ export class AuthService {
       otp,
     });
 
+    await this.auditLogService?.createAuditLog?.(
+      {
+        action: AUDIT_ACTIONS.AUTH_OTP_SENT,
+        entityType: "User",
+        entityId: user._id,
+        description: "OTP sent to registered phone",
+        source: "web",
+        metadata: { phoneLast4: String(phone).slice(-4) },
+      },
+      user.organizationId || null,
+      user._id
+    ).catch((e) => logger.error(`[SECURITY_AUDIT_PERSISTENCE_FAILED] sendOTP: ${e.message}`));
+
     return { message: "OTP sent successfully" };
   }
 
@@ -380,6 +515,20 @@ export class AuthService {
       user.otp !== otp ||
       user.otpExpires < new Date()
     ) {
+      await this.auditLogService?.createAuditLog?.(
+        {
+          action: AUDIT_ACTIONS.AUTH_OTP_FAILED,
+          entityType: user ? "User" : "Auth",
+          entityId: user?._id || null,
+          description: "OTP verification failed",
+          source: "web",
+          ipAddress,
+          userAgent: deviceInfo,
+          metadata: { phoneLast4: String(phone).slice(-4) },
+        },
+        user?.organizationId || null,
+        user?._id || null
+      ).catch((e) => logger.error(`[SECURITY_AUDIT_PERSISTENCE_FAILED] verifyOTP failed: ${e.message}`));
       throw new AppError("Invalid or expired OTP", 400);
     }
 
@@ -403,6 +552,20 @@ export class AuthService {
       deviceInfo,
       expiresAt,
     });
+
+    await this.auditLogService?.createAuditLog?.(
+      {
+        action: AUDIT_ACTIONS.AUTH_OTP_VERIFIED,
+        entityType: "User",
+        entityId: user._id,
+        description: "OTP verified and session created",
+        source: "web",
+        ipAddress,
+        userAgent: deviceInfo,
+      },
+      user.organizationId || null,
+      user._id
+    ).catch((e) => logger.error(`[SECURITY_AUDIT_PERSISTENCE_FAILED] verifyOTP: ${e.message}`));
 
     return {
       user: {
@@ -621,6 +784,20 @@ export class AuthService {
       deviceInfo,
       expiresAt,
     });
+
+    await this.auditLogService?.createAuditLog?.(
+      {
+        action: AUDIT_ACTIONS.AUTH_OTP_VERIFIED,
+        entityType: "User",
+        entityId: user._id,
+        description: "OTP verified and session created",
+        source: "web",
+        ipAddress,
+        userAgent: deviceInfo,
+      },
+      user.organizationId || null,
+      user._id
+    ).catch((e) => logger.error(`[SECURITY_AUDIT_PERSISTENCE_FAILED] verifyOTP: ${e.message}`));
 
     return {
       success: true,

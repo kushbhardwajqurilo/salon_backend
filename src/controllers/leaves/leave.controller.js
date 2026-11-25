@@ -59,7 +59,8 @@ export const approveLeave = asyncHandler(async (req, res) => {
     req.params.id,
     req.body.reviewNote,
     req.organizationId,
-    req.user.id
+    req.user.id,
+    { confirmSplit: Boolean(req.body.confirmSplit) }
   );
   return sendResponse(res, 200, "Leave approved successfully", leave);
 });
@@ -69,7 +70,8 @@ export const rejectLeave = asyncHandler(async (req, res) => {
     req.params.id,
     req.body.reviewNote,
     req.organizationId,
-    req.user.id
+    req.user.id,
+    { confirmSplit: Boolean(req.body.confirmSplit) }
   );
   return sendResponse(res, 200, "Leave rejected successfully", leave);
 });

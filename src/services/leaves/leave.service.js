@@ -6,6 +6,7 @@ import { StaffBranchRepository } from "../../repositories/staff/staffBranch.repo
 import { UserRepository } from "../../repositories/users/user.repository.js";
 import { RoleRepository } from "../../repositories/roles/role.repository.js";
 import { AuditLogService } from "../audit/auditLog.service.js";
+import { LeaveEntitlementService } from "../leavePolicies/leaveEntitlement.service.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Appointment } from "../../models/appointments/appointment.model.js";
@@ -115,6 +116,7 @@ export class LeaveService {
     this.userRepo = deps.userRepo || new UserRepository();
     this.roleRepo = deps.roleRepo || new RoleRepository();
     this.auditLogService = deps.auditLogService || new AuditLogService();
+    this.entitlementService = deps.entitlementService || new LeaveEntitlementService();
   }
 
   async runTransaction(operation) {
@@ -544,7 +546,7 @@ export class LeaveService {
     };
   }
 
-  async approveLeave(id, reviewNote, organizationId, actorId) {
+  async approveLeave(id, reviewNote, organizationId, actorId, options = {}) {
     try {
       return await this.runTransaction(async (session) => {
         const leave = await this.leaveRepo.findById(
@@ -630,15 +632,77 @@ export class LeaveService {
           );
         }
 
-        const now = new Date();
+        const entitlement = await this.entitlementService.evaluateLeaveEntitlement({
+          organizationId,
+          branchId: leave.branchId,
+          staffId,
+          leaveType: leave.leaveType,
+          dates: leave.dates || [toDateOnlyStr(leave.startDate)],
+          isPartialDay: Boolean(leave.isPartialDay),
+          asOfDate: leave.startDate || new Date(),
+          actorId,
+          session,
+        });
+
+        const approvalUpdate = {
+          status: "approved",
+          reviewedBy: actorId,
+          reviewedAt: new Date(),
+          reviewNote: reviewNote || null,
+        };
+
+        if (entitlement.source === "central_policy" && entitlement.policy) {
+          if (entitlement.insufficientBalance) {
+            throw new AppError("Insufficient paid leave balance for this policy", 400, {
+              availableBalance: entitlement.availableBalance,
+              chargeableDays: entitlement.chargeableDays,
+            });
+          }
+          if (entitlement.requiresManagerSplitConfirmation && !options.confirmSplit) {
+            throw new AppError(
+              "Requested leave exceeds paid balance; manager confirmation is required to split into paid and unpaid days",
+              409,
+              {
+                requiresManagerSplitConfirmation: true,
+                paidDays: entitlement.paidDays,
+                unpaidDays: entitlement.unpaidDays,
+                chargeableDays: entitlement.chargeableDays,
+              }
+            );
+          }
+
+          approvalUpdate.leavePolicyId = entitlement.policy._id;
+          approvalUpdate.isUnpaid = entitlement.isUnpaid;
+          approvalUpdate.chargeableDays = entitlement.chargeableDays;
+          approvalUpdate.paidDays = entitlement.paidDays;
+          approvalUpdate.unpaidDays = entitlement.unpaidDays;
+          approvalUpdate.managerConfirmedSplit = Boolean(options.confirmSplit);
+          approvalUpdate.policySnapshot = {
+            code: entitlement.policy.code,
+            name: entitlement.policy.name,
+            isPaid: entitlement.policy.isPaid,
+            excessBehavior: entitlement.policy.excessBehavior,
+            allowNegativeBalance: entitlement.policy.allowNegativeBalance,
+            negativeBalancePayrollTreatment: entitlement.policy.negativeBalancePayrollTreatment,
+          };
+
+          if (entitlement.paidDays > 0) {
+            await this.entitlementService.applyApprovalDeduction({
+              organizationId,
+              staffId,
+              leaveId: leave._id,
+              policy: entitlement.policy,
+              paidDays: entitlement.paidDays,
+              periodYear: entitlement.periodYear,
+              actorId,
+              session,
+            });
+          }
+        }
+
         const updatedLeave = await this.leaveRepo.updateById(
           id,
-          {
-            status: "approved",
-            reviewedBy: actorId,
-            reviewedAt: now,
-            reviewNote: reviewNote || null,
-          },
+          approvalUpdate,
           organizationId,
           actorId,
           session,
@@ -813,6 +877,20 @@ export class LeaveService {
           actorId,
           session,
         );
+
+        if (previousStatus === "approved" && leave.leavePolicyId && leave.paidDays > 0) {
+          const periodYear = Number(toDateOnlyStr(leave.startDate).slice(0, 4));
+          await this.entitlementService.reverseApprovalDeduction({
+            organizationId,
+            staffId: leave.staffId?._id || leave.staffId,
+            leaveId: leave._id,
+            leavePolicyId: leave.leavePolicyId,
+            paidDays: leave.paidDays,
+            periodYear,
+            actorId,
+            session,
+          });
+        }
 
         await this.auditLogService.createAuditLog(
           {

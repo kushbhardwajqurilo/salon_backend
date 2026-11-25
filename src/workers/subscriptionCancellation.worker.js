@@ -2,7 +2,10 @@ import { Worker } from "bullmq";
 import { redisOptions } from "../config/redis.js";
 import { logger } from "../utils/logger.js";
 import { subscriptionService } from "../services/subscriptions/subscription.service.js";
+import { AuditLogService } from "../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../models/audit/auditLog.model.js";
 
+const auditLogService = new AuditLogService();
 let cancellationWorker = null;
 
 export const processSubscriptionCancellationJob = async (job) => {
@@ -12,11 +15,35 @@ export const processSubscriptionCancellationJob = async (job) => {
     throw new Error("Missing required parameters for cancellation operation");
   }
 
-  return await subscriptionService.executeCancellationOperation(
+  const result = await subscriptionService.executeCancellationOperation(
     operationId,
     organizationId,
     userId
   );
+
+  try {
+    await auditLogService.createAuditLog(
+      {
+        action: AUDIT_ACTIONS.SUBSCRIPTION_AUTO_CANCELLED,
+        entityType: "Subscription",
+        entityId: operationId,
+        actorType: "background_job",
+        source: "scheduled_job",
+        description: `Background subscription cancellation job executed`,
+        metadata: { jobId: job.id, idempotencyKey: `sub_cancel_${operationId}` },
+      },
+      organizationId,
+      null
+    );
+  } catch (e) {
+    if (e?.code !== 11000) {
+      logger.error(`[Subscription Cancellation] Audit persistence failed: ${e.message}`);
+      throw e;
+    }
+    logger.debug(`[Subscription Cancellation] Idempotent audit replay skipped for operation ${operationId}`);
+  }
+
+  return result;
 };
 
 export const startSubscriptionCancellationWorker = () => {

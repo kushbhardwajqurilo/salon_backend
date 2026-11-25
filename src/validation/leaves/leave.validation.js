@@ -158,6 +158,7 @@ export const approveLeaveSchema = z.object({
     body: z
         .object({
             reviewNote: z.string().trim().max(1000).optional(),
+            confirmSplit: z.boolean().optional(),
         })
         .strict(),
 });

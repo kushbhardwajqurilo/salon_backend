@@ -1,5 +1,9 @@
 import { subscriptionService } from "../services/subscriptions/subscription.service.js";
 import { logger } from "../utils/logger.js";
+import { AuditLogService } from "../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../models/audit/auditLog.model.js";
+
+const auditLogService = new AuditLogService();
 import { redis } from "../utils/redis.js";
 import crypto from "crypto";
 
@@ -91,6 +95,24 @@ export async function runSubscriptionReconciliationPass() {
         logger.info(
           `[Subscription Reconciliation] Completed pass: Inspected ${report.inspected}, Finalized ${report.reconciledCompleted}, Restored ${report.reconciledRestored}, Errors ${report.errors}`
         );
+        await auditLogService.createAuditLog(
+          {
+            action: AUDIT_ACTIONS.SUBSCRIPTION_RECONCILED,
+            entityType: "Subscription",
+            entityId: null,
+            actorType: "background_job",
+            source: "scheduled_job",
+            description: `Reconciled ${report.inspected} subscription redemption(s)`,
+            metadata: {
+              inspected: report.inspected,
+              reconciledCompleted: report.reconciledCompleted,
+              reconciledRestored: report.reconciledRestored,
+              errors: report.errors,
+            },
+          },
+          null,
+          null
+        ).catch((e) => logger.warn(`[Subscription Reconciliation] Audit log failed: ${e.message}`));
       }
       return report;
     } catch (err) {

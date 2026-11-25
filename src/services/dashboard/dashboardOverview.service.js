@@ -245,6 +245,9 @@ export class DashboardOverviewService {
         organizationId: new mongoose.Types.ObjectId(organizationId),
         isDeleted: { $ne: true },
         createdAt: { $gte: cmpStartUtc, $lte: cmpEndUtc },
+        ...(branchId
+          ? { visitedBranchIds: new mongoose.Types.ObjectId(branchId) }
+          : {}),
       });
     }
 
@@ -385,6 +388,9 @@ export class DashboardOverviewService {
         organizationId: new mongoose.Types.ObjectId(organizationId),
         isDeleted: { $ne: true },
         createdAt: { $gte: startUtc, $lte: finalEndUtc },
+        ...(branchId
+          ? { visitedBranchIds: new mongoose.Types.ObjectId(branchId) }
+          : {}),
       }),
 
       // Repeat Customer Visit Rate
@@ -414,6 +420,16 @@ export class DashboardOverviewService {
                       { $eq: ["$customerId", "$$custId"] },
                       { $eq: ["$status", "finalized"] },
                       { $ne: ["$isDeleted", true] },
+                      ...(branchId
+                        ? [
+                            {
+                              $eq: [
+                                "$branchId",
+                                new mongoose.Types.ObjectId(branchId),
+                              ],
+                            },
+                          ]
+                        : []),
                     ],
                   },
                 },
@@ -697,6 +713,9 @@ export class DashboardOverviewService {
           $match: {
             organizationId: new mongoose.Types.ObjectId(organizationId),
             isDeleted: { $ne: true },
+            ...(branchId
+              ? { visitedBranchIds: new mongoose.Types.ObjectId(branchId) }
+              : {}),
           },
         },
         {
@@ -711,6 +730,9 @@ export class DashboardOverviewService {
         organizationId: new mongoose.Types.ObjectId(organizationId),
         status: "active",
         isDeleted: { $ne: true },
+        ...(branchId
+          ? { visitedBranchIds: new mongoose.Types.ObjectId(branchId) }
+          : {}),
       }),
     ]);
 
@@ -936,8 +958,8 @@ export class DashboardOverviewService {
           expenseAgg.reduce((sum, item) => sum + item.amount, 0),
         );
         
-        // operatingCashMargin requires either finance.view or payments.view to see net collections interaction
-        const canViewMargin = hasFinanceView || hasPayments;
+        // operatingCashMargin requires finance.view (expenses.view alone only exposes expense metrics)
+        const canViewMargin = hasFinanceView;
         const operatingCashMargin = canViewMargin
           ? roundCurrency(curNetCollections - totalExpenses)
           : undefined;
@@ -1073,27 +1095,41 @@ export class DashboardOverviewService {
           isDeleted: { $ne: true },
         };
         if (branchId) {
-          memScope.permittedBranchIds = new mongoose.Types.ObjectId(branchId);
+          memScope.$or = [
+            { permittedBranchIds: new mongoose.Types.ObjectId(branchId) },
+            { permittedBranchIds: { $size: 0 } },
+          ];
         }
 
-        const [activeCount, expiringCount, newSoldInPeriod] = await Promise.all(
-          [
-            CustomerMembership.countDocuments({
-              ...memScope,
-              status: "active",
-              endDate: { $gte: now },
-            }),
-            CustomerMembership.countDocuments({
-              ...memScope,
-              status: "active",
-              endDate: { $gte: now, $lte: thirtyDaysFuture },
-            }),
-            CustomerMembership.countDocuments({
-              ...memScope,
-              startDate: { $gte: startUtc, $lte: finalEndUtc },
-            }),
-          ],
-        );
+        const [activeCount, expiringCount, [memSalesAgg]] = await Promise.all([
+          CustomerMembership.countDocuments({
+            ...memScope,
+            status: { $in: ["active", "pending_payment"] },
+            startDate: { $lte: now },
+            endDate: { $gte: now },
+          }),
+          CustomerMembership.countDocuments({
+            ...memScope,
+            status: { $in: ["active", "pending_payment"] },
+            startDate: { $lte: now },
+            endDate: { $gte: now, $lte: thirtyDaysFuture },
+          }),
+          Invoice.aggregate([
+            { $match: currentInvoiceScope },
+            { $unwind: "$lines" },
+            { $match: { "lines.lineType": "membership" } },
+            {
+              $group: {
+                _id: null,
+                count: { $sum: "$lines.quantity" },
+                amount: { $sum: "$lines.lineTotal" },
+              },
+            },
+          ]),
+        ]);
+
+        const newSoldInPeriod = memSalesAgg?.count || 0;
+        const salesAmountInPeriod = roundCurrency(memSalesAgg?.amount || 0);
 
         const isMemEmpty =
           activeCount === 0 && expiringCount === 0 && newSoldInPeriod === 0;
@@ -1102,6 +1138,7 @@ export class DashboardOverviewService {
           activeCount,
           expiringCount,
           newSoldInPeriod,
+          salesAmountInPeriod,
         };
       } catch (err) {
         logger.error(
@@ -1126,35 +1163,62 @@ export class DashboardOverviewService {
           isDeleted: { $ne: true },
         };
         if (branchId) {
-          subScope.permittedBranchIds = new mongoose.Types.ObjectId(branchId);
+          subScope.$or = [
+            { "members.permittedBranchIds": new mongoose.Types.ObjectId(branchId) },
+            { "members.permittedBranchIds": { $size: 0 } },
+          ];
         }
 
-        const [activeCount, expiringCount, redemptionsInPeriod] =
+        const usageScope = {
+          ...this._buildScope(organizationId, branchId),
+          isReversed: { $ne: true },
+          createdAt: { $gte: startUtc, $lte: finalEndUtc },
+        };
+
+        const [activeCount, expiringCount, redemptionsInPeriod, [subSalesAgg]] =
           await Promise.all([
             Subscription.countDocuments({
               ...subScope,
-              status: "active",
+              status: { $in: ["active", "pending_payment"] },
+              startDate: { $lte: now },
               endDate: { $gte: now },
             }),
             Subscription.countDocuments({
               ...subScope,
-              status: "active",
+              status: { $in: ["active", "pending_payment"] },
+              startDate: { $lte: now },
               endDate: { $gte: now, $lte: thirtyDaysFuture },
             }),
-            SubscriptionUsage.countDocuments({
-              organizationId: new mongoose.Types.ObjectId(organizationId),
-              isDeleted: { $ne: true },
-              usedAt: { $gte: startUtc, $lte: finalEndUtc },
-            }),
+            SubscriptionUsage.countDocuments(usageScope),
+            Invoice.aggregate([
+              { $match: currentInvoiceScope },
+              { $unwind: "$lines" },
+              { $match: { "lines.lineType": "subscription" } },
+              {
+                $group: {
+                  _id: null,
+                  count: { $sum: "$lines.quantity" },
+                  amount: { $sum: "$lines.lineTotal" },
+                },
+              },
+            ]),
           ]);
 
+        const soldInPeriod = subSalesAgg?.count || 0;
+        const salesAmountInPeriod = roundCurrency(subSalesAgg?.amount || 0);
+
         const isSubEmpty =
-          activeCount === 0 && expiringCount === 0 && redemptionsInPeriod === 0;
+          activeCount === 0 &&
+          expiringCount === 0 &&
+          redemptionsInPeriod === 0 &&
+          soldInPeriod === 0;
         result.subscriptions = {
           status: isSubEmpty ? "EMPTY" : "AVAILABLE",
           activeCount,
           expiringCount,
           redemptionsInPeriod,
+          soldInPeriod,
+          salesAmountInPeriod,
         };
       } catch (err) {
         logger.error(

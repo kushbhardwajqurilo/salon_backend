@@ -4,8 +4,11 @@ import { asyncHandler } from "../utils/errors.js";
 import { redis } from "../utils/redis.js";
 import { logger } from "../utils/logger.js";
 import { PERMISSION_ALIASES } from "../config/permissions.js";
+import { AuditLogService } from "../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../models/audit/auditLog.model.js";
 
 const roleRepo = new RoleRepository();
+const auditLogService = new AuditLogService();
 
 /**
  * Helper to resolve permissions for a given role within an organization.
@@ -119,6 +122,22 @@ export const authorize = (requiredPermission, checkBranchScope = false) => {
     });
 
     if (!hasPermission) {
+      auditLogService
+        .createAuditLog(
+          {
+            action: AUDIT_ACTIONS.AUTH_ACCESS_DENIED,
+            entityType: "Permission",
+            entityId: requiredList.join(","),
+            description: `Access denied for ${req.method} ${req.originalUrl}`,
+            source: "web",
+            ipAddress: req.ip || req.headers?.["x-forwarded-for"] || null,
+            userAgent: req.headers?.["user-agent"] || null,
+            metadata: { requiredPermission: requiredList, path: req.originalUrl, method: req.method },
+          },
+          organizationId || null,
+          req.user?.userId || req.user?._id || null
+        )
+        .catch(() => {});
       throw new AppError(
         "Access denied. You do not have the required permissions.",
         403,
@@ -196,6 +215,22 @@ export const requirePermission = (requiredPermission) => {
     });
 
     if (!hasPermission) {
+      auditLogService
+        .createAuditLog(
+          {
+            action: AUDIT_ACTIONS.AUTH_ACCESS_DENIED,
+            entityType: "Permission",
+            entityId: requiredList.join(","),
+            description: `Access denied for ${req.method} ${req.originalUrl}`,
+            source: "web",
+            ipAddress: req.ip || req.headers?.["x-forwarded-for"] || null,
+            userAgent: req.headers?.["user-agent"] || null,
+            metadata: { requiredPermission: requiredList, path: req.originalUrl, method: req.method },
+          },
+          organizationId || null,
+          req.user?.userId || req.user?._id || null
+        )
+        .catch(() => {});
       throw new AppError(
         "Access denied. You do not have the required permissions.",
         403,

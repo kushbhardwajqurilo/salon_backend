@@ -15,6 +15,7 @@ import { paymentRepository } from "../../repositories/billing/payment.repository
 import crypto from "crypto";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Organization } from "../../models/organizations/organization.model.js";
+import { OrganizationSettings } from "../../models/settings/organizationSettings.model.js";
 import { generateInvoicePdf as createInvoicePdf } from "./invoicePdf.service.js";
 import { runInTransaction } from "../../utils/transaction.js";
 import { loyaltyService } from "../loyalty/loyalty.service.js";
@@ -4801,6 +4802,21 @@ export class BillingService {
       });
       invoice.campaignAttribution = attributionSnapshot;
 
+      // Capture historical Organization & Branch identity snapshots (never overwrite if already set)
+      if (!invoice.organizationSnapshot || !invoice.branchSnapshot) {
+        const branding = await this.resolveInvoiceBranding(
+          organizationId,
+          branchId,
+          session,
+        );
+        if (!invoice.organizationSnapshot) {
+          invoice.organizationSnapshot = branding.organization;
+        }
+        if (!invoice.branchSnapshot) {
+          invoice.branchSnapshot = branding.branch;
+        }
+      }
+
       // If an invoice is fully covered by subscription / zero-due upon finalization, settle subscriptions atomically
       if (invoice.paymentStatus === "paid") {
         const existingCoveredLines = invoice.lines.filter(
@@ -6346,6 +6362,58 @@ export class BillingService {
   /**
    * 10. GENERATE INVOICE PDF
    */
+  /**
+   * Resolve authoritative organization and branch branding from persisted models.
+   */
+  async resolveInvoiceBranding(organizationId, branchId, session = null) {
+    const orgQuery = Organization.findById(organizationId).select("name logo").lean();
+    const orgSettingsQuery = OrganizationSettings.findOne({ organizationId })
+      .select("profile regional.timezone")
+      .lean();
+    const branchQuery = branchId
+      ? Branch.findOne({ _id: branchId, organizationId })
+          .select("name address phone timezone")
+          .lean()
+      : Promise.resolve(null);
+
+    if (session) {
+      orgQuery.session(session);
+      orgSettingsQuery.session(session);
+      if (branchId) branchQuery.session(session);
+    }
+
+    const [orgDoc, orgSettingsDoc, branchDoc] = await Promise.all([
+      orgQuery,
+      orgSettingsQuery,
+      branchQuery,
+    ]);
+
+    const profile = orgSettingsDoc?.profile || {};
+    const orgName = orgDoc?.name || null;
+    const displayName = profile.displayName || orgName;
+
+    return {
+      organization: {
+        name: orgName,
+        displayName,
+        logo: orgDoc?.logo || null,
+        address: profile.address || null,
+        phone: profile.phone || null,
+        email: profile.email || null,
+        website: profile.website || null,
+      },
+      branch: {
+        name: branchDoc?.name || null,
+        address: branchDoc?.address || profile.address || null,
+        phone: branchDoc?.phone || profile.phone || null,
+        timezone:
+          branchDoc?.timezone ||
+          orgSettingsDoc?.regional?.timezone ||
+          "Asia/Kolkata",
+      },
+    };
+  }
+
   async generateInvoicePdf(invoiceId, organizationId, branchId = null) {
     const query = { _id: invoiceId, organizationId, isDeleted: false };
     if (branchId) {
@@ -6355,6 +6423,7 @@ export class BillingService {
     const invoice = await Invoice.findOne(query)
       .populate("branchId", "name address phone timezone")
       .populate("customerId", "name phone email")
+      .populate("lines.staffId", "name")
       .populate({
         path: "lines.appliedSubscriptionId",
         select: "subscriptionCode planId",
@@ -6365,12 +6434,30 @@ export class BillingService {
       throw new AppError("Invoice not found", 404);
     }
 
-    // Branch document
-    const branch =
-      invoice.branchId || (await Branch.findById(invoice.branchId));
+    const isFinalized = invoice.status === "finalized";
+    const hasOrgSnapshot = Boolean(invoice.organizationSnapshot?.name || invoice.organizationSnapshot?.displayName);
+    const hasBranchSnapshot = Boolean(invoice.branchSnapshot?.name);
 
-    // Organization document
-    const organization = await Organization.findById(organizationId);
+    let organization;
+    let branch;
+
+    if (isFinalized && hasOrgSnapshot && hasBranchSnapshot) {
+      organization = invoice.organizationSnapshot;
+      branch = invoice.branchSnapshot;
+    } else {
+      const liveBranding = await this.resolveInvoiceBranding(
+        organizationId,
+        invoice.branchId?._id || invoice.branchId,
+      );
+      organization =
+        isFinalized && hasOrgSnapshot
+          ? invoice.organizationSnapshot
+          : liveBranding.organization;
+      branch =
+        isFinalized && hasBranchSnapshot
+          ? invoice.branchSnapshot
+          : liveBranding.branch;
+    }
 
     // Fetch appointment with populated staff if invoice has appointmentId
     let appointment = null;

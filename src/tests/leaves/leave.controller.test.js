@@ -188,7 +188,8 @@ describe("Leave Controller Phase 5", () => {
       leaveId,
       "Approved",
       orgId,
-      actorId
+      actorId,
+      { confirmSplit: false }
     );
 
     req.body = { reviewNote: "Insufficient coverage" };
@@ -197,7 +198,8 @@ describe("Leave Controller Phase 5", () => {
       leaveId,
       "Insufficient coverage",
       orgId,
-      actorId
+      actorId,
+      { confirmSplit: false }
     );
 
     req.body = { cancelReason: "Plans changed" };

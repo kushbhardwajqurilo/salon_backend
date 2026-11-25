@@ -1,6 +1,10 @@
 import { Worker } from "bullmq";
 import { redisOptions } from "../config/redis.js";
 import { logger } from "../utils/logger.js";
+import { AuditLogService } from "../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../models/audit/auditLog.model.js";
+
+const auditLogService = new AuditLogService();
 import { redis } from "../utils/redis.js";
 import { inventoryService } from "../services/inventory/inventory.service.js";
 import { stockReservationExpiryQueue } from "../queues/client.js";
@@ -82,6 +86,19 @@ export async function runStockReservationExpiryPass(batchSize = 100) {
 
     if (report && report.processedCount > 0) {
       logger.info(`[Stock Reservation Expiry] Cleaned up ${report.processedCount} expired stock reservation(s).`);
+      await auditLogService.createAuditLog(
+        {
+          action: AUDIT_ACTIONS.STOCK_RESERVATION_EXPIRED,
+          entityType: "StockReservation",
+          entityId: null,
+          actorType: "background_job",
+          source: "scheduled_job",
+          description: `Expired ${report.processedCount} stock reservation(s)`,
+          metadata: { processedCount: report.processedCount },
+        },
+        null,
+        null
+      ).catch((e) => logger.warn(`[Stock Reservation Expiry] Audit log failed: ${e.message}`));
     }
 
     return report;

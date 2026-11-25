@@ -102,6 +102,96 @@ export const AUDIT_ACTIONS = {
   INCENTIVE_EVALUATION_OVERRIDDEN: "INCENTIVE_EVALUATION_OVERRIDDEN",
   INCENTIVE_FULFILLMENT_CONFIRMED: "INCENTIVE_FULFILLMENT_CONFIRMED",
   INCENTIVE_FULFILLMENT_CORRECTED: "INCENTIVE_FULFILLMENT_CORRECTED",
+  ORGANIZATION_SETTINGS_UPDATED: "ORGANIZATION_SETTINGS_UPDATED",
+  BRANCH_SETTINGS_UPDATED: "BRANCH_SETTINGS_UPDATED",
+  HOLIDAY_CREATED: "HOLIDAY_CREATED",
+  HOLIDAY_UPDATED: "HOLIDAY_UPDATED",
+  HOLIDAY_DELETED: "HOLIDAY_DELETED",
+  LEAVE_POLICY_CREATED: "LEAVE_POLICY_CREATED",
+  LEAVE_POLICY_UPDATED: "LEAVE_POLICY_UPDATED",
+  LEAVE_POLICY_DEACTIVATED: "LEAVE_POLICY_DEACTIVATED",
+  LEAVE_BALANCE_ADJUSTED: "LEAVE_BALANCE_ADJUSTED",
+  EXPORT_REQUESTED: "EXPORT_REQUESTED",
+  EXPORT_COMPLETED: "EXPORT_COMPLETED",
+  EXPORT_FAILED: "EXPORT_FAILED",
+  EXPORT_DOWNLOADED: "EXPORT_DOWNLOADED",
+  EXPORT_EXPIRED: "EXPORT_EXPIRED",
+  // Auth & Security
+  AUTH_REGISTER: "AUTH_REGISTER",
+  AUTH_LOGIN_SUCCESS: "AUTH_LOGIN_SUCCESS",
+  AUTH_LOGIN_FAILED: "AUTH_LOGIN_FAILED",
+  AUTH_ACCOUNT_LOCKED: "AUTH_ACCOUNT_LOCKED",
+  AUTH_LOGOUT: "AUTH_LOGOUT",
+  AUTH_LOGOUT_ALL: "AUTH_LOGOUT_ALL",
+  AUTH_TOKEN_REFRESHED: "AUTH_TOKEN_REFRESHED",
+  AUTH_PASSWORD_CHANGED: "AUTH_PASSWORD_CHANGED",
+  AUTH_PASSWORD_RESET_REQUESTED: "AUTH_PASSWORD_RESET_REQUESTED",
+  AUTH_PASSWORD_RESET_COMPLETED: "AUTH_PASSWORD_RESET_COMPLETED",
+  AUTH_OTP_SENT: "AUTH_OTP_SENT",
+  AUTH_OTP_VERIFIED: "AUTH_OTP_VERIFIED",
+  AUTH_OTP_FAILED: "AUTH_OTP_FAILED",
+  AUTH_EMAIL_VERIFIED: "AUTH_EMAIL_VERIFIED",
+  AUTH_ACCOUNT_ACTIVATED: "AUTH_ACCOUNT_ACTIVATED",
+  AUTH_ACCESS_DENIED: "AUTH_ACCESS_DENIED",
+  SENSITIVE_DATA_EXPORTED: "SENSITIVE_DATA_EXPORTED",
+  // Users
+  USER_CREATED: "USER_CREATED",
+  USER_UPDATED: "USER_UPDATED",
+  USER_ACTIVATED: "USER_ACTIVATED",
+  USER_DEACTIVATED: "USER_DEACTIVATED",
+  USER_DELETED: "USER_DELETED",
+  // RBAC
+  ROLE_CREATED: "ROLE_CREATED",
+  ROLE_UPDATED: "ROLE_UPDATED",
+  ROLE_DELETED: "ROLE_DELETED",
+  ROLE_PERMISSIONS_UPDATED: "ROLE_PERMISSIONS_UPDATED",
+  USER_ROLE_ASSIGNED: "USER_ROLE_ASSIGNED",
+  USER_ROLE_REMOVED: "USER_ROLE_REMOVED",
+  PERMISSION_CREATED: "PERMISSION_CREATED",
+  // Branches
+  BRANCH_CREATED: "BRANCH_CREATED",
+  BRANCH_UPDATED: "BRANCH_UPDATED",
+  BRANCH_DELETED: "BRANCH_DELETED",
+  BRANCH_ACTIVATED: "BRANCH_ACTIVATED",
+  BRANCH_DEACTIVATED: "BRANCH_DEACTIVATED",
+  // Expenses & Petty Cash
+  EXPENSE_CREATED: "EXPENSE_CREATED",
+  EXPENSE_UPDATED: "EXPENSE_UPDATED",
+  EXPENSE_APPROVED: "EXPENSE_APPROVED",
+  EXPENSE_REJECTED: "EXPENSE_REJECTED",
+  EXPENSE_DELETED: "EXPENSE_DELETED",
+  EXPENSE_CATEGORY_CREATED: "EXPENSE_CATEGORY_CREATED",
+  PETTY_CASH_RECORDED: "PETTY_CASH_RECORDED",
+  // Finance & Cash Register
+  FINANCE_INCOME_RECORDED: "FINANCE_INCOME_RECORDED",
+  FINANCE_ADJUSTMENT_RECORDED: "FINANCE_ADJUSTMENT_RECORDED",
+  FINANCE_RECONCILED: "FINANCE_RECONCILED",
+  CASH_REGISTER_OPENED: "CASH_REGISTER_OPENED",
+  CASH_REGISTER_CLOSED: "CASH_REGISTER_CLOSED",
+  CASH_MOVEMENT_RECORDED: "CASH_MOVEMENT_RECORDED",
+  // Payroll
+  PAYROLL_GENERATED: "PAYROLL_GENERATED",
+  PAYROLL_APPROVED: "PAYROLL_APPROVED",
+  PAYROLL_DISBURSED: "PAYROLL_DISBURSED",
+  PAYROLL_ADJUSTED: "PAYROLL_ADJUSTED",
+  PAYROLL_CANCELLED: "PAYROLL_CANCELLED",
+  // Coupons
+  COUPON_CREATED: "COUPON_CREATED",
+  COUPON_UPDATED: "COUPON_UPDATED",
+  COUPON_ACTIVATED: "COUPON_ACTIVATED",
+  COUPON_DEACTIVATED: "COUPON_DEACTIVATED",
+  COUPON_DELETED: "COUPON_DELETED",
+  COUPON_REDEEMED: "COUPON_REDEEMED",
+  // Marketing
+  CAMPAIGN_CREATED: "CAMPAIGN_CREATED",
+  CAMPAIGN_UPDATED: "CAMPAIGN_UPDATED",
+  CAMPAIGN_SENT: "CAMPAIGN_SENT",
+  CAMPAIGN_DELETED: "CAMPAIGN_DELETED",
+  // Background Jobs / Workers
+  STOCK_RESERVATION_EXPIRED: "STOCK_RESERVATION_EXPIRED",
+  SUBSCRIPTION_AUTO_CANCELLED: "SUBSCRIPTION_AUTO_CANCELLED",
+  SUBSCRIPTION_RECONCILED: "SUBSCRIPTION_RECONCILED",
+  CLOUDINARY_CLEANUP_EXECUTED: "CLOUDINARY_CLEANUP_EXECUTED",
 };
 
 const auditLogSchema = new mongoose.Schema(
@@ -109,7 +199,7 @@ const auditLogSchema = new mongoose.Schema(
     organizationId: {
       type: mongoose.Schema.Types.Mixed,
       ref: "Organization",
-      required: true,
+      default: null,
     },
     branchId: {
       type: mongoose.Schema.Types.Mixed,
@@ -119,7 +209,12 @@ const auditLogSchema = new mongoose.Schema(
     actorId: {
       type: mongoose.Schema.Types.Mixed,
       ref: "User",
-      required: true,
+      default: null,
+    },
+    actorType: {
+      type: String,
+      enum: ["user", "system", "background_job", "integration"],
+      default: "user",
     },
     action: {
       type: String,
@@ -132,7 +227,7 @@ const auditLogSchema = new mongoose.Schema(
     },
     entityId: {
       type: mongoose.Schema.Types.Mixed,
-      required: true,
+      default: null,
     },
     description: {
       type: String,
@@ -142,14 +237,32 @@ const auditLogSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
+    source: {
+      type: String,
+      enum: ["web", "api", "system", "scheduled_job", "integration"],
+      default: "api",
+    },
+    ipAddress: {
+      type: String,
+      default: null,
+    },
+    userAgent: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: { createdAt: true, updatedAt: false },
-  }
+  },
 );
 
 // Indexes
-auditLogSchema.index({ organizationId: 1, entityType: 1, entityId: 1, createdAt: -1 });
+auditLogSchema.index({
+  organizationId: 1,
+  entityType: 1,
+  entityId: 1,
+  createdAt: -1,
+});
 auditLogSchema.index({ organizationId: 1, branchId: 1, createdAt: -1 });
 // Partial filter unique index for idempotent audit recovery operations (such as attendance conflict recovery)
 auditLogSchema.index(
@@ -160,7 +273,24 @@ auditLogSchema.index(
       "metadata.idempotencyKey": { $exists: true },
     },
     name: "uniq_audit_idempotency_key",
-  }
+  },
 );
 
-export const AuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", auditLogSchema);
+// Enforce append-only immutability at the database-access layer
+const immutableError = () =>
+  new Error("AuditLog records are immutable and append-only");
+for (const hook of [
+  "updateOne",
+  "updateMany",
+  "findOneAndUpdate",
+  "deleteOne",
+  "deleteMany",
+  "findOneAndDelete",
+]) {
+  auditLogSchema.pre(hook, function () {
+    throw immutableError();
+  });
+}
+
+export const AuditLog =
+  mongoose.models.AuditLog || mongoose.model("AuditLog", auditLogSchema);

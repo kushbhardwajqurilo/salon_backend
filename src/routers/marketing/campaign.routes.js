@@ -6,8 +6,11 @@ import { Campaign } from "../../models/marketing/campaign.model.js";
 import { CampaignAttributionService } from "../../services/marketing/campaignAttribution.service.js";
 import { sendResponse } from "../../utils/response.js";
 import { AppError } from "../../utils/errors.js";
+import { AuditLogService, extractAuditContext } from "../../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 
 const router = Router();
+const auditLogService = new AuditLogService();
 
 /**
  * 1. CREATE CAMPAIGN
@@ -65,6 +68,21 @@ router.post(
       });
 
       await campaign.save();
+
+      await auditLogService.createAuditLog(
+        {
+          action: AUDIT_ACTIONS.CAMPAIGN_CREATED,
+          entityType: "Campaign",
+          entityId: campaign._id,
+          branchId: campaign.branchId || null,
+          description: `Campaign '${campaign.name}' (${campaign.campaignCode}) created`,
+          ...extractAuditContext(req),
+          metadata: { campaignCode: campaign.campaignCode, channel: campaign.channel },
+        },
+        req.user.organizationId,
+        req.user.id || req.user._id
+      );
+
       return sendResponse(res, 201, "Campaign created successfully", campaign);
     } catch (err) {
       next(err);

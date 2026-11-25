@@ -1,8 +1,11 @@
 import { asyncHandler } from "../../utils/errors.js";
 import { PayrollService } from "../../services/payroll/payroll.service.js";
 import { generatePayslipPdf } from "../../services/payroll/payslipPdf.service.js";
+import { AuditLogService, extractAuditContext } from "../../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 
 const getActorId = (req) => req.user?.id || req.user?._id;
+const auditLogService = new AuditLogService();
 
 export class PayrollController {
   static setSalaryStructure = asyncHandler(async (req, res) => {
@@ -13,6 +16,20 @@ export class PayrollController {
       ...req.body,
       userId: getActorId(req),
     });
+
+    await auditLogService.createAuditLog(
+      {
+        action: AUDIT_ACTIONS.PAYROLL_ADJUSTED,
+        entityType: "SalaryStructure",
+        entityId: structure._id || structure.id,
+        branchId: branchId || null,
+        description: `Salary structure configured`,
+        ...extractAuditContext(req),
+        metadata: { staffId: req.body?.staffId },
+      },
+      organizationId,
+      getActorId(req)
+    );
 
     res.status(200).json({
       success: true,
@@ -62,6 +79,18 @@ export class PayrollController {
       ...req.body,
       userId: getActorId(req),
     });
+
+    await auditLogService.createAuditLog(
+      {
+        action: AUDIT_ACTIONS.PAYROLL_GENERATED,
+        entityType: "PayrollPeriod",
+        entityId: period._id || period.id,
+        description: `Payroll period created`,
+        ...extractAuditContext(req),
+      },
+      organizationId,
+      getActorId(req)
+    );
 
     res.status(201).json({
       success: true,
@@ -127,6 +156,20 @@ export class PayrollController {
       userId: getActorId(req),
     });
 
+    await auditLogService.createAuditLog(
+      {
+        action: AUDIT_ACTIONS.PAYROLL_APPROVED,
+        entityType: "Payroll",
+        entityId: id,
+        branchId: branchId || null,
+        description: `Payroll record approved`,
+        ...extractAuditContext(req),
+        metadata: { after: { status: record?.status || "approved" } },
+      },
+      organizationId,
+      getActorId(req)
+    );
+
     res.status(200).json({
       success: true,
       data: record,
@@ -176,6 +219,22 @@ export class PayrollController {
       paymentId,
       userId: getActorId(req),
     });
+
+    if (!result?.isIdempotentReplay) {
+      await auditLogService.createAuditLog(
+        {
+          action: AUDIT_ACTIONS.PAYROLL_DISBURSED,
+          entityType: "Payroll",
+          entityId: id,
+          branchId: branchId || null,
+          description: `Payroll settlement confirmed`,
+          ...extractAuditContext(req),
+          metadata: { paymentId, idempotencyKey: `payroll_confirm_${id}_${paymentId}` },
+        },
+        organizationId,
+        getActorId(req)
+      );
+    }
 
     res.status(200).json({
       success: true,
@@ -244,6 +303,22 @@ export class PayrollController {
       reversalReason,
       userId: getActorId(req),
     });
+
+    if (!result?.isIdempotentReplay) {
+      await auditLogService.createAuditLog(
+        {
+          action: AUDIT_ACTIONS.PAYROLL_CANCELLED,
+          entityType: "Payroll",
+          entityId: id,
+          branchId: branchId || null,
+          description: `Payroll payment reversed`,
+          ...extractAuditContext(req),
+          metadata: { reversalReason, paymentId: result?.payment?._id || null },
+        },
+        organizationId,
+        getActorId(req)
+      );
+    }
 
     res.status(200).json({
       success: true,

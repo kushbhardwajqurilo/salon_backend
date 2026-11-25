@@ -1,5 +1,9 @@
 import { ExpenseService } from "../../services/expenses/expense.service.js";
 import { asyncHandler, AppError } from "../../utils/errors.js";
+import { AuditLogService, extractAuditContext } from "../../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
+
+const auditLogService = new AuditLogService();
 
 export const createExpense = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
@@ -11,6 +15,19 @@ export const createExpense = asyncHandler(async (req, res) => {
     branchId,
     req.user._id,
     req.body
+  );
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.EXPENSE_CREATED,
+      entityType: "Expense",
+      entityId: result._id || result.id,
+      branchId,
+      description: `Expense created for amount ${result.amount}`,
+      ...extractAuditContext(req),
+      metadata: { amount: result.amount, category: result.category, paymentMethod: result.paymentMethod },
+    },
+    organizationId,
+    req.user._id
   );
   res.status(201).json({ success: true, data: result });
 });
@@ -51,6 +68,19 @@ export const updateExpense = asyncHandler(async (req, res) => {
     branchId,
     req.body
   );
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.EXPENSE_UPDATED,
+      entityType: "Expense",
+      entityId: expenseId,
+      branchId: result?.branchId || branchId || null,
+      description: `Expense updated`,
+      ...extractAuditContext(req),
+      metadata: { updatedFields: Object.keys(req.body || {}) },
+    },
+    organizationId,
+    req.user._id
+  );
   res.status(200).json({ success: true, data: result });
 });
 
@@ -63,6 +93,19 @@ export const approveExpense = asyncHandler(async (req, res) => {
     organizationId,
     expenseId,
     branchId,
+    req.user._id
+  );
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.EXPENSE_APPROVED,
+      entityType: "Expense",
+      entityId: expenseId,
+      branchId: result?.branchId || branchId || null,
+      description: `Expense approved`,
+      ...extractAuditContext(req),
+      metadata: { amount: result?.amount, status: result?.status },
+    },
+    organizationId,
     req.user._id
   );
   res.status(200).json({ success: true, data: result });
@@ -81,6 +124,19 @@ export const rejectExpense = asyncHandler(async (req, res) => {
     req.user._id,
     reason
   );
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.EXPENSE_REJECTED,
+      entityType: "Expense",
+      entityId: expenseId,
+      branchId: result?.branchId || branchId || null,
+      description: `Expense rejected`,
+      ...extractAuditContext(req),
+      metadata: { reason, status: result?.status },
+    },
+    organizationId,
+    req.user._id
+  );
   res.status(200).json({ success: true, data: result });
 });
 
@@ -93,6 +149,18 @@ export const deleteExpense = asyncHandler(async (req, res) => {
     organizationId,
     expenseId,
     branchId,
+    req.user._id
+  );
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.EXPENSE_DELETED,
+      entityType: "Expense",
+      entityId: expenseId,
+      branchId: branchId || null,
+      description: `Expense deleted`,
+      ...extractAuditContext(req),
+    },
+    organizationId,
     req.user._id
   );
   res.status(200).json(result);

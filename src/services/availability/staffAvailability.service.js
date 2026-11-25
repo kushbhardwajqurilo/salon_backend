@@ -8,6 +8,8 @@ import { Appointment } from "../../models/appointments/appointment.model.js";
 import { Attendance } from "../../models/attendance/attendance.model.js";
 import { AttendancePunch } from "../../models/attendance/attendancePunch.model.js";
 import { AttendanceBranchConflict } from "../../models/attendance/AttendanceLeaveAppointmentConflict.model.js";
+import { CalendarResolverService } from "../holidays/calendarResolver.service.js";
+import { getOperatingHoursForDay } from "../../utils/operatingHours.js";
 import { parseLocalToUTC, formatUTCToLocal } from "../../utils/date.js";
 import { deriveBusinessDate } from "../attendance/attendance.service.js";
 import { AppError } from "../../utils/errors.js";
@@ -251,19 +253,41 @@ export class StaffAvailabilityService {
     const warnings = [];
     let status = AVAILABILITY_STATUS.AVAILABLE;
 
-    // 5. Branch Operating Hours Validation
+    // 5. Branch Calendar & Operating Hours Validation (via CalendarResolverService + operatingHours helper)
     const dateObj = new Date(`${dateStr}T12:00:00Z`);
     const dayOfWeek = dateObj.getUTCDay(); // 0 = Sunday
-    const operatingHoursMap = branch.operatingHours;
-    if (operatingHoursMap) {
-      const dayHours =
-        operatingHoursMap instanceof Map
-          ? operatingHoursMap.get(String(dayOfWeek))
-          : operatingHoursMap[dayOfWeek];
-      if (dayHours && dayHours.isOpen === false) {
+    let calDay = null;
+    try {
+      const calendarResolver = new CalendarResolverService();
+      const cal = await calendarResolver.resolveCalendarRange({
+        organizationId,
+        branchId,
+        startDate: dateStr,
+        endDate: dateStr,
+      });
+      calDay = cal?.days?.[0] || null;
+    } catch {
+      calDay = null;
+    }
+
+    if (calDay && !calDay.isWorkingDay) {
+      reasons.push(REASON_CODES.BRANCH_CLOSED);
+      status = AVAILABILITY_STATUS.UNAVAILABLE;
+    } else if (calDay?.status === "special_working_day" && calDay.operatingHoursOverride?.isOpen) {
+      const slotStartMin = timeToMinutes(localStartStr);
+      const slotEndMin = timeToMinutes(localEndStr);
+      const openMin = timeToMinutes(calDay.operatingHoursOverride.openTime);
+      const closeMin = timeToMinutes(calDay.operatingHoursOverride.closeTime);
+      if (slotStartMin < openMin || slotEndMin > closeMin) {
         reasons.push(REASON_CODES.BRANCH_CLOSED);
         status = AVAILABILITY_STATUS.UNAVAILABLE;
-      } else if (dayHours && dayHours.openTime && dayHours.closeTime) {
+      }
+    } else if (branch.operatingHours) {
+      const dayHours = getOperatingHoursForDay(branch.operatingHours, dayOfWeek);
+      if (dayHours.isConfigured && dayHours.isOpen === false) {
+        reasons.push(REASON_CODES.BRANCH_CLOSED);
+        status = AVAILABILITY_STATUS.UNAVAILABLE;
+      } else if (dayHours.isConfigured && dayHours.openTime && dayHours.closeTime) {
         const slotStartMin = timeToMinutes(localStartStr);
         const slotEndMin = timeToMinutes(localEndStr);
         const branchOpenMin = timeToMinutes(dayHours.openTime);

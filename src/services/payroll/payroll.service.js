@@ -13,6 +13,7 @@ import { AttendanceBranchConflict } from "../../models/attendance/AttendanceLeav
 import { IncentiveEvaluation } from "../../models/incentives/incentiveEvaluation.model.js";
 import { IncentiveLedger } from "../../models/incentives/incentiveLedger.model.js";
 import { Leave } from "../../models/leaves/leave.model.js";
+import { CalendarResolverService } from "../holidays/calendarResolver.service.js";
 import { runInTransaction } from "../../utils/transaction.js";
 
 /**
@@ -682,6 +683,29 @@ export class PayrollService {
       let paidLeaveDays = 0;
       let unpaidLeaveDays = 0;
 
+      // Resolve branch calendar for this payroll period (holidays, weekly offs, closures)
+      let calendarDayMap = new Map();
+      let holidayDays = 0;
+      let weeklyOffDays = 0;
+      let branchClosureDays = 0;
+      try {
+        const calendarResolver = new CalendarResolverService();
+        const cal = await calendarResolver.resolveCalendarRange({
+          organizationId,
+          branchId: assignedBranchId,
+          startDate: period.startDate.toISOString().slice(0, 10),
+          endDate: period.endDate.toISOString().slice(0, 10),
+        });
+        calendarDayMap = new Map(cal.days.map((d) => [d.date, d]));
+        for (const d of cal.days) {
+          if (d.status === "holiday") holidayDays++;
+          else if (d.status === "weekly_off") weeklyOffDays++;
+          else if (d.status === "branch_closure") branchClosureDays++;
+        }
+      } catch {
+        // Safe fallback if calendar resolution is unavailable
+      }
+
       for (const leave of leaveRecords) {
         // Enumerate discrete dates within this payroll period
         const lStart = new Date(Math.max(new Date(leave.startDate).getTime(), period.startDate.getTime()));
@@ -696,6 +720,29 @@ export class PayrollService {
           curDate.setUTCDate(curDate.getUTCDate() + 1);
         }
 
+        // Case A: Central LeavePolicy persisted classification (authoritative, never recalculated or re-deducted)
+        if (leave.leavePolicyId && (leave.paidDays != null || leave.unpaidDays != null)) {
+          let effectiveDaysInPeriod = 0;
+          for (const dateKey of discreteDates) {
+            const attOnDate = attendanceMap.get(dateKey);
+            if (attOnDate && ["present", "late", "early_departure"].includes(attOnDate.status) && !leave.isPartialDay) {
+              continue; // Avoid double counting full presence + full leave
+            }
+            const calDay = calendarDayMap.get(dateKey);
+            if (calDay?.status === "branch_closure") continue;
+            effectiveDaysInPeriod += leave.isPartialDay ? 0.5 : 1.0;
+          }
+
+          const totalPersisted = Number(leave.paidDays || 0) + Number(leave.unpaidDays || 0);
+          if (totalPersisted > 0 && effectiveDaysInPeriod > 0) {
+            const ratio = Math.min(1, effectiveDaysInPeriod / totalPersisted);
+            paidLeaveDays += Number((Number(leave.paidDays || 0) * ratio).toFixed(2));
+            unpaidLeaveDays += Number((Number(leave.unpaidDays || 0) * ratio).toFixed(2));
+          }
+          continue;
+        }
+
+        // Case B: Legacy / SalaryStructure.paidLeavePolicy fallback
         const isExplicitUnpaid =
           leave.isUnpaid === true ||
           (typeof leave.leaveType === "string" &&
@@ -708,11 +755,14 @@ export class PayrollService {
           let leaveDayWeight = leave.isPartialDay === true ? 0.5 : 1.0;
 
           if (attOnDate && ["present", "late", "early_departure"].includes(attOnDate.status)) {
-            // Already counted present for full day; cannot double-claim full day as paid leave
-            // If leave is half-day and present is half-day, capped at 1.0 total
             if (leaveDayWeight >= 1.0) {
               continue; // Skip double counting full presence + full leave on same day
             }
+          }
+
+          const calDay = calendarDayMap.get(dateKey);
+          if (calDay?.status === "branch_closure") {
+            continue; // Branch closure never deducts employee leave
           }
 
           if (isExplicitUnpaid) {
@@ -723,14 +773,12 @@ export class PayrollService {
               paidLeaveDays += leaveDayWeight;
               remainingEntitlement -= leaveDayWeight;
             } else if (remainingEntitlement > 0) {
-              // Partial exhaustion (e.g. 0.5 paid, 0.5 unpaid)
               const paidPart = remainingEntitlement;
               const unpaidPart = leaveDayWeight - remainingEntitlement;
               paidLeaveDays += paidPart;
               unpaidLeaveDays += unpaidPart;
               remainingEntitlement = 0;
             } else {
-              // Entitlement exhausted -> becomes unpaid leave
               unpaidLeaveDays += leaveDayWeight;
             }
           }
@@ -847,9 +895,12 @@ export class PayrollService {
           previouslyConsumedPaidLeave,
           paidLeaveDays,
           unpaidLeaveDays,
+          holidayDays,
+          weeklyOffDays,
+          branchClosureDays,
           absentDays: Math.max(
             0,
-            eligibleDays - (presentDays + paidLeaveDays + unpaidLeaveDays)
+            eligibleDays - (presentDays + paidLeaveDays + unpaidLeaveDays + holidayDays + weeklyOffDays + branchClosureDays)
           ),
           payableDays,
           sourceAttendanceRecordIds: attendanceRecords.map((a) => a._id),

@@ -2,6 +2,10 @@ import { AppError, asyncHandler } from "../../utils/errors.js";
 import { sendResponse } from "../../utils/response.js";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Organization } from "../../models/organizations/organization.model.js";
+import { AuditLogService, buildBeforeAfterMetadata, extractAuditContext } from "../../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
+
+const auditLogService = new AuditLogService();
 
 const mapBranchObj = (b) => ({
   id: b._id,
@@ -62,6 +66,12 @@ export const getBranchById = asyncHandler(async (req, res) => {
   if (!branch) {
     throw new AppError("Branch not found", 404);
   }
+  const beforeState = {
+    name: branch.name,
+    address: branch.address,
+    phone: branch.phone,
+    isActive: branch.isActive,
+  };
 
   // Check access
   let hasAccess = false;
@@ -114,6 +124,20 @@ export const createBranch = asyncHandler(async (req, res) => {
     phone,
   });
 
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.BRANCH_CREATED,
+      entityType: "Branch",
+      entityId: newBranch._id,
+      branchId: newBranch._id,
+      description: `Branch '${newBranch.name}' created`,
+      ...extractAuditContext(req),
+      metadata: { name: newBranch.name, phone: newBranch.phone },
+    },
+    organizationId,
+    req.user?.userId || req.user?._id
+  );
+
   return sendResponse(
     res,
     201,
@@ -131,6 +155,12 @@ export const updateBranch = asyncHandler(async (req, res) => {
   if (!branch) {
     throw new AppError("Branch not found", 404);
   }
+  const beforeState = {
+    name: branch.name,
+    address: branch.address,
+    phone: branch.phone,
+    isActive: branch.isActive,
+  };
 
   if (name && name.trim() !== branch.name) {
     const existingBranch = await Branch.findOne({
@@ -165,6 +195,25 @@ export const updateBranch = asyncHandler(async (req, res) => {
 
   await branch.save();
 
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.BRANCH_UPDATED,
+      entityType: "Branch",
+      entityId: branch._id,
+      branchId: branch._id,
+      description: `Branch '${branch.name}' updated`,
+      ...extractAuditContext(req),
+      metadata: buildBeforeAfterMetadata(beforeState, {
+        name: branch.name,
+        address: branch.address,
+        phone: branch.phone,
+        isActive: branch.isActive,
+      }),
+    },
+    organizationId,
+    req.user?.userId || req.user?._id
+  );
+
   return sendResponse(
     res,
     200,
@@ -181,6 +230,12 @@ export const deleteBranch = asyncHandler(async (req, res) => {
   if (!branch) {
     throw new AppError("Branch not found", 404);
   }
+  const beforeState = {
+    name: branch.name,
+    address: branch.address,
+    phone: branch.phone,
+    isActive: branch.isActive,
+  };
 
   // Soft delete logic
   const activeCount = await Branch.countDocuments({
@@ -193,6 +248,25 @@ export const deleteBranch = asyncHandler(async (req, res) => {
 
   branch.isActive = false;
   await branch.save();
+
+  await auditLogService.createAuditLog(
+    {
+      action: AUDIT_ACTIONS.BRANCH_UPDATED,
+      entityType: "Branch",
+      entityId: branch._id,
+      branchId: branch._id,
+      description: `Branch '${branch.name}' updated`,
+      ...extractAuditContext(req),
+      metadata: buildBeforeAfterMetadata(beforeState, {
+        name: branch.name,
+        address: branch.address,
+        phone: branch.phone,
+        isActive: branch.isActive,
+      }),
+    },
+    organizationId,
+    req.user?.userId || req.user?._id
+  );
 
   return sendResponse(res, 200, "Branch deactivated successfully");
 });

@@ -438,6 +438,35 @@ const invoiceSchema = new mongoose.Schema(
       },
     },
 
+    // Historical Organization & Branch Identity Snapshots (captured at finalization)
+    organizationSnapshot: {
+      type: new mongoose.Schema(
+        {
+          name: { type: String, trim: true, default: null },
+          displayName: { type: String, trim: true, default: null },
+          logo: { type: String, trim: true, default: null },
+          address: { type: String, trim: true, default: null },
+          phone: { type: String, trim: true, default: null },
+          email: { type: String, trim: true, lowercase: true, default: null },
+          website: { type: String, trim: true, default: null },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
+    branchSnapshot: {
+      type: new mongoose.Schema(
+        {
+          name: { type: String, trim: true, default: null },
+          address: { type: String, trim: true, default: null },
+          phone: { type: String, trim: true, default: null },
+          timezone: { type: String, trim: true, default: "Asia/Kolkata" },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
+
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
   },

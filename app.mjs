@@ -36,6 +36,7 @@ import financeRouter from "./src/routers/finance/finance.routes.js";
 import campaignRouter from "./src/routers/marketing/campaign.routes.js";
 import reportRouter from "./src/routers/reports/reports.routes.js";
 import dashboardRouter from "./src/routers/dashboard/dashboard.routes.js";
+import settingsRouter from "./src/routers/settings/settings.routes.js";
 import uploadRouter from "./src/routers/upload.routes.js";
 import {
   apiLimiter,
@@ -175,6 +176,7 @@ app.use("/api/v1/finance", financeRouter);
 app.use("/api/v1/marketing/campaigns", campaignRouter);
 app.use("/api/v1/reports", reportRouter);
 app.use("/api/v1/dashboard", dashboardRouter);
+app.use("/api/v1/settings", settingsRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/api/v1/upload", uploadRouter);
 
