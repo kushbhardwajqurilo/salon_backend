@@ -1,5 +1,20 @@
 import { membershipService } from "../../services/memberships/membership.service.js";
 import { AppError } from "../../utils/errors.js";
+import { AuditLogService } from "../../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
+
+const auditLogService = new AuditLogService();
+const logMembershipAudit = (req, payload) =>
+  auditLogService
+    .createAuditLog(
+      {
+        branchId: req.branchId || req.activeBranch?._id || req.body?.branchId || null,
+        ...payload,
+      },
+      req.user.organizationId,
+      req.user?._id || req.user?.id
+    )
+    .catch(() => {});
 
 export const createPlan = async (req, res, next) => {
   try {
@@ -9,6 +24,13 @@ export const createPlan = async (req, res, next) => {
       req.user.organizationId,
       userId
     );
+    await logMembershipAudit(req, {
+      action: AUDIT_ACTIONS.MEMBERSHIP_PLAN_CREATED,
+      entityType: "MembershipPlan",
+      entityId: plan?._id || null,
+      description: `Created membership plan ${plan?.name || req.body?.name || ""}`,
+      metadata: req.body,
+    });
     res.status(201).json({
       success: true,
       message: "Membership plan created successfully",
@@ -63,6 +85,13 @@ export const updatePlan = async (req, res, next) => {
       req.user.organizationId,
       userId
     );
+    await logMembershipAudit(req, {
+      action: AUDIT_ACTIONS.MEMBERSHIP_PLAN_UPDATED,
+      entityType: "MembershipPlan",
+      entityId: req.params.id,
+      description: `Updated membership plan ${req.params.id}`,
+      metadata: req.body,
+    });
     res.status(200).json({
       success: true,
       message: "Membership plan updated successfully",
@@ -81,6 +110,12 @@ export const deletePlan = async (req, res, next) => {
       req.user.organizationId,
       userId
     );
+    await logMembershipAudit(req, {
+      action: AUDIT_ACTIONS.MEMBERSHIP_PLAN_DELETED,
+      entityType: "MembershipPlan",
+      entityId: req.params.id,
+      description: `Deleted membership plan ${req.params.id}`,
+    });
     res.status(200).json({
       success: true,
       message: result.message,
@@ -98,6 +133,13 @@ export const duplicatePlan = async (req, res, next) => {
       req.user.organizationId,
       userId
     );
+    await logMembershipAudit(req, {
+      action: AUDIT_ACTIONS.MEMBERSHIP_PLAN_CREATED,
+      entityType: "MembershipPlan",
+      entityId: plan?._id || null,
+      description: `Duplicated membership plan from ${req.params.id}`,
+      metadata: { sourcePlanId: req.params.id },
+    });
     res.status(201).json({
       success: true,
       message: "Membership plan duplicated successfully",
@@ -152,6 +194,13 @@ export const cancelBeneficiaryMembership = async (req, res, next) => {
       req.user.organizationId,
       userId
     );
+    await logMembershipAudit(req, {
+      action: AUDIT_ACTIONS.MEMBERSHIP_CANCELLED,
+      entityType: "CustomerMembership",
+      entityId: req.params.id,
+      description: `Cancelled customer membership ${req.params.id}`,
+      metadata: req.body,
+    });
     res.status(200).json({
       success: true,
       message: "Customer membership cancelled successfully",
@@ -171,6 +220,13 @@ export const suspendBeneficiaryMembership = async (req, res, next) => {
       req.user.organizationId,
       userId
     );
+    await logMembershipAudit(req, {
+      action: AUDIT_ACTIONS.MEMBERSHIP_SUSPENDED,
+      entityType: "CustomerMembership",
+      entityId: req.params.id,
+      description: `Suspended customer membership ${req.params.id}`,
+      metadata: req.body,
+    });
     res.status(200).json({
       success: true,
       message: "Customer membership suspended successfully",
@@ -189,6 +245,12 @@ export const reactivateBeneficiaryMembership = async (req, res, next) => {
       req.user.organizationId,
       userId
     );
+    await logMembershipAudit(req, {
+      action: AUDIT_ACTIONS.MEMBERSHIP_REACTIVATED,
+      entityType: "CustomerMembership",
+      entityId: req.params.id,
+      description: `Reactivated customer membership ${req.params.id}`,
+    });
     res.status(200).json({
       success: true,
       message: "Customer membership reactivated successfully",
@@ -208,6 +270,13 @@ export const addBeneficiaryToMembership = async (req, res, next) => {
       req.user.organizationId,
       userId
     );
+    await logMembershipAudit(req, {
+      action: AUDIT_ACTIONS.MEMBERSHIP_BENEFICIARY_ADDED,
+      entityType: "CustomerMembership",
+      entityId: req.params.id,
+      description: `Added beneficiary to membership ${req.params.id}`,
+      metadata: req.body,
+    });
     res.status(201).json({
       success: true,
       message: "Beneficiary added to membership successfully",
@@ -296,6 +365,15 @@ export const sellMembership = async (req, res, next) => {
       userId
     );
 
+    await logMembershipAudit(req, {
+      action: AUDIT_ACTIONS.MEMBERSHIP_CREATED,
+      entityType: "CustomerMembership",
+      entityId: result?._id || result?.membership?._id || null,
+      branchId,
+      description: `Sold customer membership for plan ${req.body?.planId || ""}`,
+      metadata: { planId: req.body?.planId, customerId: req.body?.customerId },
+    });
+
     res.status(201).json({
       success: true,
       message: "Customer membership sold successfully",
@@ -331,6 +409,13 @@ export const triggerRenewalReminder = async (req, res, next) => {
       req.user.organizationId,
       req.body
     );
+    await logMembershipAudit(req, {
+      action: AUDIT_ACTIONS.MEMBERSHIP_UPDATED,
+      entityType: "CustomerMembership",
+      entityId: membershipId,
+      description: `Triggered renewal reminder for membership ${membershipId}`,
+      metadata: { renewalReminder: true, ...req.body },
+    });
     res.status(200).json({
       success: true,
       message: "Membership renewal reminder processed",

@@ -8,6 +8,10 @@ import { Staff } from "../../models/staff/staff.model.js";
 import { StaffBranch } from "../../models/staff/staffBranch.model.js";
 import { sendResponse } from "../../utils/response.js";
 import { asyncHandler, AppError } from "../../utils/errors.js";
+import { AuditLogService } from "../../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
+
+const auditLogService = new AuditLogService();
 
 /**
  * Parses serviceIds parameter from query (can be array or comma-separated string)
@@ -229,6 +233,21 @@ export const updateStaffRoster = asyncHandler(async (req, res) => {
       runValidators: true,
     },
   );
+
+  void auditLogService
+    .createAuditLog(
+      {
+        action: AUDIT_ACTIONS.STAFF_UPDATED,
+        entityType: "StaffRoster",
+        entityId: staffId,
+        branchId,
+        description: `Updated roster for staff ${staffId}`,
+        metadata: { rosterUpdated: true, branchId, effectiveFrom, effectiveTo },
+      },
+      req.organizationId,
+      req.user.id
+    )
+    .catch(() => {});
 
   return sendResponse(res, 200, "Staff roster updated successfully", roster);
 });

@@ -4,8 +4,23 @@ import { sendResponse } from "../../utils/response.js";
 import { asyncHandler, AppError } from "../../utils/errors.js";
 
 import { assertCanManageBranches } from "../../utils/branchAuthorization.js";
+import { AuditLogService } from "../../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 
 const staffService = new StaffService();
+const auditLogService = new AuditLogService();
+const logStaffAudit = (req, payload) =>
+  auditLogService
+    .createAuditLog(
+      {
+        branchId: req.branchId || req.body?.branchId || null,
+        entityType: "Staff",
+        ...payload,
+      },
+      req.organizationId,
+      req.user.id
+    )
+    .catch(() => {});
 
 /**
  * Helper to retrieve and validate active branch context from request headers.
@@ -65,6 +80,13 @@ export const createStaff = asyncHandler(async (req, res) => {
     req.organizationId,
     req.user.id
   );
+  await logStaffAudit(req, {
+    action: AUDIT_ACTIONS.STAFF_CREATED,
+    entityId: staff?._id || null,
+    branchId: activeBranchId,
+    description: `Created staff ${staff?.name || req.body?.name || ""}`,
+    metadata: req.body,
+  });
   return sendResponse(res, 201, "Staff created successfully", staff);
 });
 
@@ -86,26 +108,53 @@ export const getStaff = asyncHandler(async (req, res) => {
 
 export const updateStaff = asyncHandler(async (req, res) => {
   const staff = await staffService.updateStaff(req.params.id, req.body, req.organizationId, req.user.id);
+  await logStaffAudit(req, {
+    action: AUDIT_ACTIONS.STAFF_UPDATED,
+    entityId: req.params.id,
+    description: `Updated staff ${req.params.id}`,
+    metadata: req.body,
+  });
   return sendResponse(res, 200, "Staff updated successfully", staff);
 });
 
 export const deleteStaff = asyncHandler(async (req, res) => {
   await staffService.deleteStaff(req.params.id, req.organizationId, req.user.id);
+  await logStaffAudit(req, {
+    action: AUDIT_ACTIONS.STAFF_DELETED,
+    entityId: req.params.id,
+    description: `Deleted staff ${req.params.id}`,
+  });
   return sendResponse(res, 200, "Staff soft deleted successfully");
 });
 
 export const restoreStaff = asyncHandler(async (req, res) => {
   const staff = await staffService.restoreStaff(req.params.id, req.organizationId, req.user.id);
+  await logStaffAudit(req, {
+    action: AUDIT_ACTIONS.STAFF_REACTIVATED,
+    entityId: req.params.id,
+    description: `Reactivated staff ${req.params.id}`,
+  });
   return sendResponse(res, 200, "Staff reactivated successfully", staff);
 });
 
 export const linkUser = asyncHandler(async (req, res) => {
   const staff = await staffService.linkUser(req.params.id, req.body.userId, req.organizationId, req.user.id);
+  await logStaffAudit(req, {
+    action: AUDIT_ACTIONS.USER_LINKED,
+    entityId: req.params.id,
+    description: `Linked user ${req.body.userId} to staff ${req.params.id}`,
+    metadata: { userId: req.body.userId },
+  });
   return sendResponse(res, 200, "User linked successfully", staff);
 });
 
 export const unlinkUser = asyncHandler(async (req, res) => {
   const staff = await staffService.unlinkUser(req.params.id, req.organizationId, req.user.id);
+  await logStaffAudit(req, {
+    action: AUDIT_ACTIONS.USER_UNLINKED,
+    entityId: req.params.id,
+    description: `Unlinked user from staff ${req.params.id}`,
+  });
   return sendResponse(res, 200, "User unlinked successfully", staff);
 });
 
@@ -118,12 +167,26 @@ export const assignBranch = asyncHandler(async (req, res) => {
     req.organizationId,
     req.user.id
   );
+  await logStaffAudit(req, {
+    action: AUDIT_ACTIONS.BRANCH_ASSIGNED,
+    entityId: req.params.id,
+    branchId: req.body.branchId,
+    description: `Assigned branch ${req.body.branchId} to staff ${req.params.id}`,
+    metadata: { branchId: req.body.branchId, isPrimary: req.body.isPrimary },
+  });
   return sendResponse(res, 201, "Branch assigned successfully", result);
 });
 
 export const removeBranch = asyncHandler(async (req, res) => {
   await assertCanManageBranches(req.user, req.params.branchId, req.organizationId);
   await staffService.removeBranch(req.params.id, req.params.branchId, req.organizationId, req.user.id);
+  await logStaffAudit(req, {
+    action: AUDIT_ACTIONS.BRANCH_REMOVED,
+    entityId: req.params.id,
+    branchId: req.params.branchId,
+    description: `Removed branch ${req.params.branchId} from staff ${req.params.id}`,
+    metadata: { branchId: req.params.branchId },
+  });
   return sendResponse(res, 200, "Branch assignment removed successfully");
 });
 
@@ -134,11 +197,23 @@ export const assignService = asyncHandler(async (req, res) => {
     req.organizationId,
     req.user.id
   );
+  await logStaffAudit(req, {
+    action: AUDIT_ACTIONS.SERVICE_ASSIGNED,
+    entityId: req.params.id,
+    description: `Assigned service ${req.body.serviceId} to staff ${req.params.id}`,
+    metadata: { serviceId: req.body.serviceId },
+  });
   return sendResponse(res, 201, "Service capability assigned successfully", result);
 });
 
 export const removeService = asyncHandler(async (req, res) => {
   await staffService.removeService(req.params.id, req.params.serviceId, req.organizationId, req.user.id);
+  await logStaffAudit(req, {
+    action: AUDIT_ACTIONS.SERVICE_REMOVED,
+    entityId: req.params.id,
+    description: `Removed service ${req.params.serviceId} from staff ${req.params.id}`,
+    metadata: { serviceId: req.params.serviceId },
+  });
   return sendResponse(res, 200, "Service capability mapping removed successfully");
 });
 

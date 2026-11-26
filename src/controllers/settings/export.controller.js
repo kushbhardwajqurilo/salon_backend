@@ -1,6 +1,10 @@
 import { asyncHandler } from "../../utils/errors.js";
 import { sendResponse } from "../../utils/response.js";
 import { ExportService } from "../../services/settings/export.service.js";
+import { AuditLogService } from "../../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
+
+const auditLogService = new AuditLogService();
 
 const exportService = new ExportService();
 
@@ -24,6 +28,20 @@ export const requestExport = asyncHandler(async (req, res) => {
     idempotencyKey,
     user: req.user,
   });
+  await auditLogService
+    .createAuditLog(
+      {
+        action: AUDIT_ACTIONS.EXPORT_REQUESTED,
+        entityType: "DataExport",
+        entityId: result?._id || null,
+        branchId: req.branchId || null,
+        description: `Requested ${req.body.format} export for ${req.body.domain}`,
+        metadata: { domain: req.body.domain, format: req.body.format },
+      },
+      req.organizationId,
+      req.user.id
+    )
+    .catch(() => {});
   return sendResponse(res, 201, "Export job completed", result);
 });
 

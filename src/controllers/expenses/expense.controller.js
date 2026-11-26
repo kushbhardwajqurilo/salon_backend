@@ -204,6 +204,20 @@ export const replenishPettyCash = asyncHandler(async (req, res) => {
     req.body,
     idempotencyKey
   );
+  void auditLogService
+    .createAuditLog(
+      {
+        action: AUDIT_ACTIONS.PETTY_CASH_RECORDED,
+        entityType: "PettyCash",
+        entityId: result?._id || null,
+        branchId,
+        description: `Replenished petty cash for branch ${branchId}`,
+        metadata: { type: "replenish", amount: req.body?.amount },
+      },
+      organizationId,
+      req.user._id
+    )
+    .catch(() => {});
   res.status(201).json({ success: true, data: result });
 });
 
@@ -220,6 +234,20 @@ export const recoverPettyCashPayout = asyncHandler(async (req, res) => {
     req.body,
     idempotencyKey
   );
+  void auditLogService
+    .createAuditLog(
+      {
+        action: AUDIT_ACTIONS.PETTY_CASH_RECORDED,
+        entityType: "PettyCash",
+        entityId: result?._id || null,
+        branchId,
+        description: `Recovered petty cash payout for branch ${branchId}`,
+        metadata: { type: "recover", amount: req.body?.amount },
+      },
+      organizationId,
+      req.user._id
+    )
+    .catch(() => {});
   res.status(201).json({ success: true, data: result });
 });
 

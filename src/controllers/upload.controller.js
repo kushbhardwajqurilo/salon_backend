@@ -4,6 +4,10 @@ import {
   deleteFromCloudinary,
 } from "../services/cloudinary.service.js";
 import { env } from "../config/env.js";
+import { AuditLogService } from "../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../models/audit/auditLog.model.js";
+
+const auditLogService = new AuditLogService();
 
 const ALLOWED_FOLDERS = {
   "employees/avatars": {
@@ -49,6 +53,21 @@ export const generateUploadSignature = async (req, res) => {
       apiSecret,
     );
 
+    await auditLogService
+      .createAuditLog(
+        {
+          action: AUDIT_ACTIONS.MEDIA_UPLOAD_SIGNED,
+          entityType: "MediaUpload",
+          entityId: publicId,
+          branchId: req.branchId || req.user?.branchId || null,
+          description: `Generated upload signature for ${folder}`,
+          metadata: { folder, publicId },
+        },
+        req.user?.organizationId || null,
+        req.user?._id || req.user?.id || null,
+      )
+      .catch(() => {});
+
     return res.status(200).json({
       success: true,
       data: {
@@ -90,6 +109,21 @@ export const cleanupUpload = async (req, res) => {
     }
 
     await deleteFromCloudinary(target);
+
+    await auditLogService
+      .createAuditLog(
+        {
+          action: AUDIT_ACTIONS.MEDIA_UPLOAD_CLEANED,
+          entityType: "MediaUpload",
+          entityId: target,
+          branchId: req.branchId || req.user?.branchId || null,
+          description: `Cleaned up media asset ${target}`,
+          metadata: { publicId, url },
+        },
+        req.user?.organizationId || null,
+        req.user?._id || req.user?.id || null,
+      )
+      .catch(() => {});
 
     return res.status(200).json({
       success: true,

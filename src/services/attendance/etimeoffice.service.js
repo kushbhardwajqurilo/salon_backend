@@ -6,17 +6,24 @@
  * are never duplicated or lost.
  */
 
-const ETIMEOFFICE_BASE_URL = "https://api.etimeoffice.com/api";
+const ETIMEOFFICE_BASE_URL = (
+  process.env.ETIMEOFFICE_BASE_URL || "https://api.etimeoffice.com/api"
+).replace(/\/+$/, "");
 
 /**
  * Build Basic Auth header per E-TimeOffice specification:
  * Base64(Corporateid:Username:Password:True)
  */
 export function buildETimeOfficeAuthHeader({
-  corporateId,
-  username,
-  password,
-}) {
+  corporateId = process.env.ETIMEOFFICE_CORPORATE_ID,
+  username = process.env.ETIMEOFFICE_USERNAME,
+  password = process.env.ETIMEOFFICE_PASSWORD,
+} = {}) {
+  if (!corporateId || !username || !password) {
+    throw new Error(
+      "Missing E-TimeOffice credentials (ETIMEOFFICE_CORPORATE_ID, ETIMEOFFICE_USERNAME, ETIMEOFFICE_PASSWORD)",
+    );
+  }
   const raw = `${corporateId}:${username}:${password}:True`;
   const encoded = Buffer.from(raw, "utf8").toString("base64");
   return `Basic ${encoded}`;
@@ -38,9 +45,9 @@ export function parseETimeOfficeDate(punchDateStr) {
  * Fetch incremental punches from E-TimeOffice DownloadLastPunchData.
  */
 export async function fetchLastPunchData({
-  corporateId,
-  username,
-  password,
+  corporateId = process.env.ETIMEOFFICE_CORPORATE_ID,
+  username = process.env.ETIMEOFFICE_USERNAME,
+  password = process.env.ETIMEOFFICE_PASSWORD,
   lastRecord,
   empcode = "ALL",
 }) {

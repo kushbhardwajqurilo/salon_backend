@@ -348,7 +348,21 @@ export class AuthService {
   async logout(token) {
     if (!token) return;
     try {
-      await this.sessionRepo.invalidateSession(token);
+      const session = await this.sessionRepo.invalidateSession(token);
+      if (session?.userId) {
+        const user = await this.userRepo.findById?.(session.userId).catch(() => null);
+        await this.auditLogService?.createAuditLog?.(
+          {
+            action: AUDIT_ACTIONS.AUTH_LOGOUT,
+            entityType: "User",
+            entityId: session.userId,
+            description: "User logged out",
+            source: "web",
+          },
+          user?.organizationId || null,
+          session.userId
+        ).catch(() => {});
+      }
     } catch (err) {
       // Ignore errors on logout
     }

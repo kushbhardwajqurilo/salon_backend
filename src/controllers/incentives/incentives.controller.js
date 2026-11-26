@@ -9,7 +9,21 @@ import { Staff } from "../../models/staff/staff.model.js";
 import { Branch } from "../../models/branches/branch.model.js";
 import { schemeAssignmentService } from "../../services/incentives/schemeAssignment.service.js";
 import { IncentiveCalculationEngine } from "../../services/incentives/incentiveCalculation.engine.js";
-import { AuditLog } from "../../models/audit/auditLog.model.js";
+import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
+import { AuditLogService } from "../../services/audit/auditLog.service.js";
+
+const auditLogService = new AuditLogService();
+const logIncentiveAudit = (req, payload) =>
+  auditLogService
+    .createAuditLog(
+      {
+        branchId: req.currentBranch?._id || req.branchId || req.body?.branchId || null,
+        ...payload,
+      },
+      req.user?.organizationId || null,
+      req.user?._id || req.user?.id || null
+    )
+    .catch(() => {});
 import { hasUserPermission } from "../../middleware/rbac.js";
 import { AppError } from "../../utils/errors.js";
 import { Invoice } from "../../models/billing/invoice.model.js";
@@ -205,6 +219,14 @@ export const createScheme = async (req, res, next) => {
       await session.endSession();
     }
 
+    await logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_SCHEME_CREATED,
+      entityType: "IncentiveScheme",
+      entityId: scheme?._id || null,
+      description: `Created incentive scheme ${scheme?.name || ""} (${scheme?.code || ""})`,
+      metadata: { name: scheme?.name, code: scheme?.code, schemeType: scheme?.schemeType },
+    });
+
     res.status(201).json({
       success: true,
       data: scheme,
@@ -316,6 +338,14 @@ export const updateScheme = async (req, res, next) => {
 
     await scheme.save();
 
+    await logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_SCHEME_UPDATED,
+      entityType: "IncentiveScheme",
+      entityId: scheme._id,
+      description: `Updated incentive scheme ${scheme.name || scheme._id}`,
+      metadata: req.body,
+    });
+
     res.json({
       success: true,
       data: scheme,
@@ -347,6 +377,13 @@ export const activateScheme = async (req, res, next) => {
     scheme.updatedBy = userId;
     await scheme.save();
 
+    await logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_SCHEME_UPDATED,
+      entityType: "IncentiveScheme",
+      entityId: scheme._id,
+      description: `Activated incentive scheme ${scheme.name || scheme._id}`,
+      metadata: { status: "active" },
+    });
     res.json({ success: true, data: scheme, message: "Scheme activated successfully" });
   } catch (err) {
     next(err);
@@ -367,6 +404,13 @@ export const pauseScheme = async (req, res, next) => {
     scheme.updatedBy = userId;
     await scheme.save();
 
+    await logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_SCHEME_UPDATED,
+      entityType: "IncentiveScheme",
+      entityId: scheme._id,
+      description: `Paused incentive scheme ${scheme.name || scheme._id}`,
+      metadata: { status: "paused" },
+    });
     res.json({ success: true, data: scheme, message: "Scheme paused successfully" });
   } catch (err) {
     next(err);
@@ -387,6 +431,13 @@ export const archiveScheme = async (req, res, next) => {
     scheme.updatedBy = userId;
     await scheme.save();
 
+    await logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_SCHEME_UPDATED,
+      entityType: "IncentiveScheme",
+      entityId: scheme._id,
+      description: `Archived incentive scheme ${scheme.name || scheme._id}`,
+      metadata: { status: "archived" },
+    });
     res.json({ success: true, data: scheme, message: "Scheme archived successfully" });
   } catch (err) {
     next(err);
@@ -404,6 +455,22 @@ export const createAssignment = async (req, res, next) => {
       organizationId,
       userId
     );
+
+    await logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_SCHEME_CREATED,
+      entityType: "IncentiveScheme",
+      entityId: scheme?._id || null,
+      description: `Created incentive scheme ${scheme?.name || ""} (${scheme?.code || ""})`,
+      metadata: { name: scheme?.name, code: scheme?.code, schemeType: scheme?.schemeType },
+    });
+
+    await logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_ASSIGNMENT_CREATED,
+      entityType: "SchemeAssignment",
+      entityId: assignment?._id || null,
+      description: `Assigned incentive scheme ${req.body?.schemeId || ""} to staff ${req.body?.staffId || ""}`,
+      metadata: req.body,
+    });
 
     res.status(201).json({
       success: true,
@@ -539,6 +606,13 @@ export const computeAttendanceEvaluation = async (req, res, next) => {
       schemeId: req.body.schemeId,
       monthYear: req.body.monthYear,
     });
+    await logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_EVALUATION_COMPUTED,
+      entityType: "IncentiveEvaluation",
+      entityId: evaluation?._id || null,
+      description: `Computed attendance bonus evaluation for staff ${req.body.staffId} (${req.body.monthYear})`,
+      metadata: { staffId: req.body.staffId, schemeId: req.body.schemeId, monthYear: req.body.monthYear },
+    });
     res.json({
       success: true,
       data: evaluation,
@@ -558,6 +632,12 @@ export const finalizeAttendanceEvaluation = async (req, res, next) => {
       branchId: req.branchId,
       evaluationId: req.params.id,
       userId: req.user.id || req.user._id,
+    });
+    void logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_EVALUATION_FINALIZED,
+      entityType: "IncentiveEvaluation",
+      entityId: req.params.id,
+      description: `Finalized attendance bonus evaluation ${req.params.id}`,
     });
     res.json({
       success: true,
@@ -765,6 +845,13 @@ export const recordRecoveryPayment = async (req, res, next) => {
       userId: req.user.id || req.user._id,
       ...req.body,
     });
+    await logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_RECOVERY_PAYMENT_RECORDED,
+      entityType: "IncentiveRecoveryPayment",
+      entityId: req.params.id,
+      description: `Recorded recovery payment attempt for obligation ${req.params.id}`,
+      metadata: req.body,
+    });
     res.status(result.isIdempotentReplay ? 200 : 201).json({
       success: true,
       data: result,
@@ -785,6 +872,13 @@ export const confirmRecoveryPayment = async (req, res, next) => {
       obligationId: req.params.id,
       paymentId: req.params.paymentId,
       userId: req.user.id || req.user._id,
+    });
+    await logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_RECOVERY_PAYMENT_CONFIRMED,
+      entityType: "IncentiveRecoveryPayment",
+      entityId: req.params.paymentId,
+      description: `Confirmed recovery payment ${req.params.paymentId} for obligation ${req.params.id}`,
+      metadata: { obligationId: req.params.id, paymentId: req.params.paymentId },
     });
     res.json({
       success: true,
@@ -808,6 +902,13 @@ export const failRecoveryPayment = async (req, res, next) => {
       userId: req.user.id || req.user._id,
       failureReason: req.body.failureReason,
     });
+    await logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_RECOVERY_PAYMENT_FAILED,
+      entityType: "IncentiveRecoveryPayment",
+      entityId: req.params.paymentId,
+      description: `Marked recovery payment ${req.params.paymentId} as failed`,
+      metadata: { obligationId: req.params.id, paymentId: req.params.paymentId, failureReason: req.body.failureReason },
+    });
     res.json({
       success: true,
       data: result,
@@ -829,6 +930,13 @@ export const reverseRecoveryPayment = async (req, res, next) => {
       paymentId: req.params.paymentId,
       userId: req.user.id || req.user._id,
       reversalReason: req.body.reversalReason,
+    });
+    void logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_RECOVERY_PAYMENT_REVERSED,
+      entityType: "IncentiveRecoveryPayment",
+      entityId: req.params.paymentId,
+      description: `Reversed recovery payment ${req.params.paymentId} for obligation ${req.params.id}`,
+      metadata: { obligationId: req.params.id, paymentId: req.params.paymentId, reversalReason: req.body.reversalReason },
     });
     res.json({
       success: true,
@@ -988,6 +1096,14 @@ export const confirmWalkInFulfillment = async (req, res, next) => {
         userId,
         session,
       });
+    });
+
+    await logIncentiveAudit(req, {
+      action: AUDIT_ACTIONS.INCENTIVE_FULFILLMENT_CONFIRMED,
+      entityType: "Invoice",
+      entityId: invoiceId,
+      description: `Confirmed walk-in service fulfillment for invoice ${invoiceId}`,
+      metadata: { invoiceId, lineIds, reason },
     });
 
     res.json({
