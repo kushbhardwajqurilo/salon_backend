@@ -1,0 +1,72 @@
+import { EmailService } from "./email.service.js";
+import { SmsService } from "./sms.service.js";
+import { Notification } from "../../models/notifications/notification.model.js";
+import { redactSensitiveText } from "./notificationEventContract.js";
+
+const emailService = new EmailService();
+const smsService = new SmsService();
+
+export async function sendViaEmailAdapter({ to, subject, html, text }) {
+  const info = await emailService.sendMail({ to, subject, html, text });
+  return {
+    accepted: true,
+    provider: "nodemailer",
+    messageId: info?.messageId || null,
+    devMode: Boolean(info?.devMode),
+  };
+}
+
+export async function sendViaSmsAdapter({ phone, message, templateId }) {
+  const res = await smsService.sendSms({ phone, message, templateId });
+  return {
+    accepted: true,
+    provider: "autobysms",
+    devMode: Boolean(res?.devMode),
+  };
+}
+
+/**
+ * Executes a notification delivery atomically through its Notification record.
+ * Transitions: queued/pending -> processing -> sent (or failed).
+ * Never sets `delivered` without genuine provider delivery evidence.
+ */
+export async function dispatchNotificationJob(notificationId, dispatchFn) {
+  const notification = await Notification.findOneAndUpdate(
+    {
+      notificationId,
+      status: { $in: ["queued", "pending"] },
+    },
+    { $set: { status: "processing" } },
+    { new: true },
+  );
+
+  if (!notification) {
+    return { skipped: true, notificationId };
+  }
+
+  try {
+    const result = await dispatchFn(notification);
+    await Notification.updateOne(
+      { _id: notification._id, status: "processing" },
+      {
+        $set: {
+          status: "sent",
+          sentAt: new Date(),
+          failureReason: null,
+        },
+      },
+    );
+    return { skipped: false, status: "sent", notificationId, result };
+  } catch (err) {
+    await Notification.updateOne(
+      { _id: notification._id, status: "processing" },
+      {
+        $set: {
+          status: "failed",
+          failureReason: redactSensitiveText(err?.message || "Provider dispatch failed"),
+        },
+      },
+    );
+    throw err;
+  }
+}

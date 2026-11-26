@@ -6103,6 +6103,31 @@ export class BillingService {
 
         await updatedInvoice.save({ session });
 
+        await emitBillingOutboxEvent({
+          eventType: "invoice.payment_recorded",
+          invoice: updatedInvoice,
+          operationId: String(paymentDoc._id),
+          amountInPaise: Math.round((paymentDoc.amount || 0) * 100),
+          session,
+        });
+        if (updatedInvoice.paymentStatus === "partial") {
+          await emitBillingOutboxEvent({
+            eventType: "invoice.partial_payment",
+            invoice: updatedInvoice,
+            operationId: String(paymentDoc._id),
+            amountInPaise: Math.round((paymentDoc.amount || 0) * 100),
+            session,
+          });
+        } else if (updatedInvoice.paymentStatus === "paid") {
+          await emitBillingOutboxEvent({
+            eventType: "invoice.settled",
+            invoice: updatedInvoice,
+            operationId: String(paymentDoc._id),
+            amountInPaise: Math.round((paymentDoc.amount || 0) * 100),
+            session,
+          });
+        }
+
         // If invoice contains product lines, atomically commit stock reservations into `pos_sale` ledger movements
         const hasProductLines = updatedInvoice.lines.some(
           (l) => l.lineType === "product",
