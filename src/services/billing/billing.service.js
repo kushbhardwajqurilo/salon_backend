@@ -33,6 +33,7 @@ import { Coupon } from "../../models/coupons/coupon.model.js";
 import { CouponUsage } from "../../models/coupons/couponUsage.model.js";
 import { CouponCustomerUsage } from "../../models/coupons/couponCustomerUsage.model.js";
 import { smsQueue } from "../../queues/client.js";
+import { emitBillingOutboxEvent } from "./billingNotificationOutbox.service.js";
 import { logger } from "../../utils/logger.js";
 import {
   loadStaffAttributionSnapshot,
@@ -3365,6 +3366,14 @@ export class BillingService {
         },
       });
       await auditLog.save({ session });
+
+      await emitBillingOutboxEvent({
+        eventType: "invoice.payment_reversed",
+        invoice: updatedInvoice,
+        operationId: String(payment._id),
+        amountInPaise: Math.round((payment.amount || 0) * 100),
+        session,
+      });
       return invoice;
     });
   }
@@ -5173,6 +5182,14 @@ export class BillingService {
       });
       await auditLog.save({ session });
 
+      await emitBillingOutboxEvent({
+        eventType: "invoice.payment_reversed",
+        invoice: updatedInvoice,
+        operationId: String(payment._id),
+        amountInPaise: Math.round((payment.amount || 0) * 100),
+        session,
+      });
+
       return invoice;
     });
   }
@@ -5334,6 +5351,14 @@ export class BillingService {
         },
       });
       await auditLog.save({ session });
+
+      await emitBillingOutboxEvent({
+        eventType: "invoice.payment_reversed",
+        invoice: updatedInvoice,
+        operationId: String(payment._id),
+        amountInPaise: Math.round((payment.amount || 0) * 100),
+        session,
+      });
 
       return invoice;
     });
@@ -5583,6 +5608,14 @@ export class BillingService {
         },
       });
       await auditLog.save({ session });
+
+      await emitBillingOutboxEvent({
+        eventType: "invoice.payment_reversed",
+        invoice: updatedInvoice,
+        operationId: String(payment._id),
+        amountInPaise: Math.round((payment.amount || 0) * 100),
+        session,
+      });
 
       // If invoice has now reached fully settled 'paid' status, award loyalty points atomically
       if (updatedInvoice.paymentStatus === "paid") {
@@ -6212,6 +6245,14 @@ export class BillingService {
         },
       });
       await auditLog.save({ session });
+
+      await emitBillingOutboxEvent({
+        eventType: "invoice.payment_reversed",
+        invoice: updatedInvoice,
+        operationId: String(payment._id),
+        amountInPaise: Math.round((payment.amount || 0) * 100),
+        session,
+      });
 
       // Trigger Incentives Void/Unsettle Hook
       try {
@@ -7495,6 +7536,14 @@ export class BillingService {
         },
       });
       await auditLog.save({ session });
+
+      await emitBillingOutboxEvent({
+        eventType: "invoice.payment_reversed",
+        invoice: updatedInvoice,
+        operationId: String(payment._id),
+        amountInPaise: Math.round((payment.amount || 0) * 100),
+        session,
+      });
 
       // Trigger Incentives Return Clawback Hook
       const returnedLineItems = refundAllocations

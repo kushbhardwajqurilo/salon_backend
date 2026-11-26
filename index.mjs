@@ -21,6 +21,10 @@ import {
   startSubscriptionCancellationWorker,
   stopSubscriptionCancellationWorker,
 } from "./src/workers/subscriptionCancellation.worker.js";
+import {
+  startAttendanceSyncWorker,
+  stopAttendanceSyncWorker,
+} from "./src/workers/attendanceSync.worker.js";
 import mongoose from "mongoose";
 
 let server;
@@ -42,6 +46,9 @@ const serverStart = async () => {
     // 3c. Start Subscription Cancellation BullMQ Worker
     startSubscriptionCancellationWorker();
 
+    // 3d. Start Attendance Provider Sync Worker
+    startAttendanceSyncWorker();
+
     // 4. Start Express Web Server
     server = app.listen(env.PORT, () => {
       logger.info(
@@ -62,6 +69,7 @@ const gracefulShutdown = (signal) => {
     server.close(async () => {
       logger.info("🛑 Express server stopped.");
       try {
+        await stopAttendanceSyncWorker();
         await stopSubscriptionCancellationWorker();
         await stopSubscriptionReconciliationWorker();
         await stopNotificationWorkers();

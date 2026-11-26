@@ -1483,6 +1483,9 @@ async function updateStaffDeviceMapping({
   organizationId,
   branchId,
   actorId,
+  provider,
+  deviceId,
+  externalEmployeeCode,
   notes,
   effectiveTo,
   mappingStatus,
@@ -1497,7 +1500,41 @@ async function updateStaffDeviceMapping({
     throw new AppError("Staff device mapping not found.", 404);
   }
 
+  const nextProvider = provider !== undefined ? provider.trim() : mapping.provider;
+  const nextDeviceId = deviceId !== undefined ? deviceId.trim() : mapping.deviceId;
+  const nextExternalCode =
+    externalEmployeeCode !== undefined
+      ? externalEmployeeCode.trim()
+      : mapping.externalEmployeeCode;
+
+  if (
+    provider !== undefined ||
+    deviceId !== undefined ||
+    externalEmployeeCode !== undefined
+  ) {
+    const conflict = await StaffDeviceMapping.findOne({
+      _id: { $ne: id },
+      organizationId,
+      branchId,
+      provider: nextProvider,
+      deviceId: nextDeviceId,
+      externalEmployeeCode: nextExternalCode,
+      isActive: true,
+    }).lean();
+    if (conflict) {
+      throw new AppError(
+        `An active mapping already exists for ${nextProvider} / ${nextDeviceId} / ${nextExternalCode}.`,
+        409,
+      );
+    }
+  }
+
   const updates = { updatedBy: actorId };
+  if (provider !== undefined) updates.provider = nextProvider;
+  if (deviceId !== undefined) updates.deviceId = nextDeviceId;
+  if (externalEmployeeCode !== undefined) {
+    updates.externalEmployeeCode = nextExternalCode;
+  }
   if (notes !== undefined) {
     updates.notes = notes ? notes.trim() : "";
   }
@@ -1522,7 +1559,7 @@ async function updateStaffDeviceMapping({
     organizationId,
     branchId,
     actorId,
-    action: "STAFF_DEVICE_MAPPING_UPDATED",
+    action: "ATTENDANCE_DEVICE_MAPPING_UPDATED",
     entityType: "StaffDeviceMapping",
     entityId: mapping._id,
     description: `Staff device mapping updated for external ID ${mapping.externalEmployeeCode}.`,

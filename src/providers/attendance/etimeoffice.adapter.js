@@ -30,21 +30,47 @@ export default class eTimeAdapter {
     this.name = 'eTimeOffice';
   }
 
-  // Validate provider request — throws error until API docs available
-  validateRequestSource(req) {
-    throw new Error(
-      'eTimeOffice adapter: Official API documentation not yet available. ' +
-      'Integration pending account access and documentation. ' +
-      'See: eTimeOffice integration pending in Attendance design.'
-    );
+  // Validate provider request — polling sync is initiated internally by our backend
+  validateRequestSource() {
+    return null;
   }
 
-  // Normalize payload — stub, will be implemented with official API docs
+  // Normalize E-TimeOffice punch payload into the standard RawProviderEvent shape
   normalizePayload(rawPayload) {
-    throw new Error(
-      'eTimeOffice adapter: Official API documentation not yet available. ' +
-      'Integration pending account access and documentation.'
+    const raw = rawPayload?.raw || rawPayload || {};
+    const externalEmployeeCode = String(
+      rawPayload?.externalEmployeeCode || raw.Empcode || "",
+    ).trim();
+    const deviceId = String(
+      rawPayload?.deviceId ||
+        raw.mcid ||
+        raw.SerialNumber ||
+        raw.DeviceSerialNo ||
+        "default",
+    ).trim();
+    const punchTime = rawPayload?.punchTime || new Date().toISOString();
+    const providerEventId = String(
+      rawPayload?.eventId ||
+        `eTimeOffice-${externalEmployeeCode}-${raw.ID || punchTime}`,
     );
+
+    if (!externalEmployeeCode) {
+      throw new Error("eTimeOffice adapter: missing Empcode in punch payload.");
+    }
+
+    const rawFlag = String(raw.M_Flag ?? rawPayload?.punchType ?? "").trim().toLowerCase();
+    const punchType =
+      rawFlag === "out" || rawFlag === "o" || rawFlag === "1" ? "out" : "in";
+
+    return {
+      provider: "eTimeOffice",
+      externalEventId: providerEventId,
+      deviceId,
+      externalEmployeeCode,
+      punchAt: punchTime,
+      punchType,
+      rawPayload: raw,
+    };
   }
 
 }

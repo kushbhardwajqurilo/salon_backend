@@ -15,6 +15,10 @@ import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 import { AppError } from "../../utils/errors.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { emailQueue, smsQueue } from "../../queues/client.js";
+import {
+  scheduleAppointmentReminderOutbox,
+  cancelAppointmentReminderNotifications,
+} from "./appointmentReminderOutbox.service.js";
 import { logger } from "../../utils/logger.js";
 import mongoose from "mongoose";
 import crypto from "crypto";
@@ -183,25 +187,40 @@ export class AppointmentService {
     };
 
     try {
-      if (channel === "email" || channel === "both") {
-        const jobId = `apt_reminder_${aptIdStr}_email_${offsetMinutes}`;
-        await emailQueue.add("sendAppointmentReminderEmail", jobPayload, {
-          jobId,
-          delay,
-          removeOnComplete: true,
+      if (process.env.USE_OUTBOX_APPOINTMENT_REMINDERS === "true") {
+        await scheduleAppointmentReminderOutbox({
+          appointment,
+          availableAt: sendAt,
         });
-        updates["reminder.email.status"] = "scheduled";
-        updates["reminder.email.failureReason"] = null;
-      }
-      if (channel === "sms" || channel === "both") {
-        const jobId = `apt_reminder_${aptIdStr}_sms_${offsetMinutes}`;
-        await smsQueue.add("sendAppointmentReminderSMS", jobPayload, {
-          jobId,
-          delay,
-          removeOnComplete: true,
-        });
-        updates["reminder.sms.status"] = "scheduled";
-        updates["reminder.sms.failureReason"] = null;
+        if (channel === "email" || channel === "both") {
+          updates["reminder.email.status"] = "scheduled";
+          updates["reminder.email.failureReason"] = null;
+        }
+        if (channel === "sms" || channel === "both") {
+          updates["reminder.sms.status"] = "scheduled";
+          updates["reminder.sms.failureReason"] = null;
+        }
+      } else {
+        if (channel === "email" || channel === "both") {
+          const jobId = `apt_reminder_${aptIdStr}_email_${offsetMinutes}`;
+          await emailQueue.add("sendAppointmentReminderEmail", jobPayload, {
+            jobId,
+            delay,
+            removeOnComplete: true,
+          });
+          updates["reminder.email.status"] = "scheduled";
+          updates["reminder.email.failureReason"] = null;
+        }
+        if (channel === "sms" || channel === "both") {
+          const jobId = `apt_reminder_${aptIdStr}_sms_${offsetMinutes}`;
+          await smsQueue.add("sendAppointmentReminderSMS", jobPayload, {
+            jobId,
+            delay,
+            removeOnComplete: true,
+          });
+          updates["reminder.sms.status"] = "scheduled";
+          updates["reminder.sms.failureReason"] = null;
+        }
       }
 
       await appointmentRepo.update(
@@ -235,6 +254,14 @@ export class AppointmentService {
     const smsJobId = `apt_reminder_${aptIdStr}_sms_${offset}`;
 
     try {
+      if (process.env.USE_OUTBOX_APPOINTMENT_REMINDERS === "true") {
+        await cancelAppointmentReminderNotifications({
+          organizationId: appointment.organizationId,
+          appointmentId: appointment._id,
+        });
+        return;
+      }
+
       const emailJob = emailQueue?.getJob
         ? await emailQueue.getJob(emailJobId)
         : null;

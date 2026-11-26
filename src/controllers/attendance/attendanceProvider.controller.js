@@ -253,6 +253,8 @@ export const upsertProviderConfigurationController = asyncHandler(async (req, re
   res.status(200).json({ success: true, data, message: 'Provider configuration saved successfully.' });
 });
 
+import { syncETimeOfficeForBranch } from '../../services/attendance/etimeoffice.service.js';
+
 export const toggleProviderConfigurationStatusController = asyncHandler(async (req, res) => {
   const data = await toggleProviderConfigurationStatus({
     ...trustedContext(req),
@@ -261,6 +263,22 @@ export const toggleProviderConfigurationStatusController = asyncHandler(async (r
     isActive: req.body?.isActive,
   });
   res.status(200).json({ success: true, data, message: `Provider ${data.isActive ? 'activated' : 'deactivated'} successfully.` });
+});
+
+export const syncProviderNowController = asyncHandler(async (req, res) => {
+  const { providerName } = req.params;
+  if (providerName.toLowerCase() !== 'etimeoffice') {
+    throw new AppError(`Manual pull sync is not supported for provider "${providerName}".`, 400);
+  }
+  const { organizationId, branchId } = trustedContext(req);
+  const data = await syncETimeOfficeForBranch({ organizationId, branchId, request: req });
+  res.status(200).json({
+    success: true,
+    data,
+    message: data.skipped
+      ? data.reason
+      : `Synced ${data.fetchedCount} punch(es) from E-TimeOffice.`,
+  });
 });
 
 export const recordStaffPunchController = asyncHandler(async (req, res) => {

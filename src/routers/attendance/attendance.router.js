@@ -21,6 +21,7 @@ import {
   getProviderStatusController,
   upsertProviderConfigurationController,
   toggleProviderConfigurationStatusController,
+  syncProviderNowController,
   getStaffAttendanceDetailController,
   getStaffDeviceMappingByIdController,
   ingestProviderEventsController,
@@ -47,6 +48,7 @@ router.get('/leave-appointment-conflicts', requireActiveBranch, authorize('atten
 router.get('/providers/status', requireActiveBranch, authorize('attendance.view'), getProviderStatusController);
 router.put('/providers/:providerName/configuration', requireActiveBranch, authorize('attendance.adjust'), upsertProviderConfigurationController);
 router.patch('/providers/:providerName/configuration/status', requireActiveBranch, authorize('attendance.adjust'), toggleProviderConfigurationStatusController);
+router.post('/providers/:providerName/sync', requireActiveBranch, authorize('attendance.adjust'), syncProviderNowController);
 
 // Staff Device Mapping endpoints
 router.get(

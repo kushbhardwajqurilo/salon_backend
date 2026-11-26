@@ -25,6 +25,14 @@ export const updateStaffDeviceMappingSchema = z.object({
     id: z.string().regex(objectIdRegex, 'Invalid mapping ID format'),
   }),
   body: z.object({
+    provider: z.string().trim().min(1, 'Provider is required').max(100).optional(),
+    deviceId: z.string().trim().min(1, 'Device ID is required').max(100).optional(),
+    externalEmployeeCode: z
+      .string()
+      .trim()
+      .min(1, 'Biometric code is required')
+      .max(100)
+      .optional(),
     notes: z.string().trim().max(500, 'Notes cannot exceed 500 characters').optional(),
     mappingStatus: z.enum(['mapped', 'unmapped', 'partial', 'unknown']).optional(),
     effectiveTo: z
