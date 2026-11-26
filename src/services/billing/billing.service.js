@@ -965,6 +965,14 @@ export class BillingService {
       await AuditLog.create(auditData);
     }
 
+    await emitBillingOutboxEvent({
+      eventType: "invoice.created",
+      invoice: invoiceDoc,
+      operationId: String(invoiceDoc._id),
+      amountInPaise: Math.round((invoiceDoc.amountDue || 0) * 100),
+      session,
+    });
+
     return invoiceDoc;
   }
 
@@ -1292,6 +1300,14 @@ export class BillingService {
       await AuditLog.create(auditData);
     }
 
+    await emitBillingOutboxEvent({
+      eventType: "invoice.created",
+      invoice: invoiceDoc,
+      operationId: String(invoiceDoc._id),
+      amountInPaise: Math.round((invoiceDoc.amountDue || 0) * 100),
+      session,
+    });
+
     return invoiceDoc;
   }
 
@@ -1524,6 +1540,14 @@ export class BillingService {
     } else {
       await AuditLog.create(auditData);
     }
+
+    await emitBillingOutboxEvent({
+      eventType: "invoice.created",
+      invoice: invoiceDoc,
+      operationId: String(invoiceDoc._id),
+      amountInPaise: Math.round((invoiceDoc.amountDue || 0) * 100),
+      session,
+    });
 
     return invoiceDoc;
   }
@@ -3076,6 +3100,14 @@ export class BillingService {
     } else {
       await AuditLog.create(auditData);
     }
+
+    await emitBillingOutboxEvent({
+      eventType: "invoice.created",
+      invoice: invoiceDoc,
+      operationId: String(invoiceDoc._id),
+      amountInPaise: Math.round((invoiceDoc.amountDue || 0) * 100),
+      session,
+    });
 
     return invoiceDoc;
   }
@@ -5183,10 +5215,10 @@ export class BillingService {
       await auditLog.save({ session });
 
       await emitBillingOutboxEvent({
-        eventType: "invoice.payment_reversed",
-        invoice: updatedInvoice,
-        operationId: String(payment._id),
-        amountInPaise: Math.round((payment.amount || 0) * 100),
+        eventType: "invoice.created",
+        invoice,
+        operationId: String(invoice._id),
+        amountInPaise: Math.round((invoice.payableAmount || 0) * 100),
         session,
       });
 
@@ -5248,6 +5280,14 @@ export class BillingService {
       invoice.cancelledAt = new Date();
       invoice.cancelledBy = userId;
       invoice.cancellationReason = reason;
+
+      await emitBillingOutboxEvent({
+        eventType: "invoice.voided",
+        invoice,
+        operationId: String(invoice._id),
+        amountInPaise: Math.round((invoice.amountDue || 0) * 100),
+        session,
+      });
 
       // Unlink invoice from any associated standalone subscription and record in invoiceHistory
       if (invoice.subscriptionId) {
@@ -7041,6 +7081,14 @@ export class BillingService {
           userId,
           session,
         });
+
+      await emitBillingOutboxEvent({
+        eventType: "invoice.refunded",
+        invoice,
+        operationId: String(refundPayment[0]._id),
+        amountInPaise: netAmountPaise,
+        session,
+      });
 
       const grossLineAmount = Number(line.lineTotal || 0);
       const lineDiscountAmount = Math.max(
