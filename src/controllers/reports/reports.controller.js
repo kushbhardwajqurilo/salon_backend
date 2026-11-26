@@ -1,6 +1,10 @@
 import { asyncHandler } from "../../utils/errors.js";
 import { sendResponse } from "../../utils/response.js";
 import { reportsService } from "../../services/reports/reports.service.js";
+import { AuditLogService, extractAuditContext } from "../../services/audit/auditLog.service.js";
+import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
+
+const auditLogService = new AuditLogService();
 
 export const getReportsOverview = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
@@ -85,6 +89,22 @@ export const exportReportCSV = asyncHandler(async (req, res) => {
     req.query,
     userPermissions
   );
+
+  await auditLogService
+    .createAuditLog(
+      {
+        action: AUDIT_ACTIONS.SENSITIVE_DATA_EXPORTED,
+        entityType: "Report",
+        entityId: null,
+        branchId: branchId || null,
+        description: `Report CSV exported (${reportType})`,
+        ...extractAuditContext(req),
+        metadata: { reportType, startDate: req.query.startDate, endDate: req.query.endDate, format: "csv" },
+      },
+      organizationId,
+      req.user?._id || req.user?.id || null
+    )
+    .catch(() => {});
 
   res.setHeader("Content-Type", "text/csv");
   res.setHeader(

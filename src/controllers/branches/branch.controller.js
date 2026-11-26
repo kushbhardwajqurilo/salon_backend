@@ -197,11 +197,11 @@ export const updateBranch = asyncHandler(async (req, res) => {
 
   await auditLogService.createAuditLog(
     {
-      action: AUDIT_ACTIONS.BRANCH_UPDATED,
+      action: AUDIT_ACTIONS.BRANCH_DEACTIVATED,
       entityType: "Branch",
       entityId: branch._id,
       branchId: branch._id,
-      description: `Branch '${branch.name}' updated`,
+      description: `Branch '${branch.name}' deactivated`,
       ...extractAuditContext(req),
       metadata: buildBeforeAfterMetadata(beforeState, {
         name: branch.name,
@@ -251,11 +251,11 @@ export const deleteBranch = asyncHandler(async (req, res) => {
 
   await auditLogService.createAuditLog(
     {
-      action: AUDIT_ACTIONS.BRANCH_UPDATED,
+      action: AUDIT_ACTIONS.BRANCH_DEACTIVATED,
       entityType: "Branch",
       entityId: branch._id,
       branchId: branch._id,
-      description: `Branch '${branch.name}' updated`,
+      description: `Branch '${branch.name}' deactivated`,
       ...extractAuditContext(req),
       metadata: buildBeforeAfterMetadata(beforeState, {
         name: branch.name,

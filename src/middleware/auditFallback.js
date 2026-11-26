@@ -27,9 +27,19 @@ const deriveEntityTypeFromPath = (originalUrl = "") => {
  *    domain audit log from a controller/service, records a fallback API_MUTATION_EXECUTED log.
  */
 export const auditFallbackMiddleware = (req, res, next) => {
+  const rawBranchHeader =
+    req.headers?.["x-branch-id"] || req.headers?.["X-Branch-Id"] || null;
+  const headerBranchId =
+    rawBranchHeader &&
+    rawBranchHeader !== "all" &&
+    /^[0-9a-fA-F]{24}$/.test(String(rawBranchHeader))
+      ? String(rawBranchHeader)
+      : null;
+
   const initialContext = {
     ipAddress: req.ip || req.headers?.["x-forwarded-for"] || null,
     userAgent: req.headers?.["user-agent"] || null,
+    branchId: headerBranchId,
     source: "web",
     actorType: "user",
   };
@@ -40,6 +50,7 @@ export const auditFallbackMiddleware = (req, res, next) => {
         if (res.statusCode < 200 || res.statusCode >= 300) return;
         if (isRequestAudited()) return;
         if (req.originalUrl?.includes("/audit-logs")) return;
+        if (req.originalUrl?.includes("/auth/refresh")) return;
 
         const organizationId = req.user?.organizationId || null;
         const userId = req.user?._id || req.user?.id || null;

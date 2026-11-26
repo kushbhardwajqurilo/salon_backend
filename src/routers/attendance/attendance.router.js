@@ -19,6 +19,8 @@ import {
   deactivateStaffDeviceMappingController,
   getMonthlyMusterRollController,
   getProviderStatusController,
+  upsertProviderConfigurationController,
+  toggleProviderConfigurationStatusController,
   getStaffAttendanceDetailController,
   getStaffDeviceMappingByIdController,
   ingestProviderEventsController,
@@ -43,6 +45,8 @@ router.get('/staff/:staffId', requireActiveBranch, authorize('attendance.view'),
 router.get('/branch-conflicts', requireActiveBranch, authorize('attendance.view'), listBranchAttendanceConflictsController);
 router.get('/leave-appointment-conflicts', requireActiveBranch, authorize('attendance.view'), listLeaveAppointmentConflictsController);
 router.get('/providers/status', requireActiveBranch, authorize('attendance.view'), getProviderStatusController);
+router.put('/providers/:providerName/configuration', requireActiveBranch, authorize('attendance.adjust'), upsertProviderConfigurationController);
+router.patch('/providers/:providerName/configuration/status', requireActiveBranch, authorize('attendance.adjust'), toggleProviderConfigurationStatusController);
 
 // Staff Device Mapping endpoints
 router.get(

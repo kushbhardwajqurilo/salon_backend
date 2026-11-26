@@ -17,11 +17,12 @@ const logIncentiveAudit = (req, payload) =>
   auditLogService
     .createAuditLog(
       {
-        branchId: req.currentBranch?._id || req.branchId || req.body?.branchId || null,
+        branchId:
+          req.currentBranch?._id || req.branchId || req.body?.branchId || null,
         ...payload,
       },
       req.user?.organizationId || null,
-      req.user?._id || req.user?.id || null
+      req.user?._id || req.user?.id || null,
     )
     .catch(() => {});
 import { hasUserPermission } from "../../middleware/rbac.js";
@@ -55,7 +56,7 @@ const isBranchAuthorized = (user, branchId) =>
   (user?.branchAccess || []).some(
     (branch) =>
       branch?.isActive !== false &&
-      String(branch?.branchId || branch?._id || branch) === String(branchId)
+      String(branch?.branchId || branch?._id || branch) === String(branchId),
   );
 
 const applyRequestedBranchFilter = (filter, branchId) => {
@@ -64,7 +65,7 @@ const applyRequestedBranchFilter = (filter, branchId) => {
   if (Array.isArray(filter.branchId?.$in)) {
     filter.branchId = {
       $in: filter.branchId.$in.filter(
-        (allowedBranchId) => String(allowedBranchId) === String(branchId)
+        (allowedBranchId) => String(allowedBranchId) === String(branchId),
       ),
     };
   } else {
@@ -83,7 +84,9 @@ const countPendingServiceFulfillment = async ({
     status: "finalized",
     isDeleted: false,
     ...branchScope,
-  }).select("_id appointmentId").lean();
+  })
+    .select("_id appointmentId")
+    .lean();
 
   if (paidInvoices.length === 0) return 0;
 
@@ -92,24 +95,31 @@ const countPendingServiceFulfillment = async ({
     organizationId,
     invoiceId: { $in: invoiceIds },
     eventType: "SETTLED",
-  }).sort({ settlementCycle: -1 }).lean();
+  })
+    .sort({ settlementCycle: -1 })
+    .lean();
   const latestSettlements = new Map();
   for (const event of settlementEvents) {
     const invoiceKey = event.invoiceId.toString();
-    if (!latestSettlements.has(invoiceKey)) latestSettlements.set(invoiceKey, event);
+    if (!latestSettlements.has(invoiceKey))
+      latestSettlements.set(invoiceKey, event);
   }
 
   const appointmentIds = paidInvoices
     .map((invoice) => invoice.appointmentId)
     .filter(Boolean);
-  const appointments = appointmentIds.length > 0
-    ? await Appointment.find({
-        organizationId,
-        _id: { $in: appointmentIds },
-      }).select("_id status").lean()
-    : [];
+  const appointments =
+    appointmentIds.length > 0
+      ? await Appointment.find({
+          organizationId,
+          _id: { $in: appointmentIds },
+        })
+          .select("_id status")
+          .lean()
+      : [];
   const completedAppointments = new Set(
-    appointments.filter((appointment) => appointment.status === "completed")
+    appointments
+      .filter((appointment) => appointment.status === "completed")
       .map((appointment) => appointment._id.toString()),
   );
 
@@ -148,16 +158,24 @@ const countPendingServiceFulfillment = async ({
   const fulfilledWalkInLines = await ServiceFulfillmentEvent.find({
     organizationId,
     $or: pendingWalkInLines,
-  }).select("invoiceId lineItemId").lean();
+  })
+    .select("invoiceId lineItemId")
+    .lean();
   const fulfilledKeys = new Set(
     fulfilledWalkInLines.map(
       (event) => `${event.invoiceId.toString()}:${event.lineItemId.toString()}`,
     ),
   );
 
-  return pendingCount + pendingWalkInLines.filter(
-    (line) => !fulfilledKeys.has(`${line.invoiceId.toString()}:${line.lineItemId.toString()}`),
-  ).length;
+  return (
+    pendingCount +
+    pendingWalkInLines.filter(
+      (line) =>
+        !fulfilledKeys.has(
+          `${line.invoiceId.toString()}:${line.lineItemId.toString()}`,
+        ),
+    ).length
+  );
 };
 
 /**
@@ -170,7 +188,8 @@ export const createScheme = async (req, res, next) => {
   try {
     const organizationId = req.user.organizationId;
     const userId = req.user.id;
-    const { name, code, description, schemeType, calculationBasis, rules } = req.body;
+    const { name, code, description, schemeType, calculationBasis, rules } =
+      req.body;
 
     const existing = await IncentiveScheme.findOne({
       organizationId,
@@ -185,31 +204,35 @@ export const createScheme = async (req, res, next) => {
     try {
       session.startTransaction();
       [scheme] = await IncentiveScheme.create(
-        [{
-          organizationId,
-          name,
-          code: code.toUpperCase(),
-          description,
-          schemeType,
-          calculationBasis,
-          rules,
-          status: "draft",
-          createdBy: userId,
-          updatedBy: userId,
-        }],
-        { session }
+        [
+          {
+            organizationId,
+            name,
+            code: code.toUpperCase(),
+            description,
+            schemeType,
+            calculationBasis,
+            rules,
+            status: "draft",
+            createdBy: userId,
+            updatedBy: userId,
+          },
+        ],
+        { session },
       );
       await AuditLog.create(
-        [{
-          organizationId,
-          actorId: userId,
-          action: "INCENTIVE_SCHEME_CREATED",
-          entityType: "IncentiveScheme",
-          entityId: scheme._id,
-          description: `Incentive scheme '${scheme.code}' created.`,
-          metadata: { schemeCode: scheme.code },
-        }],
-        { session }
+        [
+          {
+            organizationId,
+            actorId: userId,
+            action: "INCENTIVE_SCHEME_CREATED",
+            entityType: "IncentiveScheme",
+            entityId: scheme._id,
+            description: `Incentive scheme '${scheme.code}' created.`,
+            metadata: { schemeCode: scheme.code },
+          },
+        ],
+        { session },
       );
       await session.commitTransaction();
     } catch (err) {
@@ -224,7 +247,11 @@ export const createScheme = async (req, res, next) => {
       entityType: "IncentiveScheme",
       entityId: scheme?._id || null,
       description: `Created incentive scheme ${scheme?.name || ""} (${scheme?.code || ""})`,
-      metadata: { name: scheme?.name, code: scheme?.code, schemeType: scheme?.schemeType },
+      metadata: {
+        name: scheme?.name,
+        code: scheme?.code,
+        schemeType: scheme?.schemeType,
+      },
     });
 
     res.status(201).json({
@@ -284,7 +311,10 @@ export const getSchemeById = async (req, res, next) => {
     const organizationId = req.user.organizationId;
     const { id } = req.params;
 
-    const scheme = await IncentiveScheme.findOne({ _id: id, organizationId }).lean();
+    const scheme = await IncentiveScheme.findOne({
+      _id: id,
+      organizationId,
+    }).lean();
     if (!scheme) {
       throw new AppError("Incentive scheme not found", 404);
     }
@@ -320,19 +350,27 @@ export const updateScheme = async (req, res, next) => {
           "MEMBERSHIP_NET_REVENUE",
           "PRODUCT_NET_REVENUE",
         ].includes(updatedCalculationBasis)) ||
-      (scheme.schemeType === "ATTENDANCE_BONUS" && updatedCalculationBasis !== "ATTENDANCE_DAYS")
+      (scheme.schemeType === "ATTENDANCE_BONUS" &&
+        updatedCalculationBasis !== "ATTENDANCE_DAYS")
     ) {
-      throw new AppError("Calculation basis cannot change across incentive categories", 400);
+      throw new AppError(
+        "Calculation basis cannot change across incentive categories",
+        400,
+      );
     }
     if (name !== undefined) scheme.name = name;
     if (description !== undefined) scheme.description = description;
-    if (calculationBasis !== undefined) scheme.calculationBasis = calculationBasis;
+    if (calculationBasis !== undefined)
+      scheme.calculationBasis = calculationBasis;
     if (rules !== undefined) scheme.rules = rules;
     if (
       scheme.schemeType === "ATTENDANCE_BONUS" &&
       !IncentiveCalculationEngine.supportsAttendanceBonusScheme(scheme)
     ) {
-      throw new AppError("Attendance bonus rules require positive fixed paise and minimum attendance days", 400);
+      throw new AppError(
+        "Attendance bonus rules require positive fixed paise and minimum attendance days",
+        400,
+      );
     }
     scheme.updatedBy = userId;
 
@@ -365,11 +403,12 @@ export const activateScheme = async (req, res, next) => {
 
     const scheme = await IncentiveScheme.findOne({ _id: id, organizationId });
     if (!scheme) throw new AppError("Incentive scheme not found", 404);
-    if (scheme.status === "archived") throw new AppError("Cannot activate an archived scheme", 400);
+    if (scheme.status === "archived")
+      throw new AppError("Cannot activate an archived scheme", 400);
     if (!IncentiveCalculationEngine.supportsAssignableScheme(scheme)) {
       throw new AppError(
         "Only supported service, subscription-sale, membership-sale commission, and verified attendance bonus schemes can be activated",
-        400
+        400,
       );
     }
 
@@ -384,7 +423,11 @@ export const activateScheme = async (req, res, next) => {
       description: `Activated incentive scheme ${scheme.name || scheme._id}`,
       metadata: { status: "active" },
     });
-    res.json({ success: true, data: scheme, message: "Scheme activated successfully" });
+    res.json({
+      success: true,
+      data: scheme,
+      message: "Scheme activated successfully",
+    });
   } catch (err) {
     next(err);
   }
@@ -411,7 +454,11 @@ export const pauseScheme = async (req, res, next) => {
       description: `Paused incentive scheme ${scheme.name || scheme._id}`,
       metadata: { status: "paused" },
     });
-    res.json({ success: true, data: scheme, message: "Scheme paused successfully" });
+    res.json({
+      success: true,
+      data: scheme,
+      message: "Scheme paused successfully",
+    });
   } catch (err) {
     next(err);
   }
@@ -438,7 +485,11 @@ export const archiveScheme = async (req, res, next) => {
       description: `Archived incentive scheme ${scheme.name || scheme._id}`,
       metadata: { status: "archived" },
     });
-    res.json({ success: true, data: scheme, message: "Scheme archived successfully" });
+    res.json({
+      success: true,
+      data: scheme,
+      message: "Scheme archived successfully",
+    });
   } catch (err) {
     next(err);
   }
@@ -453,16 +504,8 @@ export const createAssignment = async (req, res, next) => {
     const assignment = await schemeAssignmentService.createAssignment(
       req.body,
       organizationId,
-      userId
+      userId,
     );
-
-    await logIncentiveAudit(req, {
-      action: AUDIT_ACTIONS.INCENTIVE_SCHEME_CREATED,
-      entityType: "IncentiveScheme",
-      entityId: scheme?._id || null,
-      description: `Created incentive scheme ${scheme?.name || ""} (${scheme?.code || ""})`,
-      metadata: { name: scheme?.name, code: scheme?.code, schemeType: scheme?.schemeType },
-    });
 
     await logIncentiveAudit(req, {
       action: AUDIT_ACTIONS.INCENTIVE_ASSIGNMENT_CREATED,
@@ -486,7 +529,14 @@ export const createAssignment = async (req, res, next) => {
 export const listAssignments = async (req, res, next) => {
   try {
     const organizationId = req.user.organizationId;
-    const { schemeId, scopeType, scopeId, status, page = 1, limit = 50 } = req.query;
+    const {
+      schemeId,
+      scopeType,
+      scopeId,
+      status,
+      page = 1,
+      limit = 50,
+    } = req.query;
 
     const filter = { organizationId };
     if (schemeId) filter.schemeId = schemeId;
@@ -528,40 +578,66 @@ export const previewCalculation = async (req, res, next) => {
 
     const canViewAll = await hasUserPermission(req.user, "incentives.view.all");
     if (staffId) {
-      const requestedStaff = await Staff.findOne({ _id: staffId, organizationId }).select("_id");
+      const requestedStaff = await Staff.findOne({
+        _id: staffId,
+        organizationId,
+      }).select("_id");
       if (!requestedStaff) {
         throw new AppError("Staff member not found", 404);
       }
       if (!canViewAll) {
-        const ownStaff = await Staff.findOne({ userId: req.user.id, organizationId }).select("_id");
+        const ownStaff = await Staff.findOne({
+          userId: req.user.id,
+          organizationId,
+        }).select("_id");
         if (!ownStaff || String(ownStaff._id) !== String(requestedStaff._id)) {
-          throw new AppError("Access denied. Employees may preview only their own incentives.", 403);
+          throw new AppError(
+            "Access denied. Employees may preview only their own incentives.",
+            403,
+          );
         }
       } else if (!req.user.hasOrgWideAccess && !branchId) {
-        throw new AppError("branchId is required for branch-scoped calculation preview.", 400);
+        throw new AppError(
+          "branchId is required for branch-scoped calculation preview.",
+          400,
+        );
       }
     }
 
     if (branchId) {
-      const branch = await Branch.findOne({ _id: branchId, organizationId, isActive: true }).select("_id");
+      const branch = await Branch.findOne({
+        _id: branchId,
+        organizationId,
+        isActive: true,
+      }).select("_id");
       if (!branch) throw new AppError("Branch not found", 404);
       if (!isBranchAuthorized(req.user, branchId)) {
-        throw new AppError("Access denied. You do not have access to this branch.", 403);
+        throw new AppError(
+          "Access denied. You do not have access to this branch.",
+          403,
+        );
       }
     }
 
     let schemeDoc = null;
     if (schemeId) {
-      schemeDoc = await IncentiveScheme.findOne({ _id: schemeId, organizationId });
-    } else if (staffId) {
-      const activeAssignment = await schemeAssignmentService.resolveActiveAssignment({
+      schemeDoc = await IncentiveScheme.findOne({
+        _id: schemeId,
         organizationId,
-        staffId,
-        branchId,
-        effectiveDate: date ? new Date(date) : new Date(),
       });
+    } else if (staffId) {
+      const activeAssignment =
+        await schemeAssignmentService.resolveActiveAssignment({
+          organizationId,
+          staffId,
+          branchId,
+          effectiveDate: date ? new Date(date) : new Date(),
+        });
       if (activeAssignment) {
-        schemeDoc = await IncentiveScheme.findOne({ _id: activeAssignment.schemeId, organizationId });
+        schemeDoc = await IncentiveScheme.findOne({
+          _id: activeAssignment.schemeId,
+          organizationId,
+        });
       }
     }
 
@@ -572,11 +648,14 @@ export const previewCalculation = async (req, res, next) => {
     if (!IncentiveCalculationEngine.supportsCommissionScheme(schemeDoc)) {
       throw new AppError(
         "Calculation preview supports only service, subscription-sale, or membership-sale net revenue commission schemes",
-        400
+        400,
       );
     }
 
-    const calcResult = IncentiveCalculationEngine.calculateCommission(schemeDoc, revenueInPaise);
+    const calcResult = IncentiveCalculationEngine.calculateCommission(
+      schemeDoc,
+      revenueInPaise,
+    );
 
     res.json({
       success: true,
@@ -611,7 +690,11 @@ export const computeAttendanceEvaluation = async (req, res, next) => {
       entityType: "IncentiveEvaluation",
       entityId: evaluation?._id || null,
       description: `Computed attendance bonus evaluation for staff ${req.body.staffId} (${req.body.monthYear})`,
-      metadata: { staffId: req.body.staffId, schemeId: req.body.schemeId, monthYear: req.body.monthYear },
+      metadata: {
+        staffId: req.body.staffId,
+        schemeId: req.body.schemeId,
+        monthYear: req.body.monthYear,
+      },
     });
     res.json({
       success: true,
@@ -653,20 +736,35 @@ export const finalizeAttendanceEvaluation = async (req, res, next) => {
 export const listLedgerEntries = async (req, res, next) => {
   try {
     const organizationId = req.user.organizationId;
-    const { staffId, branchId, entryType, fulfillmentStatus, page = 1, limit = 20 } = req.query;
+    const {
+      staffId,
+      branchId,
+      entryType,
+      fulfillmentStatus,
+      page = 1,
+      limit = 20,
+    } = req.query;
 
     const canViewAll = await hasUserPermission(req.user, "incentives.view.all");
     const filter = { organizationId };
 
     if (!canViewAll) {
       // Find staff record linked to this authenticated user
-      const staffMember = await Staff.findOne({ userId: req.user.id, organizationId });
+      const staffMember = await Staff.findOne({
+        userId: req.user.id,
+        organizationId,
+      });
       if (!staffMember) {
         // Authenticated user is not linked to any staff member, return empty result
         return res.json({
           success: true,
           data: [],
-          meta: { page: Number(page), limit: Number(limit), total: 0, totalPages: 0 },
+          meta: {
+            page: Number(page),
+            limit: Number(limit),
+            total: 0,
+            totalPages: 0,
+          },
         });
       }
       filter.staffId = staffMember._id;
@@ -720,12 +818,20 @@ export const listRecoveryObligations = async (req, res, next) => {
     const filter = { organizationId };
 
     if (!canViewAll) {
-      const staffMember = await Staff.findOne({ userId: req.user.id, organizationId });
+      const staffMember = await Staff.findOne({
+        userId: req.user.id,
+        organizationId,
+      });
       if (!staffMember) {
         return res.json({
           success: true,
           data: [],
-          meta: { page: Number(page), limit: Number(limit), total: 0, totalPages: 0 },
+          meta: {
+            page: Number(page),
+            limit: Number(limit),
+            total: 0,
+            totalPages: 0,
+          },
         });
       }
       filter.staffId = staffMember._id;
@@ -743,35 +849,42 @@ export const listRecoveryObligations = async (req, res, next) => {
     const [obligations, total] = await Promise.all([
       IncentiveRecoveryObligation.find(filter)
         .populate("staffId", "name staffCode")
-        .populate("clawbackLedgerId", "invoiceId settlementEventId reversesLedgerId")
+        .populate(
+          "clawbackLedgerId",
+          "invoiceId settlementEventId reversesLedgerId",
+        )
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit))
         .lean(),
       IncentiveRecoveryObligation.countDocuments(filter),
     ]);
-    const paymentHistory = obligations.length > 0
-      ? await IncentiveRecoveryPayment.find({
-        organizationId,
-        obligationId: { $in: obligations.map((obligation) => obligation._id) },
-      })
-        .populate("recordedBy", "name email")
-        .populate("confirmedBy", "name email")
-        .populate("failedBy", "name email")
-        .populate("reversedBy", "name email")
-        .sort({ createdAt: -1 })
-        .lean()
-      : [];
+    const paymentHistory =
+      obligations.length > 0
+        ? await IncentiveRecoveryPayment.find({
+            organizationId,
+            obligationId: {
+              $in: obligations.map((obligation) => obligation._id),
+            },
+          })
+            .populate("recordedBy", "name email")
+            .populate("confirmedBy", "name email")
+            .populate("failedBy", "name email")
+            .populate("reversedBy", "name email")
+            .sort({ createdAt: -1 })
+            .lean()
+        : [];
     const sourceLedgerIds = obligations
       .map((obligation) => obligation.clawbackLedgerId?.reversesLedgerId)
       .filter(Boolean);
-    const paidAllocations = sourceLedgerIds.length > 0
-      ? await PayrollIncentiveAllocation.find({
-        organizationId,
-        incentiveLedgerId: { $in: sourceLedgerIds },
-        status: "paid",
-      }).lean()
-      : [];
+    const paidAllocations =
+      sourceLedgerIds.length > 0
+        ? await PayrollIncentiveAllocation.find({
+            organizationId,
+            incentiveLedgerId: { $in: sourceLedgerIds },
+            status: "paid",
+          }).lean()
+        : [];
     const allocationsByLedgerId = new Map(
       paidAllocations.map((allocation) => [
         allocation.incentiveLedgerId.toString(),
@@ -791,7 +904,8 @@ export const listRecoveryObligations = async (req, res, next) => {
       success: true,
       data: obligations.map((obligation) => ({
         ...obligation,
-        paymentHistory: paymentsByObligation.get(obligation._id.toString()) || [],
+        paymentHistory:
+          paymentsByObligation.get(obligation._id.toString()) || [],
         remainingAvailableInPaise: Math.max(
           0,
           obligation.status === "written_off"
@@ -804,11 +918,17 @@ export const listRecoveryObligations = async (req, res, next) => {
           const clawback = obligation.clawbackLedgerId;
           const sourceLedgerId = clawback?.reversesLedgerId;
           if (!sourceLedgerId) return 0;
-          const allocation = allocationsByLedgerId.get(sourceLedgerId.toString());
+          const allocation = allocationsByLedgerId.get(
+            sourceLedgerId.toString(),
+          );
           if (!allocation) return 0;
-          if ((allocation.coveredClawbackLedgerIds || []).some(
-            (id) => id.toString() === obligation.clawbackLedgerId._id.toString(),
-          )) return 0;
+          if (
+            (allocation.coveredClawbackLedgerIds || []).some(
+              (id) =>
+                id.toString() === obligation.clawbackLedgerId._id.toString(),
+            )
+          )
+            return 0;
           const obligationBalance = Math.max(
             0,
             obligation.originalClawbackInPaise -
@@ -878,7 +998,10 @@ export const confirmRecoveryPayment = async (req, res, next) => {
       entityType: "IncentiveRecoveryPayment",
       entityId: req.params.paymentId,
       description: `Confirmed recovery payment ${req.params.paymentId} for obligation ${req.params.id}`,
-      metadata: { obligationId: req.params.id, paymentId: req.params.paymentId },
+      metadata: {
+        obligationId: req.params.id,
+        paymentId: req.params.paymentId,
+      },
     });
     res.json({
       success: true,
@@ -907,7 +1030,11 @@ export const failRecoveryPayment = async (req, res, next) => {
       entityType: "IncentiveRecoveryPayment",
       entityId: req.params.paymentId,
       description: `Marked recovery payment ${req.params.paymentId} as failed`,
-      metadata: { obligationId: req.params.id, paymentId: req.params.paymentId, failureReason: req.body.failureReason },
+      metadata: {
+        obligationId: req.params.id,
+        paymentId: req.params.paymentId,
+        failureReason: req.body.failureReason,
+      },
     });
     res.json({
       success: true,
@@ -936,7 +1063,11 @@ export const reverseRecoveryPayment = async (req, res, next) => {
       entityType: "IncentiveRecoveryPayment",
       entityId: req.params.paymentId,
       description: `Reversed recovery payment ${req.params.paymentId} for obligation ${req.params.id}`,
-      metadata: { obligationId: req.params.id, paymentId: req.params.paymentId, reversalReason: req.body.reversalReason },
+      metadata: {
+        obligationId: req.params.id,
+        paymentId: req.params.paymentId,
+        reversalReason: req.body.reversalReason,
+      },
     });
     res.json({
       success: true,
@@ -964,7 +1095,9 @@ export const getIncentivesSummary = async (req, res, next) => {
         _id: req.query.branchId,
         organizationId,
         isActive: true,
-      }).select("_id").lean();
+      })
+        .select("_id")
+        .lean();
       if (!branch) throw new AppError("Active branch not found", 404);
       branchScope = { branchId: branch._id };
     }
@@ -973,7 +1106,10 @@ export const getIncentivesSummary = async (req, res, next) => {
     let obligationStaffMatch = {};
 
     if (!canViewAll) {
-      const staffMember = await Staff.findOne({ userId: req.user.id, organizationId });
+      const staffMember = await Staff.findOne({
+        userId: req.user.id,
+        organizationId,
+      });
       if (!staffMember) {
         return res.json({
           success: true,
@@ -994,18 +1130,35 @@ export const getIncentivesSummary = async (req, res, next) => {
       obligationStaffMatch = branchScope;
     }
 
-    const pendingStaffId = canViewAll
-      ? null
-      : ledgerStaffMatch.staffId;
-    const [accrualsAgg, clawbacksAgg, pendingFulfillmentCount, openObligationsAgg, schemeCounts] = await Promise.all([
+    const pendingStaffId = canViewAll ? null : ledgerStaffMatch.staffId;
+    const [
+      accrualsAgg,
+      clawbacksAgg,
+      pendingFulfillmentCount,
+      openObligationsAgg,
+      schemeCounts,
+    ] = await Promise.all([
       // Total confirmed accruals
       IncentiveLedger.aggregate([
-        { $match: { organizationId, entryType: "ACCRUAL", fulfillmentStatus: "confirmed", ...ledgerStaffMatch } },
+        {
+          $match: {
+            organizationId,
+            entryType: "ACCRUAL",
+            fulfillmentStatus: "confirmed",
+            ...ledgerStaffMatch,
+          },
+        },
         { $group: { _id: null, total: { $sum: "$amountInPaise" } } },
       ]),
       // Total clawbacks
       IncentiveLedger.aggregate([
-        { $match: { organizationId, entryType: "CLAWBACK", ...ledgerStaffMatch } },
+        {
+          $match: {
+            organizationId,
+            entryType: "CLAWBACK",
+            ...ledgerStaffMatch,
+          },
+        },
         { $group: { _id: null, total: { $sum: "$amountInPaise" } } },
       ]),
       countPendingServiceFulfillment({
@@ -1015,7 +1168,13 @@ export const getIncentivesSummary = async (req, res, next) => {
       }),
       // Outstanding recovery obligations
       IncentiveRecoveryObligation.aggregate([
-        { $match: { organizationId, status: { $in: ["pending", "partially_recovered"] }, ...obligationStaffMatch } },
+        {
+          $match: {
+            organizationId,
+            status: { $in: ["pending", "partially_recovered"] },
+            ...obligationStaffMatch,
+          },
+        },
         {
           $group: {
             _id: null,
@@ -1089,13 +1248,15 @@ export const confirmWalkInFulfillment = async (req, res, next) => {
         throw new AppError("Invoice not found", 404);
       }
 
-      return await settlementFulfillmentEventService.confirmWalkInServiceFulfillment({
-        invoice,
-        lineIds,
-        reason,
-        userId,
-        session,
-      });
+      return await settlementFulfillmentEventService.confirmWalkInServiceFulfillment(
+        {
+          invoice,
+          lineIds,
+          reason,
+          userId,
+          session,
+        },
+      );
     });
 
     await logIncentiveAudit(req, {
@@ -1135,11 +1296,15 @@ export const listWalkInFulfillment = async (req, res, next) => {
           organizationId: req.user.organizationId,
           branchId: req.branchId,
           invoiceId: invoice._id,
-        }).select("lineItemId").lean();
+        })
+          .select("lineItemId")
+          .lean();
 
     res.json({
       success: true,
-      data: { confirmedLineIds: events.map((event) => event.lineItemId.toString()) },
+      data: {
+        confirmedLineIds: events.map((event) => event.lineItemId.toString()),
+      },
     });
   } catch (err) {
     next(err);

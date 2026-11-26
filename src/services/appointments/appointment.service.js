@@ -412,6 +412,21 @@ export class AppointmentService {
       throw new AppError(`Reminder delivery failed: ${errDetail}`, 400);
     }
 
+    await auditLogService
+      .createAuditLog(
+        {
+          action: AUDIT_ACTIONS.APPOINTMENT_REMINDER_SENT,
+          entityType: "Appointment",
+          entityId: updated._id,
+          branchId: updated.branchId || branchId,
+          description: `Manual reminder dispatched for appointment ${updated.appointmentCode || updated._id}`,
+          metadata: { channel, aggregateStatus },
+        },
+        organizationId,
+        null,
+      )
+      .catch(() => {});
+
     return updated;
   }
 
@@ -1041,10 +1056,7 @@ export class AppointmentService {
       bookingType === "advance" &&
       effectiveSettings?.appointments?.allowAdvanceBookings?.value === false
     ) {
-      throw new AppError(
-        "Advance bookings are disabled for this branch",
-        403,
-      );
+      throw new AppError("Advance bookings are disabled for this branch", 403);
     }
 
     // 1. Walk-in Date/Time Locking: Walk-ins strictly belong to today's date in branch timezone
@@ -1211,6 +1223,27 @@ export class AppointmentService {
         { _id: customerId, organizationId },
         { $addToSet: { visitedBranchIds: branchId } },
       );
+
+      await auditLogService
+        .createAuditLog(
+          {
+            action: AUDIT_ACTIONS.APPOINTMENT_CREATED,
+            entityType: "Appointment",
+            entityId: appointment._id,
+            branchId: appointment.branchId || branchId,
+            description: `Appointment ${appointment.appointmentCode || appointment._id} created`,
+            metadata: {
+              appointmentCode: appointment.appointmentCode,
+              customerId,
+              staffId,
+              bookingType,
+              status: initialStatus,
+            },
+          },
+          organizationId,
+          null,
+        )
+        .catch(() => {});
 
       return appointment;
     } catch (err) {
@@ -1619,6 +1652,20 @@ export class AppointmentService {
 
     try {
       const updated = await appointmentRepo.update(id, updates, organizationId);
+      await auditLogService
+        .createAuditLog(
+          {
+            action: AUDIT_ACTIONS.APPOINTMENT_UPDATED,
+            entityType: "Appointment",
+            entityId: updated?._id || id,
+            branchId: updated?.branchId || branchId,
+            description: `Appointment ${updated?.appointmentCode || id} updated`,
+            metadata: { updatedFields: Object.keys(updates) },
+          },
+          organizationId,
+          null,
+        )
+        .catch(() => {});
       return updated;
     } catch (err) {
       if (err.code === 11000 && err.keyPattern?.slotMinutes) {
@@ -2530,6 +2577,21 @@ export class AppointmentService {
       `[SECURITY] CONSUMPTION_OTP_SENT for appointment ${appointment._id}`,
     );
 
+    await auditLogService
+      .createAuditLog(
+        {
+          action: AUDIT_ACTIONS.SUBSCRIPTION_OTP_SENT,
+          entityType: "Appointment",
+          entityId: appointment._id,
+          branchId: appointment.branchId || branchId,
+          description: `Subscription consumption OTP sent for appointment ${appointment.appointmentCode || appointment._id}`,
+          metadata: { appointmentId: appointment._id },
+        },
+        organizationId,
+        userId,
+      )
+      .catch(() => {});
+
     return {
       success: true,
       message: "Consumption authorization OTP sent to customer phone",
@@ -3334,7 +3396,23 @@ export class AppointmentService {
 
     await this.cancelReminders(appointment);
 
-    return await appointmentRepo.softDelete(id, organizationId);
+    const deleted = await appointmentRepo.softDelete(id, organizationId);
+
+    await auditLogService
+      .createAuditLog(
+        {
+          action: AUDIT_ACTIONS.APPOINTMENT_DELETED,
+          entityType: "Appointment",
+          entityId: appointment._id,
+          branchId: appointment.branchId || branchId,
+          description: `Appointment ${appointment.appointmentCode || id} deleted`,
+        },
+        organizationId,
+        null,
+      )
+      .catch(() => {});
+
+    return deleted;
   }
 
   /**
@@ -3705,7 +3783,10 @@ export class AppointmentService {
         })
         .toLowerCase();
 
-      const hoursForDay = getOperatingHoursForDay(branch.operatingHours, dayOfWeek);
+      const hoursForDay = getOperatingHoursForDay(
+        branch.operatingHours,
+        dayOfWeek,
+      );
 
       if (hoursForDay.isConfigured) {
         if (hoursForDay.isOpen === false) {
@@ -3827,7 +3908,10 @@ export class AppointmentService {
               })
               .toLowerCase(); // e.g. "friday"
 
-            const hoursForDay = getOperatingHoursForDay(branch.operatingHours, dayOfWeek);
+            const hoursForDay = getOperatingHoursForDay(
+              branch.operatingHours,
+              dayOfWeek,
+            );
 
             if (hoursForDay.isConfigured) {
               if (hoursForDay.isOpen === false) {

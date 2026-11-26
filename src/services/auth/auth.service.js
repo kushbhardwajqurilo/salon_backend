@@ -632,6 +632,18 @@ export class AuthService {
 
     logger.info(`[SECURITY] OTP_SENT for user ${user._id}`);
 
+    await this.auditLogService?.createAuditLog?.(
+      {
+        action: AUDIT_ACTIONS.AUTH_OTP_SENT,
+        entityType: "User",
+        entityId: user._id,
+        description: "Activation OTP sent",
+        source: "web",
+      },
+      user.organizationId || null,
+      user._id
+    ).catch(() => {});
+
     return {
       success: true,
       message: "Activation OTP sent successfully",
@@ -705,6 +717,18 @@ export class AuthService {
     await user.save();
 
     logger.info(`[SECURITY] OTP_VERIFIED for user ${user._id}`);
+
+    await this.auditLogService?.createAuditLog?.(
+      {
+        action: AUDIT_ACTIONS.AUTH_OTP_VERIFIED,
+        entityType: "User",
+        entityId: user._id,
+        description: "Activation OTP verified",
+        source: "web",
+      },
+      user.organizationId || null,
+      user._id
+    ).catch(() => {});
 
     const passwordChangeToken = jwt.sign(
       {

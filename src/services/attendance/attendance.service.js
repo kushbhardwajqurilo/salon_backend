@@ -2,6 +2,7 @@ import { Attendance } from "../../models/attendance/attendance.model.js";
 import { AttendancePunch } from "../../models/attendance/attendancePunch.model.js";
 import { StaffDeviceMapping } from "../../models/attendance/StaffDeviceMapping.model.js";
 import { ProviderConfiguration } from "../../models/attendance/ProviderConfiguration.model.js";
+import { encryptCredentials, decryptCredentials } from "../../utils/encryption.js";
 import { RawProviderEvent } from "../../models/attendance/RawProviderEvent.model.js";
 import { ProviderSyncState } from "../../models/attendance/ProviderSyncState.model.js";
 import { ProviderDeliveryLog } from "../../models/attendance/ProviderDeliveryLog.model.js";
@@ -874,15 +875,16 @@ async function resolveBranchAttendanceConflict({
               conflictUpdateDoc.$unset = unsetConflictFields;
             }
 
-            const conflictUpdateResult = await AttendanceBranchConflict.updateOne(
-              {
-                _id: conflictId,
-                conflictStatus: "resolved",
-                resolvedAt: resolvedAt,
-                resolvedBy: actorId,
-              },
-              conflictUpdateDoc,
-            );
+            const conflictUpdateResult =
+              await AttendanceBranchConflict.updateOne(
+                {
+                  _id: conflictId,
+                  conflictStatus: "resolved",
+                  resolvedAt: resolvedAt,
+                  resolvedBy: actorId,
+                },
+                conflictUpdateDoc,
+              );
 
             if (conflictUpdateResult.matchedCount !== 1) {
               compensationErrors.push({
@@ -988,26 +990,32 @@ async function recoverReconciliationAuditLog({
       branchesInvolved: { $elemMatch: { branchId } },
     },
     null,
-    sessionOption
+    sessionOption,
   );
 
   if (!conflict) {
-    throw new AppError("Attendance branch conflict not found in this branch.", 404);
+    throw new AppError(
+      "Attendance branch conflict not found in this branch.",
+      404,
+    );
   }
 
   // 2. Document state validation: Conflict MUST be resolved
   if (conflict.conflictStatus !== "resolved") {
     throw new AppError(
       "Cannot recover audit log for an unresolved or pending branch conflict.",
-      422
+      422,
     );
   }
 
   // Exact operation-identity validation at stored precision
-  if (expectedResolvedBy && conflict.resolvedBy?.toString() !== expectedResolvedBy.toString()) {
+  if (
+    expectedResolvedBy &&
+    conflict.resolvedBy?.toString() !== expectedResolvedBy.toString()
+  ) {
     throw new AppError(
       "Conflict resolvedBy does not match the expected reconciliation actor. Recovery aborted.",
-      409
+      409,
     );
   }
   if (expectedResolvedAt) {
@@ -1016,15 +1024,16 @@ async function recoverReconciliationAuditLog({
     if (conflictResolvedAtIso !== expectedResolvedAtIso) {
       throw new AppError(
         "Conflict resolvedAt timestamp does not match the expected reconciliation time. Recovery aborted.",
-        409
+        409,
       );
     }
   }
 
   // 3. Document state validation: Corresponding Attendance MUST be reconciled and match conflict reconciliation identity
-  const targetDate = conflict.date instanceof Date
-    ? conflict.date
-    : new Date(`${conflict.date}T00:00:00.000Z`);
+  const targetDate =
+    conflict.date instanceof Date
+      ? conflict.date
+      : new Date(`${conflict.date}T00:00:00.000Z`);
 
   const attRecord = await Attendance.findOne(
     {
@@ -1034,13 +1043,13 @@ async function recoverReconciliationAuditLog({
       isDeleted: { $ne: true },
     },
     null,
-    sessionOption
+    sessionOption,
   );
 
   if (!attRecord || !attRecord.isReconciled) {
     throw new AppError(
       "Cannot recover audit log because daily Attendance record is not reconciled.",
-      422
+      422,
     );
   }
 
@@ -1048,16 +1057,20 @@ async function recoverReconciliationAuditLog({
   if (attRecord.reconciledBy?.toString() !== conflict.resolvedBy?.toString()) {
     throw new AppError(
       "Attendance reconciledBy does not correspond to the conflict resolution actor. Recovery aborted.",
-      409
+      409,
     );
   }
 
-  const attReconciledAtIso = attRecord.reconciledAt ? new Date(attRecord.reconciledAt).toISOString() : null;
-  const conflictResolvedAtIso = conflict.resolvedAt ? new Date(conflict.resolvedAt).toISOString() : null;
+  const attReconciledAtIso = attRecord.reconciledAt
+    ? new Date(attRecord.reconciledAt).toISOString()
+    : null;
+  const conflictResolvedAtIso = conflict.resolvedAt
+    ? new Date(conflict.resolvedAt).toISOString()
+    : null;
   if (attReconciledAtIso !== conflictResolvedAtIso) {
     throw new AppError(
       "Attendance reconciledAt timestamp does not correspond to the conflict resolution timestamp. Recovery aborted.",
-      409
+      409,
     );
   }
 
@@ -1070,7 +1083,7 @@ async function recoverReconciliationAuditLog({
       entityId: conflict._id,
     },
     null,
-    sessionOption
+    sessionOption,
   );
 
   if (existingOriginalAudit) {
@@ -1099,7 +1112,8 @@ async function recoverReconciliationAuditLog({
           action: "ATTENDANCE_CONFLICT_RESOLVED",
           entityType: "AttendanceBranchConflict",
           entityId: conflict._id,
-          description: "Cross-branch attendance evidence retained and conflict resolved (Audit Recovered).",
+          description:
+            "Cross-branch attendance evidence retained and conflict resolved (Audit Recovered).",
           metadata: {
             reason: conflict.reason || "Manual reconciliation audit recovery",
             resolution: conflict.resolution || "retain",
@@ -1116,7 +1130,7 @@ async function recoverReconciliationAuditLog({
         new: true,
         setDefaultsOnInsert: true,
         ...sessionOption,
-      }
+      },
     );
 
     return auditRecord;
@@ -1133,7 +1147,7 @@ async function recoverReconciliationAuditLog({
           "metadata.idempotencyKey": idempotencyKey,
         },
         null,
-        sessionOption
+        sessionOption,
       );
       if (existing) return existing;
     }
@@ -1146,7 +1160,7 @@ async function getProviderStatus({ organizationId, branchId }) {
   const [configurations, syncStates] = await Promise.all([
     ProviderConfiguration.find({ organizationId, branchId })
       .select(
-        "providerName integrationMethod isActive syncStatus lastSync lastErrorAt",
+        "providerName endpointUrl integrationMethod isActive syncStatus lastSync lastErrorAt",
       )
       .lean(),
     ProviderSyncState.find({ organizationId, branchId })
@@ -1318,12 +1332,13 @@ async function createStaffDeviceMapping({
   const staff = await Staff.findOne({
     _id: staffId,
     organizationId,
+    isDeleted: false,
   });
 
   if (!staff) {
     throw new AppError("Staff member not found in this organization.", 404);
   }
-  if (!staff.isActive) {
+  if (staff.status !== "active") {
     throw new AppError(
       "Cannot create mapping for an inactive staff member.",
       400,
@@ -1431,7 +1446,7 @@ async function createStaffDeviceMapping({
       organizationId,
       branchId,
       actorId,
-      action: "STAFF_DEVICE_MAPPING_CREATED",
+      action: "ATTENDANCE_DEVICE_MAPPING_CREATED",
       entityType: "StaffDeviceMapping",
       entityId: newMapping._id,
       description: `Staff device mapping created for staff ${staff.staffCode || staff.name} to external ID ${cleanExternalCode}.`,
@@ -2284,11 +2299,14 @@ async function reconcileAttendanceStatusFromPunches({
     ]);
 
     const tz = effectiveSettings?.regional?.timezone?.value || branchTimezone;
-    const graceMinutes = effectiveSettings?.attendance?.graceMinutes?.value ?? 15;
+    const graceMinutes =
+      effectiveSettings?.attendance?.graceMinutes?.value ?? 15;
     scheduleOptions = { timezone: tz, graceMinutes };
 
     if (roster) {
-      const dateOverride = (roster.overrides || []).find((o) => o.date === attendanceDate);
+      const dateOverride = (roster.overrides || []).find(
+        (o) => o.date === attendanceDate,
+      );
       if (dateOverride) {
         if (dateOverride.isWorkingDay && dateOverride.shifts?.length > 0) {
           scheduleOptions.scheduledOpenTime = dateOverride.shifts[0].startTime;
@@ -2296,9 +2314,17 @@ async function reconcileAttendanceStatusFromPunches({
             dateOverride.shifts[dateOverride.shifts.length - 1].endTime;
         }
       } else {
-        const dayOfWeek = new Date(`${attendanceDate}T12:00:00.000Z`).getUTCDay();
-        const weeklyDay = (roster.weeklySchedule || []).find((d) => d.dayOfWeek === dayOfWeek);
-        if (weeklyDay && weeklyDay.isWorkingDay && weeklyDay.shifts?.length > 0) {
+        const dayOfWeek = new Date(
+          `${attendanceDate}T12:00:00.000Z`,
+        ).getUTCDay();
+        const weeklyDay = (roster.weeklySchedule || []).find(
+          (d) => d.dayOfWeek === dayOfWeek,
+        );
+        if (
+          weeklyDay &&
+          weeklyDay.isWorkingDay &&
+          weeklyDay.shifts?.length > 0
+        ) {
           scheduleOptions.scheduledOpenTime = weeklyDay.shifts[0].startTime;
           scheduleOptions.scheduledCloseTime =
             weeklyDay.shifts[weeklyDay.shifts.length - 1].endTime;
@@ -2737,7 +2763,9 @@ async function getMonthlyMusterRoll({
         isActive: true,
       }).lean()
     : [];
-  const rosterByStaff = new Map(staffRosters.map((r) => [r.staffId.toString(), r]));
+  const rosterByStaff = new Map(
+    staffRosters.map((r) => [r.staffId.toString(), r]),
+  );
 
   // Today in branch timezone for accurate local absence bounding
   const currentBranchLocalToday = deriveBusinessDate(
@@ -2843,18 +2871,26 @@ async function getMonthlyMusterRoll({
         const staffRoster = rosterByStaff.get(sId);
         let rosterOff = false;
         if (staffRoster && calDay?.status !== "special_working_day") {
-          const override = (staffRoster.overrides || []).find((o) => o.date === dateStr);
+          const override = (staffRoster.overrides || []).find(
+            (o) => o.date === dateStr,
+          );
           if (override) {
             rosterOff = !override.isWorkingDay;
           } else {
             const dow = new Date(`${dateStr}T12:00:00.000Z`).getUTCDay();
-            const wd = (staffRoster.weeklySchedule || []).find((w) => w.dayOfWeek === dow);
+            const wd = (staffRoster.weeklySchedule || []).find(
+              (w) => w.dayOfWeek === dow,
+            );
             if (wd && !wd.isWorkingDay) rosterOff = true;
           }
         }
 
         if (calDay?.status === "branch_closure") {
-          dailyBreakdown[dateStr] = { status: "branch_closure", date: dateStr, isWorkingDay: false };
+          dailyBreakdown[dateStr] = {
+            status: "branch_closure",
+            date: dateStr,
+            isWorkingDay: false,
+          };
         } else if (calDay?.status === "holiday") {
           dailyBreakdown[dateStr] = {
             status: "holiday",
@@ -2863,7 +2899,11 @@ async function getMonthlyMusterRoll({
             eventName: calDay.event?.name || null,
           };
         } else if (calDay?.status === "weekly_off" || rosterOff) {
-          dailyBreakdown[dateStr] = { status: "weekly_off", date: dateStr, isWorkingDay: false };
+          dailyBreakdown[dateStr] = {
+            status: "weekly_off",
+            date: dateStr,
+            isWorkingDay: false,
+          };
         } else if (dateStr < currentBranchLocalToday) {
           // Day has fully elapsed with no attendance, no leave, and is a working day -> absent
           absentCount++;
@@ -2938,6 +2978,116 @@ async function getMonthlyMusterRoll({
   };
 }
 
+async function upsertProviderConfiguration({
+  organizationId,
+  branchId,
+  actorId,
+  providerName,
+  endpointUrl,
+  integrationMethod,
+  isActive = true,
+  credentials,
+  headers,
+}) {
+  const cleanProvider = (providerName || "").trim();
+  const supportedProviders = providerRegistry.listAdapters();
+  if (!supportedProviders.includes(cleanProvider)) {
+    throw new AppError(
+      `Unsupported attendance provider: "${cleanProvider}".`,
+      400,
+    );
+  }
+
+  const allowedMethods = ["webhook", "polling", "file"];
+  if (integrationMethod && !allowedMethods.includes(integrationMethod)) {
+    throw new AppError(
+      `Invalid integrationMethod "${integrationMethod}". Must be one of: ${allowedMethods.join(", ")}.`,
+      400,
+    );
+  }
+
+  const updateFields = {
+    isActive: Boolean(isActive),
+    updatedBy: actorId,
+  };
+  if (endpointUrl !== undefined)
+    updateFields.endpointUrl = endpointUrl?.trim() || "";
+  if (integrationMethod !== undefined)
+    updateFields.integrationMethod = integrationMethod;
+  if (
+    credentials !== undefined &&
+    typeof credentials === "object" &&
+    credentials !== null
+  ) {
+    updateFields.credentials = encryptCredentials(credentials);
+  }
+  if (
+    headers !== undefined &&
+    typeof headers === "object" &&
+    headers !== null
+  ) {
+    updateFields.headers = headers;
+  }
+
+  const doc = await ProviderConfiguration.findOneAndUpdate(
+    { organizationId, branchId, providerName: cleanProvider },
+    {
+      $set: updateFields,
+      $setOnInsert: {
+        organizationId,
+        branchId,
+        providerName: cleanProvider,
+        createdBy: actorId,
+      },
+    },
+    { new: true, upsert: true, runValidators: true },
+  ).lean();
+
+  return {
+    _id: doc._id,
+    providerName: doc.providerName,
+    endpointUrl: doc.endpointUrl || "",
+    integrationMethod: doc.integrationMethod || null,
+    isActive: doc.isActive,
+    syncStatus: doc.syncStatus,
+    hasCredentials: Boolean(
+      doc.credentials && Object.keys(doc.credentials).length > 0,
+    ),
+    updatedAt: doc.updatedAt,
+  };
+}
+
+async function toggleProviderConfigurationStatus({
+  organizationId,
+  branchId,
+  actorId,
+  providerName,
+  isActive,
+}) {
+  const cleanProvider = (providerName || "").trim();
+  const doc = await ProviderConfiguration.findOneAndUpdate(
+    { organizationId, branchId, providerName: cleanProvider },
+    { $set: { isActive: Boolean(isActive), updatedBy: actorId } },
+    { new: true },
+  ).lean();
+
+  if (!doc) {
+    throw new AppError(
+      `No configuration found for provider "${cleanProvider}" at this branch.`,
+      404,
+    );
+  }
+
+  return {
+    _id: doc._id,
+    providerName: doc.providerName,
+    endpointUrl: doc.endpointUrl || "",
+    integrationMethod: doc.integrationMethod || null,
+    isActive: doc.isActive,
+    syncStatus: doc.syncStatus,
+  };
+}
+
 export {
   deriveBusinessDate,
   getScheduledHours,
@@ -2956,6 +3106,8 @@ export {
   resolveBranchAttendanceConflict,
   recoverReconciliationAuditLog,
   getProviderStatus,
+  upsertProviderConfiguration,
+  toggleProviderConfigurationStatus,
   listStaffDeviceMappings,
   getStaffDeviceMappingById,
   createStaffDeviceMapping,

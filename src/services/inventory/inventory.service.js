@@ -906,7 +906,7 @@ export class InventoryService {
     idempotencyKey,
   }) {
     return await runInTransaction(async (session) => {
-      return await FifoDepletionService.reverseMovement({
+      const result = await FifoDepletionService.reverseMovement({
         movementId,
         organizationId,
         actorId,
@@ -915,6 +915,22 @@ export class InventoryService {
         idempotencyKey,
         session,
       });
+
+      await auditLogService.createAuditLog(
+        {
+          action: AUDIT_ACTIONS.INVENTORY_ADJUSTED,
+          entityType: "StockMovement",
+          entityId: movementId,
+          branchId: result?.branchId || null,
+          description: `Reversed stock movement ${movementId}`,
+          metadata: { movementId, reason, returnQuantity, idempotencyKey },
+        },
+        organizationId,
+        actorId,
+        session
+      );
+
+      return result;
     });
   }
 

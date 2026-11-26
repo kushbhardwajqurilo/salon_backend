@@ -361,6 +361,24 @@ export class StocktakeService {
 
       await stocktake.save({ session });
 
+      await auditLogService.createAuditLog(
+        {
+          action: AUDIT_ACTIONS.INVENTORY_STOCKTAKE,
+          entityType: "Stocktake",
+          entityId: stocktake._id,
+          branchId,
+          description: `Recorded physical counts for stocktake ${stocktake.stocktakeNumber || stocktake._id}`,
+          metadata: {
+            itemsUpdated: items.length,
+            countedItemsCount: totalCounted,
+            discrepancyCount: totalDiscrepancies,
+          },
+        },
+        organizationId,
+        userId,
+        session
+      );
+
       return {
         stocktakeId: stocktake._id,
         status: stocktake.status,

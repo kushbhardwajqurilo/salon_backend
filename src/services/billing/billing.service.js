@@ -4676,6 +4676,25 @@ export class BillingService {
       );
     }
 
+    await auditLogService
+      .createAuditLog(
+        {
+          action: AUDIT_ACTIONS.COUPON_REDEEMED,
+          entityType: "Invoice",
+          entityId: updated._id,
+          branchId: updated.branchId || branchId,
+          description: `Coupon '${coupon.code}' applied to invoice ${updated.invoiceNumber || updated._id}`,
+          metadata: {
+            couponId: coupon._id,
+            couponCode: coupon.code,
+            discountAmount,
+          },
+        },
+        organizationId,
+        userId
+      )
+      .catch(() => {});
+
     return updated;
   }
 
@@ -4707,6 +4726,7 @@ export class BillingService {
       throw new AppError("Invoice does not have a coupon applied.", 400);
     }
 
+    const removedCouponCode = invoice.coupon.code;
     // Remove coupon snapshot
     invoice.coupon = null;
 
@@ -4729,6 +4749,22 @@ export class BillingService {
     invoice.paymentStatus = financials.paymentStatus;
 
     await invoice.save();
+
+    await auditLogService
+      .createAuditLog(
+        {
+          action: AUDIT_ACTIONS.COUPON_REMOVED,
+          entityType: "Invoice",
+          entityId: invoice._id,
+          branchId: invoice.branchId || branchId,
+          description: `Coupon '${removedCouponCode}' removed from invoice ${invoice.invoiceNumber || invoice._id}`,
+          metadata: { couponCode: removedCouponCode },
+        },
+        organizationId,
+        userId
+      )
+      .catch(() => {});
+
     return invoice;
   }
 

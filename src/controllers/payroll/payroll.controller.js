@@ -120,6 +120,22 @@ export class PayrollController {
       userId: getActorId(req),
     });
 
+    await auditLogService
+      .createAuditLog(
+        {
+          action: AUDIT_ACTIONS.PAYROLL_GENERATED,
+          entityType: "Payroll",
+          entityId: payrollPeriodId || null,
+          branchId: branchId || null,
+          description: `Calculated payroll for ${records.length} staff member(s)`,
+          ...extractAuditContext(req),
+          metadata: { payrollPeriodId, staffCount: records.length },
+        },
+        organizationId,
+        getActorId(req)
+      )
+      .catch(() => {});
+
     res.status(200).json({
       success: true,
       data: records,
@@ -137,6 +153,21 @@ export class PayrollController {
       recordId: id,
       userId: getActorId(req),
     });
+
+    await auditLogService
+      .createAuditLog(
+        {
+          action: AUDIT_ACTIONS.PAYROLL_SUBMITTED,
+          entityType: "Payroll",
+          entityId: id,
+          branchId: branchId || null,
+          description: `Payroll record submitted for approval`,
+          ...extractAuditContext(req),
+        },
+        organizationId,
+        getActorId(req)
+      )
+      .catch(() => {});
 
     res.status(200).json({
       success: true,
@@ -200,6 +231,24 @@ export class PayrollController {
       userId: getActorId(req),
     });
 
+    if (!result?.isIdempotentReplay) {
+      await auditLogService
+        .createAuditLog(
+          {
+            action: AUDIT_ACTIONS.PAYROLL_PAYMENT_RECORDED,
+            entityType: "Payroll",
+            entityId: id,
+            branchId: branchId || null,
+            description: `Payroll payment attempt recorded`,
+            ...extractAuditContext(req),
+            metadata: { paymentMethod, amountInPaise, paymentDate },
+          },
+          organizationId,
+          getActorId(req)
+        )
+        .catch(() => {});
+    }
+
     res.status(result.isIdempotentReplay ? 200 : 201).json({
       success: true,
       data: result,
@@ -258,6 +307,24 @@ export class PayrollController {
       userId: getActorId(req),
     });
 
+    if (!result?.isIdempotentReplay) {
+      await auditLogService
+        .createAuditLog(
+          {
+            action: AUDIT_ACTIONS.PAYROLL_PAYMENT_FAILED,
+            entityType: "Payroll",
+            entityId: id,
+            branchId: branchId || null,
+            description: `Payroll payment ${paymentId} marked as failed`,
+            ...extractAuditContext(req),
+            metadata: { paymentId, failureReason },
+          },
+          organizationId,
+          getActorId(req)
+        )
+        .catch(() => {});
+    }
+
     res.status(200).json({
       success: true,
       data: result,
@@ -283,6 +350,22 @@ export class PayrollController {
       reference,
       userId,
     });
+
+    await auditLogService
+      .createAuditLog(
+        {
+          action: AUDIT_ACTIONS.PAYROLL_ADJUSTED,
+          entityType: "Payroll",
+          entityId: id,
+          branchId: branchId || null,
+          description: `Payroll adjustment (${type}) added`,
+          ...extractAuditContext(req),
+          metadata: { type, amount, reason, reference },
+        },
+        organizationId,
+        userId
+      )
+      .catch(() => {});
 
     res.status(200).json({
       success: true,
@@ -398,6 +481,22 @@ export class PayrollController {
     const pdfBuffer = await generatePayslipPdf(record);
 
     const filename = `payslip-${record.monthYear}-${record.staffId?.staffCode || "staff"}.pdf`;
+
+    await auditLogService
+      .createAuditLog(
+        {
+          action: AUDIT_ACTIONS.SENSITIVE_DATA_EXPORTED,
+          entityType: "Payroll",
+          entityId: id,
+          branchId: branchId || null,
+          description: `Payslip PDF downloaded (${filename})`,
+          ...extractAuditContext(req),
+          metadata: { filename, format: "pdf" },
+        },
+        organizationId,
+        getActorId(req)
+      )
+      .catch(() => {});
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

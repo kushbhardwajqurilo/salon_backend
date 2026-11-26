@@ -73,6 +73,7 @@ export class AuditLogService {
       const sanitizedData = {
         ...(ctx?.ipAddress && !data.ipAddress ? { ipAddress: ctx.ipAddress } : {}),
         ...(ctx?.userAgent && !data.userAgent ? { userAgent: ctx.userAgent } : {}),
+        ...(ctx?.branchId && !data.branchId ? { branchId: ctx.branchId } : {}),
         ...(ctx?.source && !data.source ? { source: ctx.source } : {}),
         ...(ctx?.actorType && !data.actorType ? { actorType: ctx.actorType } : {}),
         ...data,

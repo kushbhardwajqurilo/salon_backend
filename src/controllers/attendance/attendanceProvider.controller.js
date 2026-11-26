@@ -20,6 +20,8 @@ import {
   recordStaffPunch,
   getMonthlyMusterRoll,
   getProviderStatus,
+  upsertProviderConfiguration,
+  toggleProviderConfigurationStatus,
   getStaffAttendanceDetail,
   ingestProviderEvents,
   listAttendanceRecords,
@@ -228,6 +230,37 @@ export const deactivateStaffDeviceMappingController = asyncHandler(async (req, r
     description: `Deactivated staff device mapping ${req.params.id}`,
   });
   res.status(200).json({ success: true, data, message: 'Staff device mapping deactivated successfully.' });
+});
+
+export const upsertProviderConfigurationController = asyncHandler(async (req, res) => {
+  const data = await upsertProviderConfiguration({
+    ...trustedContext(req),
+    actorId: req.user.id,
+    providerName: req.params.providerName,
+    ...req.body,
+  });
+  await logAttendanceAudit(req, {
+    action: AUDIT_ACTIONS.ATTENDANCE_DEVICE_MAPPING_UPDATED,
+    entityType: 'ProviderConfiguration',
+    entityId: data?._id || null,
+    description: `Configured attendance provider ${req.params.providerName}`,
+    metadata: {
+      providerName: req.params.providerName,
+      integrationMethod: req.body?.integrationMethod,
+      isActive: data?.isActive,
+    },
+  });
+  res.status(200).json({ success: true, data, message: 'Provider configuration saved successfully.' });
+});
+
+export const toggleProviderConfigurationStatusController = asyncHandler(async (req, res) => {
+  const data = await toggleProviderConfigurationStatus({
+    ...trustedContext(req),
+    actorId: req.user.id,
+    providerName: req.params.providerName,
+    isActive: req.body?.isActive,
+  });
+  res.status(200).json({ success: true, data, message: `Provider ${data.isActive ? 'activated' : 'deactivated'} successfully.` });
 });
 
 export const recordStaffPunchController = asyncHandler(async (req, res) => {

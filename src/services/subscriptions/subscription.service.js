@@ -2493,6 +2493,18 @@ export class SubscriptionService {
       }
     ).catch(() => {});
 
+    await this.auditLogService?.createAuditLog?.(
+      {
+        action: AUDIT_ACTIONS.SUBSCRIPTION_UPDATED,
+        entityType: "Subscription",
+        entityId: subscriptionId,
+        description: `Retried subscription cancellation operation ${operationId}`,
+        metadata: { operationId },
+      },
+      organizationId,
+      userId
+    ).catch(() => {});
+
     return await this.executeCancellationOperation(operationId, organizationId, userId);
   }
 
