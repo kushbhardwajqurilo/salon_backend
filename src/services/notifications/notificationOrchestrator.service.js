@@ -13,8 +13,9 @@ import { logger } from "../../utils/logger.js";
  * enqueues eligible email/sms deliveries.
  *
  * - Idempotent per (organizationId, sourceEventId, recipientType, recipientId, purpose, channel).
- * - Keeps whatsapp and in_app in `pending` (unsupported until Stage 3+).
- * - Never claims `sent` or `delivered` on queue insertion.
+ * - Persists `in_app` notifications directly as `delivered` for the recipient inbox.
+ * - Keeps `whatsapp` in `pending` (unsupported until provider integration).
+ * - Never claims `sent` or `delivered` on external queue insertion.
  */
 export async function orchestrateOutboxEvent(event) {
   const targets = await resolveRecipientsForEvent(event);
@@ -26,6 +27,7 @@ export async function orchestrateOutboxEvent(event) {
         recipient: target.recipient,
         purpose: target.purpose,
         channel,
+        eventType: event.eventType,
       });
 
       if (!eligibility.eligible) {
@@ -84,12 +86,26 @@ export async function orchestrateOutboxEvent(event) {
         }
       }
 
-      // Keep whatsapp and in_app as pending (not yet implemented)
-      if (channel === "whatsapp" || channel === "in_app") {
+      // Keep whatsapp as pending (provider integration not yet implemented)
+      if (channel === "whatsapp") {
         results.push({
           notificationId: notification.notificationId,
           channel,
           status: "pending",
+        });
+        continue;
+      }
+
+      // In-app delivery is complete once persisted in MongoDB for the recipient inbox
+      if (channel === "in_app") {
+        await Notification.updateOne(
+          { _id: notification._id, status: "pending" },
+          { $set: { status: "delivered", deliveredAt: new Date() } },
+        );
+        results.push({
+          notificationId: notification.notificationId,
+          channel,
+          status: "delivered",
         });
         continue;
       }

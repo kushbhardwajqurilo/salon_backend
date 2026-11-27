@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import mongoose from "mongoose";
 import { AppError } from "../../utils/errors.js";
+import { emitPayslipPublishedOutboxEvent } from "./payrollNotificationOutbox.service.js";
 import { SalaryStructure } from "../../models/payroll/salaryStructure.model.js";
 import { PayrollPeriod } from "../../models/payroll/payrollPeriod.model.js";
 import { PayrollRecord } from "../../models/payroll/payrollRecord.model.js";
@@ -1231,6 +1232,17 @@ export class PayrollService {
         );
         if (!updated) {
           throw new AppError("Approval failed: record was modified concurrently or is blocked", 409);
+        }
+        const staffDoc = await Staff.findOne({ _id: updated.staffId, organizationId })
+          .select("userId")
+          .session(session);
+        if (staffDoc?.userId) {
+          await emitPayslipPublishedOutboxEvent({
+            payrollRecord: updated,
+            employeeUserId: staffDoc.userId,
+            organizationId,
+            session,
+          });
         }
         return updated;
       });

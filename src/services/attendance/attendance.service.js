@@ -22,6 +22,7 @@ import { Appointment } from "../../models/appointments/appointment.model.js";
 import { AuditLog } from "../../models/audit/auditLog.model.js";
 import providerRegistry from "../../providers/attendance/provider.registry.js";
 import { AppError } from "../../utils/errors.js";
+import { emitAttendanceOutboxEvent } from "./attendanceNotificationOutbox.service.js";
 import { logger } from "../../utils/logger.js";
 import {
   runInTransaction,
@@ -272,11 +273,23 @@ async function getStaffAttendanceDetail({
         .sort({ createdAt: -1 })
         .lean()
     : [];
+  const deviceMappings = await StaffDeviceMapping.find({
+    organizationId,
+    branchId,
+    staffId,
+    isActive: true,
+  })
+    .select("provider deviceId externalEmployeeCode")
+    .lean();
+
   return {
     date: attendanceDate,
     timezone: branch.timezone,
     operatingHours: branch.operatingHours || null,
-    staff,
+    staff: {
+      ...staff,
+      deviceMappings,
+    },
     record,
     status: record?.status || "missing_punch",
     punches,
@@ -379,6 +392,23 @@ async function adjustAttendanceRecord({
   ).lean();
   if (!updated)
     throw new AppError("Attendance record could not be updated.", 409);
+
+  const staffDoc = await Staff.findOne({ _id: updated.staffId, organizationId })
+    .select("userId")
+    .lean();
+  if (staffDoc?.userId) {
+    const latestAdj = updated.adjustmentHistory?.[updated.adjustmentHistory.length - 1];
+    if (latestAdj?._id) {
+      await emitAttendanceOutboxEvent({
+        eventType: "attendance.corrected",
+        attendance: updated,
+        employeeUserId: staffDoc.userId,
+        organizationId,
+        operationId: String(latestAdj._id),
+      });
+    }
+  }
+
   return updated;
 }
 
@@ -1809,7 +1839,9 @@ async function ingestProviderPunch(
     !provider ||
     !deviceId ||
     !punchAt ||
-    !["in", "out"].includes(punchType)
+    (punchType !== null &&
+      punchType !== undefined &&
+      !["in", "out"].includes(punchType))
   ) {
     throw new AppError(
       "Provider event is missing required canonical punch fields.",
@@ -1911,11 +1943,39 @@ async function ingestProviderPunch(
     };
   }
 
+  const attendanceDate = deriveBusinessDate(punchAt, branchTimezone);
+
+  let resolvedPunchType = punchType;
+  if (!resolvedPunchType) {
+    const punchDateObj = new Date(punchAt);
+    const searchWindowStart = new Date(
+      punchDateObj.getTime() - 24 * 60 * 60 * 1000,
+    );
+    const previousPunches = await AttendancePunch.find({
+      organizationId,
+      staffId,
+      isDeleted: false,
+      punchAt: { $gte: searchWindowStart, $lt: punchDateObj },
+    })
+      .sort({ punchAt: -1 })
+      .limit(5)
+      .select("punchType punchAt")
+      .lean();
+
+    const sameDayLastPunch = previousPunches.find(
+      (p) =>
+        String(deriveBusinessDate(p.punchAt, branchTimezone)) ===
+        String(attendanceDate),
+    );
+    resolvedPunchType =
+      sameDayLastPunch && sameDayLastPunch.punchType === "in" ? "out" : "in";
+  }
+
   const punch = new AttendancePunch({
     organizationId,
     branchId,
     staffId,
-    punchType,
+    punchType: resolvedPunchType,
     punchAt,
     provider,
     externalEventId,
@@ -1926,13 +1986,12 @@ async function ingestProviderPunch(
   });
   await punch.save();
 
-  const attendanceDate = deriveBusinessDate(punchAt, branchTimezone);
   const claimResult = await Attendance.claimAttendanceRecord({
     organizationId,
     staffId,
     branchId,
     attendanceDate,
-    punchType,
+    punchType: resolvedPunchType,
   });
   await ensureAttendanceClaimDurable(claimResult, {
     organizationId,
@@ -1940,7 +1999,7 @@ async function ingestProviderPunch(
     branchId,
     attendanceDate,
     punchAt,
-    punchType,
+    punchType: resolvedPunchType,
     externalEventId,
     punchId: punch._id,
   });
@@ -3125,6 +3184,171 @@ async function toggleProviderConfigurationStatus({
   };
 }
 
+async function adjustAttendancePunch({
+  organizationId,
+  branchId,
+  actorId,
+  punchId,
+  action,
+  reason,
+}) {
+  if (!["toggle_type", "mark_duplicate"].includes(action)) {
+    throw new AppError("Invalid punch adjustment action.", 400);
+  }
+  const cleanReason = typeof reason === "string" ? reason.trim() : "";
+  if (cleanReason.length < 3 || cleanReason.length > 1000) {
+    throw new AppError(
+      "A reason between 3 and 1000 characters is required.",
+      400,
+    );
+  }
+
+  const branch = await getActiveBranch(organizationId, branchId);
+  const punch = await AttendancePunch.findOne({
+    _id: punchId,
+    organizationId,
+    branchId,
+    isDeleted: false,
+  });
+  if (!punch) {
+    throw new AppError("Attendance punch not found.", 404);
+  }
+
+  const attendanceDate = deriveBusinessDate(punch.punchAt, branch.timezone);
+  const dayPunches = await AttendancePunch.find({
+    organizationId,
+    branchId,
+    staffId: punch.staffId,
+    isDeleted: false,
+  })
+    .sort({ punchAt: 1 })
+    .lean();
+
+  const previousValue = {
+    punchId: punch._id,
+    punchType: punch.punchType,
+    isDeleted: punch.isDeleted,
+  };
+
+  if (action === "toggle_type") {
+    punch.punchType = punch.punchType === "in" ? "out" : "in";
+  } else if (action === "mark_duplicate") {
+    punch.isDeleted = true;
+    punch.deletedAt = new Date();
+    punch.deletedBy = actorId;
+  }
+  punch.updatedBy = actorId;
+  await punch.save();
+
+  const newValue = {
+    punchId: punch._id,
+    punchType: punch.punchType,
+    isDeleted: punch.isDeleted,
+  };
+
+  const record = await Attendance.findOne({
+    organizationId,
+    branchId,
+    staffId: punch.staffId,
+    attendanceDate: new Date(`${attendanceDate}T00:00:00.000Z`),
+    isDeleted: false,
+  });
+
+  if (record) {
+    if (!record.originalPunchSnapshot) {
+      record.originalPunchSnapshot = dayPunches.filter(
+        (p) => deriveBusinessDate(p.punchAt, branch.timezone) === attendanceDate,
+      );
+    }
+    record.adjustmentHistory = record.adjustmentHistory || [];
+    record.adjustmentHistory.push({
+      changedBy: actorId,
+      changedAt: new Date(),
+      reason: cleanReason,
+      previousStatus: record.status,
+      newStatus: record.status,
+      action,
+      previousValue,
+      newValue,
+    });
+    record.updatedBy = actorId;
+    await record.save();
+
+    await AuditLog.create({
+      organizationId,
+      branchId,
+      actorId,
+      entityType: "Attendance",
+      entityId: record._id,
+      action: `PUNCH_${action.toUpperCase()}`,
+      description: `Adjusted punch (${previousValue.punchType} -> ${action === "mark_duplicate" ? "deleted" : newValue.punchType}): ${cleanReason}`,
+      metadata: { previousValue, newValue, reason: cleanReason },
+    });
+  }
+
+  await reconcileAttendanceStatusFromPunches({
+    organizationId,
+    branchId,
+    staffId: punch.staffId,
+    attendanceDate,
+  });
+
+  return { punch, attendanceDate };
+}
+
+async function bulkAdjustAttendanceRecords({
+  organizationId,
+  branchId,
+  actorId,
+  items,
+  status,
+  reason,
+}) {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new AppError("At least one attendance item is required.", 400);
+  }
+  if (!ATTENDANCE_STATUSES.includes(status)) {
+    throw new AppError("Attendance status is invalid.", 400);
+  }
+  const cleanReason = typeof reason === "string" ? reason.trim() : "";
+  if (cleanReason.length < 3 || cleanReason.length > 1000) {
+    throw new AppError(
+      "A reason between 3 and 1000 characters is required.",
+      400,
+    );
+  }
+
+  const results = await Promise.allSettled(
+    items.map((item) =>
+      adjustAttendanceRecord({
+        organizationId,
+        branchId,
+        actorId,
+        staffId: item.staffId,
+        date: item.date,
+        status,
+        reason: cleanReason,
+      }),
+    ),
+  );
+
+  const failedItems = [];
+  let updatedCount = 0;
+  results.forEach((res, idx) => {
+    if (res.status === "fulfilled") {
+      updatedCount += 1;
+    } else {
+      failedItems.push({
+        staffId: items[idx]?.staffId,
+        date: items[idx]?.date,
+        error: res.reason?.message || "Failed to adjust record",
+      });
+    }
+  });
+
+  return { updatedCount, failedItems };
+}
+
 export {
   deriveBusinessDate,
   getScheduledHours,
@@ -3134,6 +3358,8 @@ export {
   listAttendanceRecords,
   getStaffAttendanceDetail,
   adjustAttendanceRecord,
+  bulkAdjustAttendanceRecords,
+  adjustAttendancePunch,
   recordStaffPunch,
   getMonthlyMusterRoll,
   listLeaveAppointmentConflicts,

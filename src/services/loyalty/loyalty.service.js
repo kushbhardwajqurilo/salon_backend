@@ -1,7 +1,10 @@
 import mongoose from "mongoose";
 import { AppError } from "../../utils/errors.js";
+import { createOutboxEvent } from "../notifications/outbox.service.js";
 import { Customer } from "../../models/customers/customer.model.js";
 import { Invoice } from "../../models/billing/invoice.model.js";
+import { RefundCase } from "../../models/billing/refundCase.model.js";
+import { ScopeLock } from "../../models/incentives/scopeLock.model.js";
 import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 import { LoyaltyProgramConfig } from "../../models/loyalty/loyaltyProgramConfig.model.js";
 import { LoyaltyTransaction, LOYALTY_TRANSACTION_TYPES } from "../../models/loyalty/loyaltyTransaction.model.js";
@@ -364,6 +367,26 @@ export class LoyaltyService {
     });
 
     await transaction.save({ session });
+
+    try {
+      await createOutboxEvent({
+        organizationId,
+        branchId,
+        eventType: "loyalty.points_redeemed",
+        idempotencyKey: `loyalty-redeem:${transaction._id}`,
+        payload: {
+          customerId: String(customerId),
+          transactionId: String(transaction._id),
+          invoiceId: String(invoiceId),
+          points,
+          balanceAfter,
+        },
+        session,
+      });
+    } catch {
+      // Non-blocking notification outbox
+    }
+
     return transaction;
   }
 
@@ -466,6 +489,26 @@ export class LoyaltyService {
 
     invoice.loyaltyPointsEarned = (invoice.loyaltyPointsEarned || 0) + pointsToAward;
     await invoice.save({ session });
+
+    try {
+      await createOutboxEvent({
+        organizationId,
+        branchId,
+        eventType: "loyalty.points_earned",
+        idempotencyKey: `loyalty-earn:${transaction._id}`,
+        payload: {
+          customerId: String(customerId),
+          transactionId: String(transaction._id),
+          invoiceId: String(invoice._id),
+          invoiceNumber: invoice.invoiceNumber,
+          points: pointsToAward,
+          balanceAfter,
+        },
+        session,
+      });
+    } catch {
+      // Non-blocking notification outbox
+    }
 
     return transaction;
   }
@@ -796,6 +839,246 @@ export class LoyaltyService {
       filter,
       pagination
     );
+  }
+
+  /**
+   * Reverse earned loyalty points for an item-linked RefundCase using cumulative rounding.
+   * Caller owns the MongoDB transaction and must supply `session`.
+   */
+  async reverseForRefund({ invoice, refundCase, allocations, session }) {
+    if (!session) {
+      throw new AppError("MongoDB session is required for loyalty refund reversal", 400);
+    }
+
+    const organizationId = invoice.organizationId;
+    const freshRefundCase = await RefundCase.findOne({
+      _id: refundCase._id,
+      organizationId,
+    }).session(session);
+
+    if (!freshRefundCase) {
+      throw new AppError("RefundCase not found", 404);
+    }
+
+    if (freshRefundCase.domainReversals?.loyalty?.status === "completed") {
+      return {
+        status: "completed",
+        alreadyReversed: true,
+        pointsReversed: 0,
+        referenceIds: freshRefundCase.domainReversals.loyalty.referenceIds || [],
+      };
+    }
+
+    const isItemLinked =
+      freshRefundCase.refundMode === "item_linked" ||
+      freshRefundCase.refundKind === "item_linked";
+    if (!isItemLinked) {
+      freshRefundCase.domainReversals = freshRefundCase.domainReversals || {};
+      freshRefundCase.domainReversals.loyalty = {
+        status: "skipped",
+        referenceIds: [],
+      };
+      await freshRefundCase.save({ session });
+      return {
+        status: "skipped",
+        pointsReversed: 0,
+        referenceIds: [],
+      };
+    }
+
+    const scopeKey = `REFUND_REV:LOYALTY:INV:${invoice._id.toString()}`;
+    await ScopeLock.findOneAndUpdate(
+      {
+        organizationId,
+        scopeType: "LOYALTY_REFUND_REVERSAL",
+        scopeKey,
+      },
+      {
+        $setOnInsert: {
+          organizationId,
+          scopeType: "LOYALTY_REFUND_REVERSAL",
+          scopeKey,
+        },
+        $set: {
+          updatedAt: new Date(),
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        session,
+      }
+    );
+
+    const sourceEventKey = `REFUND_REV:LOYALTY:${freshRefundCase._id.toString()}`;
+    const existingReverse = await LoyaltyTransaction.findOne({
+      organizationId,
+      sourceEventKey,
+    }).session(session);
+
+    if (existingReverse) {
+      freshRefundCase.domainReversals = freshRefundCase.domainReversals || {};
+      freshRefundCase.domainReversals.loyalty = {
+        status: "completed",
+        referenceIds: [existingReverse._id],
+      };
+      await freshRefundCase.save({ session });
+      return {
+        status: "completed",
+        alreadyReversed: true,
+        pointsReversed: Math.abs(existingReverse.pointsDelta || 0),
+        referenceIds: [existingReverse._id],
+      };
+    }
+
+    let originalEarnTx = null;
+    if (invoice.loyaltyTransactionId) {
+      originalEarnTx = await LoyaltyTransaction.findOne({
+        _id: invoice.loyaltyTransactionId,
+        organizationId,
+      }).session(session);
+    }
+    if (!originalEarnTx) {
+      originalEarnTx = await LoyaltyTransaction.findOne({
+        organizationId,
+        invoiceId: invoice._id,
+        type: LOYALTY_TRANSACTION_TYPES.EARNED,
+      }).session(session);
+    }
+
+    if (!originalEarnTx || (originalEarnTx.pointsDelta || 0) <= 0) {
+      freshRefundCase.domainReversals = freshRefundCase.domainReversals || {};
+      freshRefundCase.domainReversals.loyalty = {
+        status: "completed",
+        referenceIds: [],
+      };
+      await freshRefundCase.save({ session });
+      return {
+        status: "completed",
+        pointsReversed: 0,
+        referenceIds: [],
+      };
+    }
+
+    const pointsEarned = originalEarnTx.pointsDelta;
+    const originalEligibleSpendPaise = originalEarnTx.rateSnapshot?.eligibleSpendAmount || 0;
+    if (originalEligibleSpendPaise <= 0) {
+      freshRefundCase.domainReversals = freshRefundCase.domainReversals || {};
+      freshRefundCase.domainReversals.loyalty = {
+        status: "completed",
+        referenceIds: [],
+      };
+      await freshRefundCase.save({ session });
+      return {
+        status: "completed",
+        pointsReversed: 0,
+        referenceIds: [],
+      };
+    }
+
+    const effectiveAllocations = allocations ?? freshRefundCase.allocations ?? [];
+    const currentRefundEligiblePaise = effectiveAllocations.reduce(
+      (sum, alloc) => sum + Number(alloc.allocatedAmountPaise || 0),
+      0
+    );
+
+    const priorCompletedCases = await RefundCase.find({
+      organizationId,
+      invoiceId: invoice._id,
+      _id: { $ne: freshRefundCase._id },
+      $or: [{ refundMode: "item_linked" }, { refundKind: "item_linked" }],
+      "domainReversals.loyalty.status": "completed",
+    }).session(session);
+
+    const priorRefundedEligiblePaise = priorCompletedCases.reduce((caseSum, rc) => {
+      const allocSum = (rc.allocations || []).reduce(
+        (sum, alloc) => sum + Number(alloc.allocatedAmountPaise || 0),
+        0
+      );
+      return caseSum + allocSum;
+    }, 0);
+
+    const cumulativeRefundedEligiblePaise = Math.min(
+      originalEligibleSpendPaise,
+      priorRefundedEligiblePaise + currentRefundEligiblePaise
+    );
+
+    const targetCumulativeReversed = Math.floor(
+      (pointsEarned * cumulativeRefundedEligiblePaise) / originalEligibleSpendPaise
+    );
+
+    const priorReversalTxs = await LoyaltyTransaction.find({
+      organizationId,
+      invoiceId: invoice._id,
+      type: LOYALTY_TRANSACTION_TYPES.EARNING_REVERSED,
+    }).session(session);
+
+    const priorPointsReversed = priorReversalTxs.reduce(
+      (sum, tx) => sum + Math.abs(tx.pointsDelta || 0),
+      0
+    );
+
+    const pointsToReverse = Math.max(0, targetCumulativeReversed - priorPointsReversed);
+
+    if (pointsToReverse === 0) {
+      freshRefundCase.domainReversals = freshRefundCase.domainReversals || {};
+      freshRefundCase.domainReversals.loyalty = {
+        status: "completed",
+        referenceIds: [],
+      };
+      await freshRefundCase.save({ session });
+      return {
+        status: "completed",
+        pointsReversed: 0,
+        referenceIds: [],
+      };
+    }
+
+    const customer = await Customer.findOne({
+      _id: invoice.customerId,
+      organizationId,
+      isDeleted: false,
+    }).session(session);
+
+    if (!customer) {
+      throw new AppError("Customer not found", 404);
+    }
+
+    const currentPoints = customer.loyaltyPoints || 0;
+    const deductedFromBalance = Math.min(currentPoints, pointsToReverse);
+    const uncoveredDebt = pointsToReverse - deductedFromBalance;
+    customer.loyaltyPoints = currentPoints - deductedFromBalance;
+    customer.loyaltyPointsDebt = (customer.loyaltyPointsDebt || 0) + uncoveredDebt;
+    await customer.save({ session });
+
+    const reverseTx = new LoyaltyTransaction({
+      organizationId,
+      branchId: invoice.branchId,
+      customerId: invoice.customerId,
+      invoiceId: invoice._id,
+      type: LOYALTY_TRANSACTION_TYPES.EARNING_REVERSED,
+      pointsDelta: -pointsToReverse,
+      balanceBefore: currentPoints,
+      balanceAfter: customer.loyaltyPoints,
+      sourceEventKey,
+      reason: `Earned loyalty points reversed for refund case ${freshRefundCase.refundNumber || freshRefundCase._id}`,
+      rateSnapshot: originalEarnTx.rateSnapshot,
+    });
+    await reverseTx.save({ session });
+
+    freshRefundCase.domainReversals = freshRefundCase.domainReversals || {};
+    freshRefundCase.domainReversals.loyalty = {
+      status: "completed",
+      referenceIds: [reverseTx._id],
+    };
+    await freshRefundCase.save({ session });
+
+    return {
+      status: "completed",
+      pointsReversed: pointsToReverse,
+      referenceIds: [reverseTx._id],
+      transaction: reverseTx,
+    };
   }
 }
 

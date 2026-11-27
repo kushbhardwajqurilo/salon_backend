@@ -33,6 +33,46 @@ export const VERIFIED_EVENT_TYPES = Object.freeze([
   "subscription.redemption_otp",
   "subscription.redeemed",
   "membership.activated",
+
+  // Coupons (billing.service.js)
+  "coupon.redeemed",
+  "coupon.usage_limit_exhausted",
+
+  // CRM & Customers (customer.service.js)
+  "customer.created",
+
+  // Leaves (leave.service.js)
+  "leave.approved",
+  "leave.rejected",
+  "leave.cancelled",
+
+  // Payroll (payroll.service.js)
+  "payroll.payslip_published",
+
+  // Attendance (attendance.service.js)
+  "attendance.marked",
+  "attendance.corrected",
+
+  // Inventory (inventory.service.js)
+  "inventory.low_stock",
+  "inventory.out_of_stock",
+  "inventory.stock_received",
+  "inventory.stock_adjusted",
+
+  // Supplier & Procurement (procurement.service.js)
+  "procurement.po_created",
+  "procurement.po_submitted",
+  "procurement.po_approved",
+  "procurement.po_rejected",
+  "procurement.goods_received",
+
+  // Expenses & Finance (expense.service.js, finance.service.js)
+  "expense.submitted",
+  "expense.approved",
+  "expense.rejected",
+  "expense.payout_reversed",
+  "finance.day_closure_submitted",
+  "finance.day_closure_approved",
 ]);
 
 /**
@@ -42,7 +82,6 @@ export const VERIFIED_EVENT_TYPES = Object.freeze([
 export const PROVISIONAL_EVENT_TYPES = Object.freeze([
   "loyalty.points_earned",
   "loyalty.points_redeemed",
-  "payroll.payslip_published",
   "leave.status_updated",
 ]);
 

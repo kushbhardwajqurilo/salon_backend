@@ -9,6 +9,7 @@ import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 import { AuditLog } from "../../models/audit/auditLog.model.js";
 import { AppError } from "../../utils/errors.js";
 import { runInTransaction } from "../../utils/transaction.js";
+import { createOutboxEvent } from "../notifications/outbox.service.js";
 
 class MembershipService {
   /**
@@ -731,7 +732,7 @@ class MembershipService {
     organizationId,
     userId,
   ) {
-    return await runInTransaction(async (session) => {
+    const saleResult = await runInTransaction(async (session) => {
       // 1. Load reference membership
       const referenceMembership = await CustomerMembership.findOne({
         _id: existingMembershipId,
@@ -913,7 +914,7 @@ class MembershipService {
     const targetPlanId = rawPlanId || rawMembershipPlanId;
     const effectiveBranchId = branchId || invoiceBranchId;
 
-    return await runInTransaction(async (session) => {
+    const saleResult = await runInTransaction(async (session) => {
       // 1. Resolve or create plan
       let plan = null;
       if (customPlan) {
@@ -1217,6 +1218,25 @@ class MembershipService {
         { session },
       );
 
+      if (initialStatus === "active") {
+        await createOutboxEvent(
+          {
+            organizationId,
+            branchId: branchId || null,
+            eventType: "membership.activated",
+            idempotencyKey: `membership-activated:${membershipPurchaseId}`,
+            payload: {
+              membershipPurchaseId,
+              membershipPlanId: String(plan._id),
+              planName: plan.name,
+              payerCustomerId: String(payer._id),
+              customerName: payer.name || "",
+            },
+          },
+          { session },
+        );
+      }
+
       return {
         success: true,
         membershipPurchaseId,
@@ -1237,6 +1257,8 @@ class MembershipService {
           : null,
       };
     });
+
+    return saleResult;
   }
 
   /**
@@ -1385,6 +1407,25 @@ class MembershipService {
 
     // Check duplicate reminder prevention
     if (membership.renewalReminder?.status === "sent" && !force) {
+      if (initialStatus === "active") {
+        await createOutboxEvent(
+          {
+            organizationId,
+            branchId: branchId || null,
+            eventType: "membership.activated",
+            idempotencyKey: `membership-activated:${membershipPurchaseId}`,
+            payload: {
+              membershipPurchaseId,
+              membershipPlanId: String(plan._id),
+              planName: plan.name,
+              payerCustomerId: String(payer._id),
+              customerName: payer.name || "",
+            },
+          },
+          { session },
+        );
+      }
+
       return {
         success: true,
         skipped: true,
@@ -1451,6 +1492,25 @@ class MembershipService {
           },
         },
       );
+
+      if (initialStatus === "active") {
+        await createOutboxEvent(
+          {
+            organizationId,
+            branchId: branchId || null,
+            eventType: "membership.activated",
+            idempotencyKey: `membership-activated:${membershipPurchaseId}`,
+            payload: {
+              membershipPurchaseId,
+              membershipPlanId: String(plan._id),
+              planName: plan.name,
+              payerCustomerId: String(payer._id),
+              customerName: payer.name || "",
+            },
+          },
+          { session },
+        );
+      }
 
       return {
         success: true,

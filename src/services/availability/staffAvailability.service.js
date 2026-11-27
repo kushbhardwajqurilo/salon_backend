@@ -278,7 +278,7 @@ export class StaffAvailabilityService {
       const slotEndMin = timeToMinutes(localEndStr);
       const openMin = timeToMinutes(calDay.operatingHoursOverride.openTime);
       const closeMin = timeToMinutes(calDay.operatingHoursOverride.closeTime);
-      if (slotStartMin < openMin || slotEndMin > closeMin) {
+      if (!options?.allowAfterHours && (slotStartMin < openMin || slotStartMin >= closeMin)) {
         reasons.push(REASON_CODES.BRANCH_CLOSED);
         status = AVAILABILITY_STATUS.UNAVAILABLE;
       }
@@ -292,7 +292,7 @@ export class StaffAvailabilityService {
         const slotEndMin = timeToMinutes(localEndStr);
         const branchOpenMin = timeToMinutes(dayHours.openTime);
         const branchCloseMin = timeToMinutes(dayHours.closeTime);
-        if (slotStartMin < branchOpenMin || slotEndMin > branchCloseMin) {
+        if (!options?.allowAfterHours && (slotStartMin < branchOpenMin || slotStartMin >= branchCloseMin)) {
           reasons.push(REASON_CODES.BRANCH_CLOSED);
           status = AVAILABILITY_STATUS.UNAVAILABLE;
         }

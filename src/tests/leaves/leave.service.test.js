@@ -5,6 +5,7 @@ import { Sequence } from "../../models/sequence/sequence.model.js";
 import { AppError } from "../../utils/errors.js";
 import { Branch } from "../../models/branches/branch.model.js";
 import { Appointment } from "../../models/appointments/appointment.model.js";
+import { OutboxEvent } from "../../models/notifications/outboxEvent.model.js";
 
 const orgId = new mongoose.Types.ObjectId();
 const branchId = new mongoose.Types.ObjectId();
@@ -52,6 +53,7 @@ describe("LeaveService Phase 4", () => {
 
   beforeEach(() => {
     jest.restoreAllMocks();
+    jest.spyOn(OutboxEvent, "create").mockResolvedValue([{ eventId: "mock-evt" }]);
     jest.useFakeTimers();
     jest.setSystemTime(new Date("2026-08-20T10:00:00.000Z"));
 

@@ -2,6 +2,7 @@ import { EmailService } from "./email.service.js";
 import { SmsService } from "./sms.service.js";
 import { Notification } from "../../models/notifications/notification.model.js";
 import { redactSensitiveText } from "./notificationEventContract.js";
+import { resolveAndRenderNotificationTemplate } from "./notificationTemplate.service.js";
 
 const emailService = new EmailService();
 const smsService = new SmsService();
@@ -69,4 +70,41 @@ export async function dispatchNotificationJob(notificationId, dispatchFn) {
     );
     throw err;
   }
+}
+
+/**
+ * Renders notification content using trusted persisted Notification context
+ * and dispatches via the appropriate channel adapter.
+ */
+export async function dispatchRenderedNotification(
+  notificationId,
+  { to = null, phone = null, variables = {}, fallbackSubject = "", fallbackText = "" } = {},
+) {
+  return dispatchNotificationJob(notificationId, async (notification) => {
+    let rendered = { subject: "", body: "", source: "none" };
+    try {
+      rendered = await resolveAndRenderNotificationTemplate({
+        organizationId: notification.organizationId,
+        eventType: notification.eventType,
+        channel: notification.channel,
+        variables,
+      });
+    } catch {
+      rendered = { subject: "", body: "", source: "none" };
+    }
+
+    const subject = rendered.subject || fallbackSubject;
+    const body = rendered.body || fallbackText;
+    if (!body) {
+      throw new Error("No rendered or fallback notification body available");
+    }
+
+    if (notification.channel === "email") {
+      return sendViaEmailAdapter({ to, subject, html: body, text: body });
+    }
+    if (notification.channel === "sms") {
+      return sendViaSmsAdapter({ phone, message: body });
+    }
+    throw new Error(`Unsupported dispatch channel: ${notification.channel}`);
+  });
 }

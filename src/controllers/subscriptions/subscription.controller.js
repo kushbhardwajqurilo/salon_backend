@@ -27,7 +27,8 @@ export const createSubscription = asyncHandler(async (req, res) => {
   const payload = {
     ...req.body,
     branchId: req.branchId || req.body?.branchId,
-    billImmediately: req.body?.billImmediately !== undefined ? req.body.billImmediately : true,
+    // Defer invoice generation to Unified Sales Workspace checkout by default
+    billImmediately: req.body?.billImmediately !== undefined ? req.body.billImmediately : false,
   };
   const result = await subscriptionService.createSubscription(
     payload,

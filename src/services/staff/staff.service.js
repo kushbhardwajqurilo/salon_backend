@@ -10,6 +10,7 @@ import { AppError } from "../../utils/errors.js";
 import { normalizeUsername } from "../../utils/userIdentity.js";
 import { assertStaffBranchSubsetOfUserAccess } from "../../utils/branchAuthorization.js";
 import { deleteFromCloudinary, commitAsset, confirmAsset } from "../cloudinary.service.js";
+import { createOutboxEvent } from "../notifications/outbox.service.js";
 
 export class StaffService {
   constructor() {
@@ -223,6 +224,28 @@ export class StaffService {
             actorId,
             session,
           );
+          if (staff.userId) {
+            try {
+              const staffName =
+                [staff.firstName, staff.lastName].filter(Boolean).join(" ").trim() ||
+                staff.staffCode;
+              await createOutboxEvent({
+                organizationId,
+                branchId: data.branchId || null,
+                eventType: "user.welcome_credentials",
+                idempotencyKey: `user-welcome:${staff._id}`,
+                payload: {
+                  userId: String(staff.userId),
+                  staffId: String(staff._id),
+                  staffName,
+                },
+                session,
+              });
+            } catch {
+              // Non-blocking notification outbox
+            }
+          }
+
           return staff;
         });
 

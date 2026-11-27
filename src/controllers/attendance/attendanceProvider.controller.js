@@ -17,6 +17,8 @@ const logAttendanceAudit = (req, payload) =>
     .catch(() => {});
 import {
   adjustAttendanceRecord,
+  bulkAdjustAttendanceRecords,
+  adjustAttendancePunch,
   recordStaffPunch,
   getMonthlyMusterRoll,
   getProviderStatus,
@@ -54,6 +56,28 @@ export const getStaffAttendanceDetailController = asyncHandler(async (req, res) 
     date: req.query.date,
   });
   res.status(200).json({ success: true, data });
+});
+
+export const bulkAdjustAttendanceRecordsController = asyncHandler(async (req, res) => {
+  const data = await bulkAdjustAttendanceRecords({
+    ...trustedContext(req),
+    actorId: req.user.id,
+    items: req.body?.items,
+    status: req.body?.status,
+    reason: req.body?.reason,
+  });
+  return res.status(200).json({ success: true, data });
+});
+
+export const adjustAttendancePunchController = asyncHandler(async (req, res) => {
+  const data = await adjustAttendancePunch({
+    ...trustedContext(req),
+    actorId: req.user.id,
+    punchId: req.params.punchId,
+    action: req.body?.action,
+    reason: req.body?.reason,
+  });
+  return res.status(200).json({ success: true, data });
 });
 
 export const adjustAttendanceRecordController = asyncHandler(async (req, res) => {

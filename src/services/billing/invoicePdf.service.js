@@ -907,16 +907,44 @@ export function generateInvoiceHtml({
           ${
             invoice.discountTotal > 0
               ? `<div class="summary-row text-muted">
-                  <span>Discount Applied:</span>
+                  <span>Total Discounts:</span>
                   <span class="font-mono">- ${formatCurrency(invoice.discountTotal)}</span>
                 </div>`
               : ""
           }
+          ${(() => {
+            const membershipDiscountTotal = (invoice.items || invoice.lines || []).reduce(
+              (sum, item) => sum + (item.membershipDiscountAmount || 0),
+              0
+            );
+            return membershipDiscountTotal > 0
+              ? `<div class="summary-row sub-benefit" style="font-size: 11px; padding-left: 22px;">
+                  <span>↳ Membership Benefit:</span>
+                  <span class="font-mono">- ${formatCurrency(membershipDiscountTotal)}</span>
+                </div>`
+              : "";
+          })()}
           ${
             invoice.coupon?.code && invoice.coupon?.calculatedDiscountAmount > 0
               ? `<div class="summary-row text-muted" style="font-size: 11px; padding-left: 22px;">
                   <span>↳ Coupon (${escapeHtml(invoice.coupon.code)}):</span>
                   <span class="font-mono">- ${formatCurrency(invoice.coupon.calculatedDiscountAmount)}</span>
+                </div>`
+              : ""
+          }
+          ${
+            invoice.lineDiscountsTotal > 0
+              ? `<div class="summary-row text-muted" style="font-size: 11px; padding-left: 22px;">
+                  <span>↳ Manual Line Discounts:</span>
+                  <span class="font-mono">- ${formatCurrency(invoice.lineDiscountsTotal)}</span>
+                </div>`
+              : ""
+          }
+          ${
+            invoice.invoiceDiscountsTotal > 0
+              ? `<div class="summary-row text-muted" style="font-size: 11px; padding-left: 22px;">
+                  <span>↳ Manual Invoice Discounts:</span>
+                  <span class="font-mono">- ${formatCurrency(invoice.invoiceDiscountsTotal)}</span>
                 </div>`
               : ""
           }

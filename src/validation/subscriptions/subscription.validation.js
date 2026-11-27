@@ -43,7 +43,8 @@ export const createSubscriptionSchema = z.object({
       planId: objectIdSchema.optional().nullable(),
       soldByStaffId: objectIdSchema.optional().nullable(),
       notes: z.string().trim().max(1000).optional().default(""),
-      billImmediately: z.boolean().optional().default(true),
+      // Defer invoice generation to Unified Sales Workspace checkout by default
+  billImmediately: z.boolean().optional().default(false),
       branchId: objectIdSchema.optional().nullable(),
       renewedByStaffId: objectIdSchema.optional().nullable(),
     })

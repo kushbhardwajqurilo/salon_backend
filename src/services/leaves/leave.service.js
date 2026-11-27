@@ -12,6 +12,7 @@ import { Branch } from "../../models/branches/branch.model.js";
 import { Appointment } from "../../models/appointments/appointment.model.js";
 import { parseLocalToUTC } from "../appointments/appointment.service.js";
 import { AppError } from "../../utils/errors.js";
+import { emitLeaveStatusOutboxEvent } from "./leaveNotificationOutbox.service.js";
 import {
   enumerateDates,
   toDateOnlyStr,
@@ -473,6 +474,13 @@ export class LeaveService {
           session,
         );
 
+        await emitLeaveStatusOutboxEvent({
+          eventType: "leave.approved",
+          leave: updatedLeave,
+          organizationId,
+          session,
+        });
+
         return this.toLeaveDTO(updatedLeave);
       });
     } catch (error) {
@@ -727,6 +735,13 @@ export class LeaveService {
           session,
         );
 
+        await emitLeaveStatusOutboxEvent({
+          eventType: "leave.approved",
+          leave: updatedLeave,
+          organizationId,
+          session,
+        });
+
         return this.toLeaveDTO(updatedLeave);
       });
     } catch (error) {
@@ -805,6 +820,13 @@ export class LeaveService {
           actorId,
           session,
         );
+
+        await emitLeaveStatusOutboxEvent({
+          eventType: "leave.approved",
+          leave: updatedLeave,
+          organizationId,
+          session,
+        });
 
         return this.toLeaveDTO(updatedLeave);
       });
@@ -910,6 +932,13 @@ export class LeaveService {
           actorId,
           session,
         );
+
+        await emitLeaveStatusOutboxEvent({
+          eventType: "leave.approved",
+          leave: updatedLeave,
+          organizationId,
+          session,
+        });
 
         return this.toLeaveDTO(updatedLeave);
       });

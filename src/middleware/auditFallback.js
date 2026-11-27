@@ -1,5 +1,5 @@
 import { AUDIT_ACTIONS } from "../models/audit/auditLog.model.js";
-import { AuditLogService } from "../services/audit/auditLog.service.js";
+import { AuditLogService, sanitizeAuditMetadata } from "../services/audit/auditLog.service.js";
 import {
   runWithAuditContext,
   isRequestAudited,
@@ -72,7 +72,10 @@ export const auditFallbackMiddleware = (req, res, next) => {
                 method: req.method,
                 path: req.originalUrl.split("?")[0],
                 statusCode: res.statusCode,
-                body: req.body && typeof req.body === "object" ? req.body : undefined,
+                body:
+                  req.body && typeof req.body === "object"
+                    ? sanitizeAuditMetadata(req.body)
+                    : undefined,
               },
             },
             organizationId,

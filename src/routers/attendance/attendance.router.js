@@ -15,6 +15,8 @@ import {
 } from '../../validation/attendance/attendance.validation.js';
 import {
   adjustAttendanceRecordController,
+  bulkAdjustAttendanceRecordsController,
+  adjustAttendancePunchController,
   createStaffDeviceMappingController,
   deactivateStaffDeviceMappingController,
   getMonthlyMusterRollController,
@@ -88,6 +90,8 @@ router.delete(
 );
 
 router.post('/records/adjust', requireActiveBranch, authorize('attendance.adjust'), adjustAttendanceRecordController);
+router.post('/records/bulk-adjust', requireActiveBranch, authorize('attendance.adjust'), bulkAdjustAttendanceRecordsController);
+router.patch('/punches/:punchId/adjust', requireActiveBranch, authorize('attendance.adjust'), adjustAttendancePunchController);
 router.post('/leave-exceptions', requireActiveBranch, authorize('attendance.adjust'), recordLeaveExceptionController);
 router.post(
   '/leave-appointment-conflicts/:leaveId/:appointmentId/resolve',

@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { Invoice } from "../../models/billing/invoice.model.js";
 import { Payment } from "../../models/billing/payment.model.js";
+import { RefundCase } from "../../models/billing/refundCase.model.js";
 import { Appointment } from "../../models/appointments/appointment.model.js";
 import { Customer } from "../../models/customers/customer.model.js";
 import { StockBalance } from "../../models/inventory/stockBalance.model.js";
@@ -488,7 +489,9 @@ export class DashboardOverviewService {
     const curCollections = roundCurrency(curPaymentDoc?.totalAmount || 0);
     const prevCollections = roundCurrency(prevPaymentDoc?.totalAmount || 0);
     const curRefunds = roundCurrency(Math.abs(curRefundDoc?.totalAmount || 0));
-    const prevRefunds = roundCurrency(Math.abs(prevRefundDoc?.totalAmount || 0));
+    const prevRefunds = roundCurrency(
+      Math.abs(prevRefundDoc?.totalAmount || 0),
+    );
 
     const curNetCollections = roundCurrency(curCollections - curRefunds);
     const prevNetCollections = roundCurrency(prevCollections - prevRefunds);
@@ -498,13 +501,9 @@ export class DashboardOverviewService {
     );
 
     const curABV =
-      curInvoiceCount > 0
-        ? roundCurrency(curNetSales / curInvoiceCount)
-        : 0;
+      curInvoiceCount > 0 ? roundCurrency(curNetSales / curInvoiceCount) : 0;
     const prevABV =
-      prevInvoiceCount > 0
-        ? roundCurrency(prevNetSales / prevInvoiceCount)
-        : 0;
+      prevInvoiceCount > 0 ? roundCurrency(prevNetSales / prevInvoiceCount) : 0;
 
     const curTotalAppts = curApptAgg?.totalAppointments || 0;
     const prevTotalAppts = prevApptAgg?.totalAppointments || 0;
@@ -565,6 +564,43 @@ export class DashboardOverviewService {
           curNetCollections,
           meta.comparisonStartDate ? prevNetCollections : null,
         );
+        if (hasBilling && kpis.netSales) {
+          kpis.netSales = calculateMetricDelta(
+            roundCurrency((kpis.netSales.current || 0) - curRefunds),
+            meta.comparisonStartDate
+              ? roundCurrency((kpis.netSales.previous || 0) - prevRefunds)
+              : null,
+          );
+        }
+        const refundCaseAgg = await RefundCase.aggregate([
+          {
+            $match: {
+              ...this._buildScope(organizationId, branchId),
+              paymentSettlementStatus: { $in: ["pending", "failed"] },
+              createdAt: {
+                $gte: startUtc,
+                $lte: finalEndUtc,
+              },
+            },
+          },
+          {
+            $group: {
+              _id: "$paymentSettlementStatus",
+              totalPaise: { $sum: "$pendingAmountPaise" },
+              count: { $sum: 1 },
+            },
+          },
+        ]);
+        const pendingRow = refundCaseAgg.find((r) => r._id === "pending");
+        const failedRow = refundCaseAgg.find((r) => r._id === "failed");
+        kpis.pendingRefunds = {
+          amount: roundCurrency((pendingRow?.totalPaise || 0) / 100),
+          count: pendingRow?.count || 0,
+        };
+        kpis.failedRefunds = {
+          amount: roundCurrency((failedRow?.totalPaise || 0) / 100),
+          count: failedRow?.count || 0,
+        };
       }
 
       if (hasAppts) {
@@ -673,9 +709,10 @@ export class DashboardOverviewService {
       });
     }
 
-    const revenueTrend = (hasBilling || hasPayments)
-      ? Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date))
-      : undefined;
+    const revenueTrend =
+      hasBilling || hasPayments
+        ? Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date))
+        : undefined;
 
     // =========================================================================
     // 3. Appointments Breakdown
@@ -957,7 +994,7 @@ export class DashboardOverviewService {
         const totalExpenses = roundCurrency(
           expenseAgg.reduce((sum, item) => sum + item.amount, 0),
         );
-        
+
         // operatingCashMargin requires finance.view (expenses.view alone only exposes expense metrics)
         const canViewMargin = hasFinanceView;
         const operatingCashMargin = canViewMargin
@@ -1164,7 +1201,11 @@ export class DashboardOverviewService {
         };
         if (branchId) {
           subScope.$or = [
-            { "members.permittedBranchIds": new mongoose.Types.ObjectId(branchId) },
+            {
+              "members.permittedBranchIds": new mongoose.Types.ObjectId(
+                branchId,
+              ),
+            },
             { "members.permittedBranchIds": { $size: 0 } },
           ];
         }

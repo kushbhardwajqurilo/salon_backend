@@ -183,6 +183,8 @@ app.use("/api/v1/dashboard", dashboardRouter);
 app.use("/api/v1/settings", settingsRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/api/v1/upload", uploadRouter);
+import notificationRouter from "./src/routers/notifications/notification.routes.js";
+app.use("/api/v1/notifications", notificationRouter);
 
 // health check endpoint for server
 app.get("/health", (req, res) => {

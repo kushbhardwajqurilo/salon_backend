@@ -8,9 +8,12 @@ import { validateQuantityForUnit } from "../../validation/inventory/inventory.va
 import { assertCanManageBranches } from "../../utils/branchAuthorization.js";
 import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 import { StockBalance } from "../../models/inventory/stockBalance.model.js";
+import { Invoice } from "../../models/billing/invoice.model.js";
+import { RefundCase } from "../../models/billing/refundCase.model.js";
 import { StockBatch } from "../../models/inventory/stockBatch.model.js";
 import { FifoDepletionService, toMilliUnits } from "./fifoDepletion.service.js";
 import { stockReservationRepository } from "../../repositories/inventory/stockReservation.repository.js";
+import { createOutboxEvent } from "../notifications/outbox.service.js";
 
 export class InventoryService {
   /**
@@ -383,6 +386,60 @@ export class InventoryService {
       });
       await audit.save({ session });
 
+      try {
+        const stockDomain =
+          product.productType === "consumable" ? "Salon Consumables" : "Retail Products";
+        await createOutboxEvent({
+          organizationId,
+          branchId,
+          eventType: "inventory.stock_adjusted",
+          idempotencyKey: `inv-adj:${movement._id}`,
+          payload: {
+            productId: String(productId),
+            itemName: product.name,
+            stockDomain,
+            quantity: balance.onHand,
+            quantityDelta: -quantity,
+            actorId: String(userId),
+          },
+          session,
+        });
+        if (balance.onHand === 0) {
+          await createOutboxEvent({
+            organizationId,
+            branchId,
+            eventType: "inventory.out_of_stock",
+            idempotencyKey: `inv-oos:${branchId}:${productId}:${movement._id}`,
+            payload: {
+              productId: String(productId),
+              itemName: product.name,
+              stockDomain,
+              quantity: 0,
+              actorId: String(userId),
+            },
+            session,
+          });
+        } else if (product.reorderPoint > 0 && balance.onHand <= product.reorderPoint) {
+          await createOutboxEvent({
+            organizationId,
+            branchId,
+            eventType: "inventory.low_stock",
+            idempotencyKey: `inv-low:${branchId}:${productId}:${movement._id}`,
+            payload: {
+              productId: String(productId),
+              itemName: product.name,
+              stockDomain,
+              quantity: balance.onHand,
+              reorderPoint: product.reorderPoint,
+              actorId: String(userId),
+            },
+            session,
+          });
+        }
+      } catch {
+        // Non-blocking: never fail stock adjustment on notification outbox error
+      }
+
       return {
         idempotentReplay: false,
         movement,
@@ -649,6 +706,60 @@ export class InventoryService {
       });
       await audit.save({ session });
 
+      try {
+        const stockDomain =
+          product.productType === "consumable" ? "Salon Consumables" : "Retail Products";
+        await createOutboxEvent({
+          organizationId,
+          branchId,
+          eventType: "inventory.stock_adjusted",
+          idempotencyKey: `inv-adj:${movement._id}`,
+          payload: {
+            productId: String(productId),
+            itemName: product.name,
+            stockDomain,
+            quantity: balance.onHand,
+            quantityDelta: -quantity,
+            actorId: String(userId),
+          },
+          session,
+        });
+        if (balance.onHand === 0) {
+          await createOutboxEvent({
+            organizationId,
+            branchId,
+            eventType: "inventory.out_of_stock",
+            idempotencyKey: `inv-oos:${branchId}:${productId}:${movement._id}`,
+            payload: {
+              productId: String(productId),
+              itemName: product.name,
+              stockDomain,
+              quantity: 0,
+              actorId: String(userId),
+            },
+            session,
+          });
+        } else if (product.reorderPoint > 0 && balance.onHand <= product.reorderPoint) {
+          await createOutboxEvent({
+            organizationId,
+            branchId,
+            eventType: "inventory.low_stock",
+            idempotencyKey: `inv-low:${branchId}:${productId}:${movement._id}`,
+            payload: {
+              productId: String(productId),
+              itemName: product.name,
+              stockDomain,
+              quantity: balance.onHand,
+              reorderPoint: product.reorderPoint,
+              actorId: String(userId),
+            },
+            session,
+          });
+        }
+      } catch {
+        // Non-blocking: never fail stock adjustment on notification outbox error
+      }
+
       return {
         idempotentReplay: false,
         movement,
@@ -821,6 +932,60 @@ export class InventoryService {
         },
       });
       await audit.save({ session });
+
+      try {
+        const stockDomain =
+          product.productType === "consumable" ? "Salon Consumables" : "Retail Products";
+        await createOutboxEvent({
+          organizationId,
+          branchId,
+          eventType: "inventory.stock_adjusted",
+          idempotencyKey: `inv-adj:${movement._id}`,
+          payload: {
+            productId: String(productId),
+            itemName: product.name,
+            stockDomain,
+            quantity: balance.onHand,
+            quantityDelta: -quantity,
+            actorId: String(userId),
+          },
+          session,
+        });
+        if (balance.onHand === 0) {
+          await createOutboxEvent({
+            organizationId,
+            branchId,
+            eventType: "inventory.out_of_stock",
+            idempotencyKey: `inv-oos:${branchId}:${productId}:${movement._id}`,
+            payload: {
+              productId: String(productId),
+              itemName: product.name,
+              stockDomain,
+              quantity: 0,
+              actorId: String(userId),
+            },
+            session,
+          });
+        } else if (product.reorderPoint > 0 && balance.onHand <= product.reorderPoint) {
+          await createOutboxEvent({
+            organizationId,
+            branchId,
+            eventType: "inventory.low_stock",
+            idempotencyKey: `inv-low:${branchId}:${productId}:${movement._id}`,
+            payload: {
+              productId: String(productId),
+              itemName: product.name,
+              stockDomain,
+              quantity: balance.onHand,
+              reorderPoint: product.reorderPoint,
+              actorId: String(userId),
+            },
+            session,
+          });
+        }
+      } catch {
+        // Non-blocking: never fail stock adjustment on notification outbox error
+      }
 
       return {
         idempotentReplay: false,
@@ -1387,6 +1552,46 @@ export class InventoryService {
         );
       }
 
+      try {
+        const balanceAfter = Number(movement?.balanceAfter ?? 0);
+        if (product) {
+          if (balanceAfter === 0) {
+            await createOutboxEvent({
+              organizationId: invoice.organizationId,
+              branchId: res.branchId,
+              eventType: "inventory.out_of_stock",
+              idempotencyKey: `inv-oos:${res.branchId}:${res.productId}:${movement._id}`,
+              payload: {
+                productId: String(res.productId),
+                itemName: product.name,
+                stockDomain: "Retail Products",
+                quantity: 0,
+                actorId: actorId ? String(actorId) : undefined,
+              },
+              session,
+            });
+          } else if (product.reorderPoint > 0 && balanceAfter <= product.reorderPoint) {
+            await createOutboxEvent({
+              organizationId: invoice.organizationId,
+              branchId: res.branchId,
+              eventType: "inventory.low_stock",
+              idempotencyKey: `inv-low:${res.branchId}:${res.productId}:${movement._id}`,
+              payload: {
+                productId: String(res.productId),
+                itemName: product.name,
+                stockDomain: "Retail Products",
+                quantity: balanceAfter,
+                reorderPoint: product.reorderPoint,
+                actorId: actorId ? String(actorId) : undefined,
+              },
+              session,
+            });
+          }
+        }
+      } catch {
+        // Non-blocking: never fail POS stock commitment on notification outbox error
+      }
+
       movements.push(movement);
     }
 
@@ -1763,6 +1968,183 @@ export class InventoryService {
         },
       };
     });
+  }
+
+  async reverseSaleForRefund({ invoice, refundCase, allocations, session }) {
+    if (!session) {
+      throw new AppError("A MongoDB transaction session is required for inventory reversal", 400);
+    }
+    if (!invoice || !refundCase || !Array.isArray(allocations) || allocations.length === 0) {
+      throw new AppError("Invoice, RefundCase, and product allocations are required", 400);
+    }
+    if (new Set(allocations.map((a) => String(a.lineId))).size !== allocations.length) {
+      throw new AppError("Duplicate invoice line allocations are not allowed in a single RefundCase", 400);
+    }
+
+    const organizationId = invoice.organizationId;
+    const branchId = invoice.branchId;
+    if (
+      refundCase.organizationId.toString() !== organizationId.toString() ||
+      refundCase.branchId.toString() !== branchId.toString()
+    ) {
+      throw new AppError("Organization or branch mismatch between Invoice and RefundCase", 403);
+    }
+
+    if (refundCase.domainReversals?.inventory?.status === "completed") {
+      return {
+        status: "completed",
+        restockedMovementIds: refundCase.domainReversals.inventory.referenceIds || [],
+        items: [],
+        idempotentReplay: true,
+      };
+    }
+
+    const restockedMovementIds = [];
+    const results = [];
+
+    for (const alloc of allocations) {
+      const line = (invoice.lines || []).find(
+        (l) => l._id?.toString() === String(alloc.lineId)
+      );
+      if (!line) {
+        throw new AppError(`Invoice line not found: ${alloc.lineId}`, 404);
+      }
+      if (line.lineType !== "product") {
+        throw new AppError(`Line '${line.name}' is not a product invoice line`, 400);
+      }
+
+      const qty = Number(alloc.quantity || 0);
+      const remaining = Number(line.quantity || 0) - Number(line.returnedQuantity || 0);
+      if (!Number.isFinite(qty) || qty <= 0 || qty > remaining) {
+        throw new AppError(
+          `Return quantity (${qty}) exceeds remaining returnable quantity (${remaining}) for '${line.name}'`,
+          400
+        );
+      }
+
+      const idempotencyKey = `REFUND_REV:INVENTORY:${refundCase._id}:${line._id}`;
+      const existingMovement = await stockMovementRepository.findByIdempotencyKey(
+        organizationId,
+        idempotencyKey,
+        session
+      );
+
+      if (existingMovement) {
+        restockedMovementIds.push(existingMovement._id);
+        results.push({
+          lineId: line._id.toString(),
+          productId: line.productId.toString(),
+          quantity: qty,
+          restocked: true,
+          movementId: existingMovement._id,
+          idempotentReplay: true,
+        });
+        continue;
+      }
+
+      if (alloc.acceptPhysicalRestock === true) {
+        const updatedBalance = await StockBalance.findOneAndUpdate(
+          {
+            organizationId,
+            branchId,
+            productId: line.productId,
+          },
+          {
+            $inc: { onHand: qty },
+            $set: { lastMovementAt: new Date() },
+          },
+          { session, returnDocument: "after" }
+        );
+        if (!updatedBalance) {
+          throw new AppError(`StockBalance not found for product ${line.productId}`, 404);
+        }
+
+        const movement = await stockMovementRepository.create(
+          {
+            organizationId,
+            branchId,
+            productId: line.productId,
+            quantityDelta: qty,
+            balanceAfter: updatedBalance.onHand,
+            movementType: "adjustment",
+            referenceType: "RefundCase",
+            referenceId: refundCase._id,
+            idempotencyKey,
+            notes: `Refund restock for ${refundCase.refundNumber}`,
+            performedBy: refundCase.initiatedBy,
+          },
+          session
+        );
+        restockedMovementIds.push(movement._id);
+        results.push({
+          lineId: line._id.toString(),
+          productId: line.productId.toString(),
+          quantity: qty,
+          restocked: true,
+          movementId: movement._id,
+          idempotentReplay: false,
+        });
+      } else {
+        results.push({
+          lineId: line._id.toString(),
+          productId: line.productId.toString(),
+          quantity: qty,
+          restocked: false,
+          movementId: null,
+          idempotentReplay: false,
+        });
+      }
+
+      const maxAllowedReturned = Number(line.quantity) - qty;
+      const updatedInvoice = await Invoice.findOneAndUpdate(
+        {
+          _id: invoice._id,
+          organizationId,
+          lines: {
+            $elemMatch: {
+              _id: line._id,
+              $or: [
+                { returnedQuantity: { $exists: false } },
+                { returnedQuantity: null },
+                { returnedQuantity: { $lte: maxAllowedReturned } },
+              ],
+            },
+          },
+        },
+        {
+          $inc: { "lines.$.returnedQuantity": qty },
+        },
+        { session, returnDocument: "after" }
+      );
+      if (!updatedInvoice) {
+        throw new AppError(
+          `Return quantity (${qty}) exceeds remaining returnable quantity for '${line.name}'`,
+          409
+        );
+      }
+    }
+
+    await RefundCase.findOneAndUpdate(
+      {
+        _id: refundCase._id,
+        organizationId,
+        "domainReversals.inventory.status": { $ne: "completed" },
+      },
+      {
+        $set: {
+          "domainReversals.inventory.status": "completed",
+          "domainReversals.inventory.referenceIds": restockedMovementIds,
+          "domainReversals.inventory.errorMessage": null,
+        },
+      },
+      { session, returnDocument: "after" }
+    );
+
+    return {
+      status: "completed",
+      restockedMovementIds,
+      items: results,
+    };
   }
 }
 

@@ -4,6 +4,8 @@ import { AuditLogRepository } from "../../repositories/audit/auditLog.repository
 import { AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
 import { Staff } from "../../models/staff/staff.model.js";
 import { AppError } from "../../utils/errors.js";
+import { createOutboxEvent } from "../notifications/outbox.service.js";
+import { logger } from "../../utils/logger.js";
 import { normalizePhone } from "../../utils/phone.js";
 
 export class CustomerService {
@@ -22,22 +24,36 @@ export class CustomerService {
     }
 
     // 2. Duplicate checking
-    const existing = await this.customerRepo.findByPhone(data.phone, organizationId, true);
+    const existing = await this.customerRepo.findByPhone(
+      data.phone,
+      organizationId,
+      true,
+    );
     if (existing) {
       if (existing.isDeleted) {
         // Soft-deleted customer -> reactivate instead of duplicate
-        return this.reactivateCustomer(existing._id, organizationId, userId, null, data.homeBranchId);
+        return this.reactivateCustomer(
+          existing._id,
+          organizationId,
+          userId,
+          null,
+          data.homeBranchId,
+        );
       }
       if (existing.status === "inactive" || existing.status === "blocked") {
         return existing;
       }
-      throw new AppError("A customer with this phone number already exists.", 409, {
-        existingCustomer: {
-          _id: existing._id,
-          name: existing.name,
-          phone: existing.phone,
+      throw new AppError(
+        "A customer with this phone number already exists.",
+        409,
+        {
+          existingCustomer: {
+            _id: existing._id,
+            name: existing.name,
+            phone: existing.phone,
+          },
         },
-      });
+      );
     }
 
     // 3. Validate homeBranchId and visitedBranchIds
@@ -45,20 +61,32 @@ export class CustomerService {
     if (!data.homeBranchId) {
       throw new AppError("homeBranchId is required to create a customer.", 400);
     }
-    const homeBranch = await BranchModel.findOne({ _id: data.homeBranchId, organizationId, isActive: true });
+    const homeBranch = await BranchModel.findOne({
+      _id: data.homeBranchId,
+      organizationId,
+      isActive: true,
+    });
     if (!homeBranch) {
-      throw new AppError("homeBranchId does not exist or does not belong to this organization.", 400);
+      throw new AppError(
+        "homeBranchId does not exist or does not belong to this organization.",
+        400,
+      );
     }
 
     if (data.visitedBranchIds && data.visitedBranchIds.length > 0) {
-      const uniqueVisitedIds = [...new Set(data.visitedBranchIds.map(id => id.toString()))];
+      const uniqueVisitedIds = [
+        ...new Set(data.visitedBranchIds.map((id) => id.toString())),
+      ];
       const branches = await BranchModel.find({
         _id: { $in: uniqueVisitedIds },
         organizationId,
-        isActive: true
+        isActive: true,
       });
       if (branches.length !== uniqueVisitedIds.length) {
-        throw new AppError("One or more visitedBranchIds do not exist or do not belong to this organization.", 400);
+        throw new AppError(
+          "One or more visitedBranchIds do not exist or do not belong to this organization.",
+          400,
+        );
       }
       data.visitedBranchIds = uniqueVisitedIds;
     }
@@ -67,20 +95,33 @@ export class CustomerService {
     if (!data.visitedBranchIds) {
       data.visitedBranchIds = [];
     }
-    if (!data.visitedBranchIds.map(id => id.toString()).includes(data.homeBranchId.toString())) {
+    if (
+      !data.visitedBranchIds
+        .map((id) => id.toString())
+        .includes(data.homeBranchId.toString())
+    ) {
       data.visitedBranchIds.push(data.homeBranchId);
     }
 
     // 5. Validate referenced users/staff belong to same organization
-    if (data.preferences?.preferredStaff && data.preferences.preferredStaff.length > 0) {
-      const staffIds = [...new Set(data.preferences.preferredStaff.map(id => id.toString()))];
+    if (
+      data.preferences?.preferredStaff &&
+      data.preferences.preferredStaff.length > 0
+    ) {
+      const staffIds = [
+        ...new Set(data.preferences.preferredStaff.map((id) => id.toString())),
+      ];
       const StaffModel = mongoose.models.Staff || mongoose.model("Staff");
       const UserModel = mongoose.models.User || mongoose.model("User");
 
       const checkPromises = staffIds.map(async (id) => {
         let exists = false;
         if (StaffModel) {
-          exists = await StaffModel.exists({ _id: id, organizationId, isDeleted: { $ne: true } });
+          exists = await StaffModel.exists({
+            _id: id,
+            organizationId,
+            isDeleted: { $ne: true },
+          });
         }
         if (!exists && UserModel) {
           exists = await UserModel.exists({ _id: id, organizationId });
@@ -89,40 +130,63 @@ export class CustomerService {
       });
 
       const results = await Promise.all(checkPromises);
-      if (results.some(found => !found)) {
-        throw new AppError("One or more preferredStaff do not exist or do not belong to this organization.", 400);
+      if (results.some((found) => !found)) {
+        throw new AppError(
+          "One or more preferredStaff do not exist or do not belong to this organization.",
+          400,
+        );
       }
     }
 
     // 6. Validate referenced preferredServices belong to same organization
-    if (mongoose.models.Service && data.preferences?.preferredServices && data.preferences.preferredServices.length > 0) {
-      const serviceIds = [...new Set(data.preferences.preferredServices.map(id => id.toString()))];
+    if (
+      mongoose.models.Service &&
+      data.preferences?.preferredServices &&
+      data.preferences.preferredServices.length > 0
+    ) {
+      const serviceIds = [
+        ...new Set(
+          data.preferences.preferredServices.map((id) => id.toString()),
+        ),
+      ];
       const services = await mongoose.model("Service").find({
         _id: { $in: serviceIds },
-        organizationId
+        organizationId,
       });
       if (services.length !== serviceIds.length) {
-        throw new AppError("One or more preferredServices do not exist or do not belong to this organization.", 400);
+        throw new AppError(
+          "One or more preferredServices do not exist or do not belong to this organization.",
+          400,
+        );
       }
     }
 
     // 7. Validate referenced referredByCustomerId
     if (data.referredByCustomerId) {
-      const referrer = await this.customerRepo.findById(data.referredByCustomerId, organizationId);
+      const referrer = await this.customerRepo.findById(
+        data.referredByCustomerId,
+        organizationId,
+      );
       if (!referrer) {
-        throw new AppError("Referrer customer not found in the same organization.", 400);
+        throw new AppError(
+          "Referrer customer not found in the same organization.",
+          400,
+        );
       }
     }
 
     // 8. Validate referenced tags if model exists
     if (mongoose.models.Tag && data.tags && data.tags.length > 0) {
-      const tagIds = [...new Set(data.tags.map(id => id.toString()))];
+      const tagIds = [...new Set(data.tags.map((id) => id.toString()))];
       const tags = await mongoose.model("Tag").find({
         _id: { $in: tagIds },
-        organizationId
+        organizationId,
       });
       if (tags.length !== tagIds.length) {
-        throw new AppError("One or more tags do not exist or do not belong to this organization.", 400);
+        throw new AppError(
+          "One or more tags do not exist or do not belong to this organization.",
+          400,
+        );
       }
     }
 
@@ -148,7 +212,7 @@ export class CustomerService {
         status: data.status || "active",
       },
       organizationId,
-      userId
+      userId,
     );
 
     // Create Audit Log
@@ -162,13 +226,40 @@ export class CustomerService {
         metadata: { customerName: customer.name },
       },
       organizationId,
-      userId
+      userId,
     );
+
+    try {
+      await createOutboxEvent(
+        {
+          organizationId,
+          branchId: customer.homeBranchId ?? null,
+          eventType: "customer.created",
+          idempotencyKey: `customer.created:${customer._id}`,
+          payload: {
+            customerId: String(customer._id),
+            homeBranchId: customer.homeBranchId
+              ? String(customer.homeBranchId)
+              : null,
+          },
+        },
+        { validateBranch: false },
+      );
+    } catch (outboxErr) {
+      logger.error(
+        `[CUSTOMER_CREATED_OUTBOX_FAILED] customerId=${customer._id} org=${organizationId} err=${outboxErr?.message}`,
+      );
+    }
 
     return customer;
   }
 
-  async getCustomerById(id, organizationId, userContext = null, activeBranchId = null) {
+  async getCustomerById(
+    id,
+    organizationId,
+    userContext = null,
+    activeBranchId = null,
+  ) {
     const customer = await this.customerRepo.findById(id, organizationId);
     if (!customer) {
       throw new AppError("Resource not found", 404);
@@ -176,37 +267,70 @@ export class CustomerService {
 
     // Strict visibility check for branch-scoped requests
     if (activeBranchId) {
-      const isHomeBranch = customer.homeBranchId?.toString() === activeBranchId.toString();
+      const isHomeBranch =
+        customer.homeBranchId?.toString() === activeBranchId.toString();
       const hasVisited = (customer.visitedBranchIds || []).some(
-        (bId) => bId.toString() === activeBranchId.toString()
+        (bId) => bId.toString() === activeBranchId.toString(),
       );
 
       if (!isHomeBranch && !hasVisited) {
-        throw new AppError("Access denied. Customer is not visible within your active branch scope.", 403);
+        throw new AppError(
+          "Access denied. Customer is not visible within your active branch scope.",
+          403,
+        );
       }
     }
 
     return customer;
   }
 
-  async updateCustomer(id, data, organizationId, userId, userContext = null, activeBranchId = null) {
+  async updateCustomer(
+    id,
+    data,
+    organizationId,
+    userId,
+    userContext = null,
+    activeBranchId = null,
+  ) {
     // Fetch and check visibility first
-    const customer = await this.getCustomerById(id, organizationId, userContext, activeBranchId);
+    const customer = await this.getCustomerById(
+      id,
+      organizationId,
+      userContext,
+      activeBranchId,
+    );
 
     // If customer is deactivated (inactive/blocked), block edits unless it is a reactivation
     if (customer.status !== "active" && data.status !== "active") {
-      throw new AppError("Cannot perform operations on a deactivated customer profile.", 400);
+      throw new AppError(
+        "Cannot perform operations on a deactivated customer profile.",
+        400,
+      );
     }
 
     // Filter out immutable fields
-    const { organizationId: _, homeBranchId: __, visitedBranchIds: ___, isDeleted: ____, deletedAt: _______, ...updateData } = data;
+    const {
+      organizationId: _,
+      homeBranchId: __,
+      visitedBranchIds: ___,
+      isDeleted: ____,
+      deletedAt: _______,
+      ...updateData
+    } = data;
 
     // 1. Phone normalization & duplicate checks
     if (updateData.phone) {
       updateData.phone = normalizePhone(updateData.phone);
-      const existing = await this.customerRepo.findByPhone(updateData.phone, organizationId, true);
+      const existing = await this.customerRepo.findByPhone(
+        updateData.phone,
+        organizationId,
+        true,
+      );
       if (existing && existing._id.toString() !== id) {
-        throw new AppError("A customer with this phone number already exists.", 400);
+        throw new AppError(
+          "A customer with this phone number already exists.",
+          400,
+        );
       }
     }
     if (updateData.alternatePhone) {
@@ -218,19 +342,36 @@ export class CustomerService {
       if (updateData.referredByCustomerId.toString() === id) {
         throw new AppError("A customer cannot refer themselves.", 400);
       }
-      const referrer = await this.customerRepo.findById(updateData.referredByCustomerId, organizationId);
+      const referrer = await this.customerRepo.findById(
+        updateData.referredByCustomerId,
+        organizationId,
+      );
       if (!referrer) {
-        throw new AppError("Referrer customer not found in the same organization.", 400);
+        throw new AppError(
+          "Referrer customer not found in the same organization.",
+          400,
+        );
       }
     }
 
     // 3. Handle homeBranchId transition directly on the customer document
     let recordedTransition = false;
-    if (data.homeBranchId && mongoose.Types.ObjectId.isValid(data.homeBranchId) && data.homeBranchId.toString() !== customer.homeBranchId.toString()) {
+    if (
+      data.homeBranchId &&
+      mongoose.Types.ObjectId.isValid(data.homeBranchId) &&
+      data.homeBranchId.toString() !== customer.homeBranchId.toString()
+    ) {
       const BranchModel = mongoose.model("Branch");
-      const homeBranch = await BranchModel.findOne({ _id: data.homeBranchId, organizationId, isActive: true });
+      const homeBranch = await BranchModel.findOne({
+        _id: data.homeBranchId,
+        organizationId,
+        isActive: true,
+      });
       if (!homeBranch) {
-        throw new AppError("homeBranchId does not exist or does not belong to this organization.", 400);
+        throw new AppError(
+          "homeBranchId does not exist or does not belong to this organization.",
+          400,
+        );
       }
 
       // Record transition activity
@@ -241,15 +382,22 @@ export class CustomerService {
           entityType: "Customer",
           entityId: id,
           description: `Home branch changed from ${customer.homeBranchId} to ${data.homeBranchId}`,
-          metadata: { fromBranchId: customer.homeBranchId, toBranchId: data.homeBranchId },
+          metadata: {
+            fromBranchId: customer.homeBranchId,
+            toBranchId: data.homeBranchId,
+          },
         },
         organizationId,
-        userId
+        userId,
       );
       recordedTransition = true;
 
       // Add old branch to visitedBranchIds directly on document if not already there
-      if (!customer.visitedBranchIds.map(b => b.toString()).includes(customer.homeBranchId.toString())) {
+      if (
+        !customer.visitedBranchIds
+          .map((b) => b.toString())
+          .includes(customer.homeBranchId.toString())
+      ) {
         customer.visitedBranchIds.push(customer.homeBranchId);
       }
       customer.homeBranchId = data.homeBranchId;
@@ -257,54 +405,86 @@ export class CustomerService {
     }
 
     // 4. Validate referenced users/staff belong to same organization
-    if (updateData.preferences?.preferredStaff && updateData.preferences.preferredStaff.length > 0) {
-      const staffIds = [...new Set(updateData.preferences.preferredStaff.map(id => id.toString()))];
+    if (
+      updateData.preferences?.preferredStaff &&
+      updateData.preferences.preferredStaff.length > 0
+    ) {
+      const staffIds = [
+        ...new Set(
+          updateData.preferences.preferredStaff.map((id) => id.toString()),
+        ),
+      ];
       const StaffModel = mongoose.models.Staff || mongoose.model("Staff");
       const UserModel = mongoose.models.User || mongoose.model("User");
 
       const checkPromises = staffIds.map(async (id) => {
         let exists = false;
         if (StaffModel) {
-          exists = await StaffModel.exists({ _id: id, organizationId, isDeleted: { $ne: true } });
+          exists = await StaffModel.exists({
+            _id: id,
+            organizationId,
+            isDeleted: { $ne: true },
+          });
         }
         if (!exists && UserModel) {
           exists = await UserModel.exists({ _id: id, organizationId });
         }
         return !!exists;
-      }
-      );
+      });
 
       const results = await Promise.all(checkPromises);
-      if (results.some(found => !found)) {
-        throw new AppError("One or more preferredStaff do not exist or do not belong to this organization.", 400);
+      if (results.some((found) => !found)) {
+        throw new AppError(
+          "One or more preferredStaff do not exist or do not belong to this organization.",
+          400,
+        );
       }
     }
 
     // 5. Validate referenced preferredServices belong to same organization
-    if (mongoose.models.Service && updateData.preferences?.preferredServices && updateData.preferences.preferredServices.length > 0) {
-      const serviceIds = [...new Set(updateData.preferences.preferredServices.map(id => id.toString()))];
+    if (
+      mongoose.models.Service &&
+      updateData.preferences?.preferredServices &&
+      updateData.preferences.preferredServices.length > 0
+    ) {
+      const serviceIds = [
+        ...new Set(
+          updateData.preferences.preferredServices.map((id) => id.toString()),
+        ),
+      ];
       const services = await mongoose.model("Service").find({
         _id: { $in: serviceIds },
-        organizationId
+        organizationId,
       });
       if (services.length !== serviceIds.length) {
-        throw new AppError("One or more preferredServices do not exist or do not belong to this organization.", 400);
+        throw new AppError(
+          "One or more preferredServices do not exist or do not belong to this organization.",
+          400,
+        );
       }
     }
 
     // 6. Validate referenced tags if model exists
     if (mongoose.models.Tag && updateData.tags && updateData.tags.length > 0) {
-      const tagIds = [...new Set(updateData.tags.map(id => id.toString()))];
+      const tagIds = [...new Set(updateData.tags.map((id) => id.toString()))];
       const tags = await mongoose.model("Tag").find({
         _id: { $in: tagIds },
-        organizationId
+        organizationId,
       });
       if (tags.length !== tagIds.length) {
-        throw new AppError("One or more tags do not exist or do not belong to this organization.", 400);
+        throw new AppError(
+          "One or more tags do not exist or do not belong to this organization.",
+          400,
+        );
       }
     }
 
-    const updated = await this.customerRepo.updateById(id, updateData, organizationId, userId);
+    const updated = await this.customerRepo.updateById(
+      id,
+      updateData,
+      organizationId,
+      userId,
+    );
 
     // Determine audit action and log it
     let action = AUDIT_ACTIONS.CUSTOMER_UPDATED;
@@ -330,7 +510,7 @@ export class CustomerService {
           description: actionDescription,
         },
         organizationId,
-        userId
+        userId,
       );
     }
 
@@ -352,31 +532,41 @@ export class CustomerService {
         description: "Customer profile soft deleted",
       },
       organizationId,
-      userId
+      userId,
     );
 
     return this.customerRepo.deleteById(id, organizationId, userId);
   }
 
-  async customerStatusChangeById(id, organizationId, userId, activeBranchId = null) {
+  async customerStatusChangeById(
+    id,
+    organizationId,
+    userId,
+    activeBranchId = null,
+  ) {
     const customer = await this.customerRepo.findById(id, organizationId);
     if (!customer) {
       throw new AppError("Resource not found", 404);
     }
 
-    const updated = await this.customerRepo.statusUpdateById(id, organizationId);
+    const updated = await this.customerRepo.statusUpdateById(
+      id,
+      organizationId,
+    );
 
     const isReactivated = updated.status === "active";
     await this.auditRepo.create(
       {
         branchId: activeBranchId || customer.homeBranchId,
-        action: isReactivated ? AUDIT_ACTIONS.CUSTOMER_REACTIVATED : AUDIT_ACTIONS.CUSTOMER_DEACTIVATED,
+        action: isReactivated
+          ? AUDIT_ACTIONS.CUSTOMER_REACTIVATED
+          : AUDIT_ACTIONS.CUSTOMER_DEACTIVATED,
         entityType: "Customer",
         entityId: id,
         description: `Customer profile status updated to ${updated.status}`,
       },
       organizationId,
-      userId
+      userId,
     );
 
     return updated;
@@ -386,25 +576,42 @@ export class CustomerService {
     return this.customerRepo.find(filter, options, organizationId);
   }
 
-  async reactivateCustomer(id, organizationId, userId, userContext = null, activeBranchId = null) {
-    const customer = await this.customerRepo.findByIdIncludeDeleted(id, organizationId);
-    console.log("customer", customer)
+  async reactivateCustomer(
+    id,
+    organizationId,
+    userId,
+    userContext = null,
+    activeBranchId = null,
+  ) {
+    const customer = await this.customerRepo.findByIdIncludeDeleted(
+      id,
+      organizationId,
+    );
+    console.log("customer", customer);
     if (!customer) {
       throw new AppError("Resource not found", 404);
     }
 
     // Branch visibility scope check if activeBranchId is passed
     if (activeBranchId) {
-      const isHomeBranch = customer.homeBranchId?.toString() === activeBranchId.toString();
+      const isHomeBranch =
+        customer.homeBranchId?.toString() === activeBranchId.toString();
       const hasVisited = (customer.visitedBranchIds || []).some(
-        (bId) => bId.toString() === activeBranchId.toString()
+        (bId) => bId.toString() === activeBranchId.toString(),
       );
       if (!isHomeBranch && !hasVisited) {
-        throw new AppError("Access denied. Customer is not visible within your active branch scope.", 403);
+        throw new AppError(
+          "Access denied. Customer is not visible within your active branch scope.",
+          403,
+        );
       }
     }
 
-    const reactivated = await this.customerRepo.reactivateById(id, organizationId, userId);
+    const reactivated = await this.customerRepo.reactivateById(
+      id,
+      organizationId,
+      userId,
+    );
 
     await this.auditRepo.create(
       {
@@ -415,7 +622,7 @@ export class CustomerService {
         description: "Customer profile reactivated successfully",
       },
       organizationId,
-      userId
+      userId,
     );
 
     return reactivated;

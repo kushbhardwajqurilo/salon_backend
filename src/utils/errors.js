@@ -37,7 +37,31 @@ const handleCastErrorDB = (err) => {
 };
 
 const handleDuplicateFieldsDB = (err) => {
-  const value = err.errmsg?.match(/(["'])(\\?.)*?\1/)[0] || "field";
+  const keys = err.keyPattern ? Object.keys(err.keyPattern) : [];
+  if (keys.includes("username")) {
+    return new AppError(
+      "Username already exists. Please choose another username.",
+      400,
+    );
+  }
+  if (keys.includes("email")) {
+    return new AppError(
+      "Email already exists. Please use another email.",
+      400,
+    );
+  }
+
+  if (err.keyValue && Object.keys(err.keyValue).length > 0) {
+    const details = Object.entries(err.keyValue)
+      .map(([k, v]) => `${k}: '${v}'`)
+      .join(", ");
+    return new AppError(
+      `Duplicate field value (${details}). Please use another value!`,
+      400,
+    );
+  }
+
+  const value = err.errmsg?.match(/(["'])(\\?.)*?\1/)?.[0] || "field";
   const message = value.includes("username")
     ? "Username already exists. Please choose another username."
     : value.includes("email")

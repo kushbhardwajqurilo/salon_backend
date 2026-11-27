@@ -1,41 +1,8 @@
 import { AuditLogRepository } from "../../repositories/audit/auditLog.repository.js";
 import { getAuditContext, markRequestAudited } from "../../utils/auditContext.js";
+import { sanitizeAuditMetadata } from "../../utils/auditSanitizer.js";
 
-const SENSITIVE_KEYS = new Set([
-  "password",
-  "passwordhash",
-  "newpassword",
-  "oldpassword",
-  "currentpassword",
-  "otp",
-  "otpcode",
-  "token",
-  "accesstoken",
-  "refreshtoken",
-  "resettoken",
-  "secret",
-  "apikey",
-  "authorization",
-  "cookie",
-]);
-
-export const sanitizeAuditMetadata = (value) => {
-  if (value === null || value === undefined) return value;
-  if (Array.isArray(value)) return value.map(sanitizeAuditMetadata);
-  if (value instanceof Date || typeof value !== "object") return value;
-
-  const sanitized = {};
-  for (const [key, val] of Object.entries(value)) {
-    if (SENSITIVE_KEYS.has(key.toLowerCase())) {
-      sanitized[key] = "[REDACTED]";
-    } else if (val && typeof val === "object" && !(val instanceof Date)) {
-      sanitized[key] = sanitizeAuditMetadata(val);
-    } else {
-      sanitized[key] = val;
-    }
-  }
-  return sanitized;
-};
+export { sanitizeAuditMetadata };
 
 export const buildBeforeAfterMetadata = (before = {}, after = {}, fields = null) => {
   const keys = fields || Array.from(new Set([...Object.keys(before || {}), ...Object.keys(after || {})]));

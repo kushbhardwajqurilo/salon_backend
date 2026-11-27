@@ -40,6 +40,12 @@ const paymentSchema = new mongoose.Schema(
     idempotencyKey: { type: String, default: null, trim: true },
     requestPayloadHash: { type: String, default: null, trim: true },
     isManualRefundRecord: { type: Boolean, default: false, index: true },
+    refundCaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "RefundCase",
+      default: null,
+      index: true,
+    },
 
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
@@ -56,6 +62,17 @@ paymentSchema.index(
     partialFilterExpression: {
       isDeleted: false,
       idempotencyKey: { $type: "string" },
+    },
+  }
+);
+paymentSchema.index(
+  { organizationId: 1, refundCaseId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      isDeleted: false,
+      type: "refund",
+      refundCaseId: { $type: "objectId" },
     },
   }
 );

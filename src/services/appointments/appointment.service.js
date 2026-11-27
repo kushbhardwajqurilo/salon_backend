@@ -1,4 +1,75 @@
 import { settlementFulfillmentEventService } from "../incentives/settlementFulfillmentEvent.service.js";
+import { createOutboxEvent } from "../notifications/outbox.service.js";
+
+async function flushAppointmentOutboxEntry(
+  appointmentId,
+  organizationId,
+  entry,
+) {
+  try {
+    await createOutboxEvent({
+      organizationId,
+      branchId: entry.branchId || null,
+      eventType: entry.eventType,
+      idempotencyKey: entry.idempotencyKey,
+      payload: entry.payload || {},
+    });
+    await Appointment.updateOne(
+      { _id: appointmentId, organizationId },
+      {
+        $pull: {
+          pendingOutboxEvents: { idempotencyKey: entry.idempotencyKey },
+        },
+      },
+    );
+  } catch (outboxErr) {
+    logger.error(
+      `[APPOINTMENT_OUTBOX_FLUSH_FAILED] appointmentId=${appointmentId} eventType=${entry.eventType} key=${entry.idempotencyKey} err=${outboxErr.message}`,
+    );
+  }
+}
+
+export async function recoverPendingAppointmentOutboxEvents(
+  organizationId = null,
+  limit = 50,
+) {
+  const filter = { "pendingOutboxEvents.0": { $exists: true } };
+  if (organizationId) filter.organizationId = organizationId;
+
+  const appointments = await Appointment.find(filter)
+    .select("_id organizationId branchId pendingOutboxEvents")
+    .limit(limit)
+    .lean();
+
+  let recovered = 0;
+  for (const appt of appointments) {
+    for (const entry of appt.pendingOutboxEvents || []) {
+      try {
+        await createOutboxEvent({
+          organizationId: appt.organizationId,
+          branchId: entry.branchId || appt.branchId || null,
+          eventType: entry.eventType,
+          idempotencyKey: entry.idempotencyKey,
+          payload: entry.payload || {},
+        });
+        await Appointment.updateOne(
+          { _id: appt._id, organizationId: appt.organizationId },
+          {
+            $pull: {
+              pendingOutboxEvents: { idempotencyKey: entry.idempotencyKey },
+            },
+          },
+        );
+        recovered += 1;
+      } catch (err) {
+        logger.warn(
+          `[APPOINTMENT_OUTBOX_RECOVERY_RETRY_FAILED] appointmentId=${appt._id} key=${entry.idempotencyKey} err=${err.message}`,
+        );
+      }
+    }
+  }
+  return { recovered };
+}
 import { AppointmentRepository } from "../../repositories/appointments/appointment.repository.js";
 import { Appointment } from "../../models/appointments/appointment.model.js";
 import { Customer } from "../../models/customers/customer.model.js";
@@ -12,6 +83,9 @@ import { Subscription } from "../../models/subscriptions/subscription.model.js";
 import { SubscriptionUsage } from "../../models/subscriptions/subscriptionUsage.model.js";
 import { SubscriptionConsumptionChallenge } from "../../models/subscriptions/subscriptionConsumptionChallenge.model.js";
 import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
+import { AuditLogService } from "../audit/auditLog.service.js";
+
+const auditLogService = new AuditLogService();
 import { AppError } from "../../utils/errors.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { emailQueue, smsQueue } from "../../queues/client.js";
@@ -1132,6 +1206,7 @@ export class AppointmentService {
         endAt,
         null,
         registeredServiceIds,
+        { allowAfterHours: Boolean(payload.allowAfterHours) },
       );
     }
 
@@ -1214,7 +1289,22 @@ export class AppointmentService {
     };
 
     try {
+      const preGeneratedId = new mongoose.Types.ObjectId();
+      const createdOutboxEntry = {
+        eventType: "appointment.created",
+        idempotencyKey: `appointment-created:${preGeneratedId}`,
+        branchId,
+        payload: {
+          appointmentId: String(preGeneratedId),
+          appointmentCode: appointmentCode || String(preGeneratedId),
+          customerId: String(customerId),
+          startAt: startAt ? new Date(startAt).toISOString() : "",
+        },
+        failedAt: new Date(),
+      };
       const appointment = await appointmentRepo.create({
+        _id: preGeneratedId,
+        pendingOutboxEvents: [createdOutboxEntry],
         organizationId,
         branchId,
         appointmentCode,
@@ -1271,6 +1361,21 @@ export class AppointmentService {
           null,
         )
         .catch(() => {});
+
+      await flushAppointmentOutboxEntry(appointment._id, organizationId, {
+        eventType: "appointment.created",
+        idempotencyKey: `appointment-created:${appointment._id}`,
+        branchId: appointment.branchId || branchId,
+        payload: {
+          appointmentId: String(appointment._id),
+          appointmentCode:
+            appointment.appointmentCode || String(appointment._id),
+          customerId: String(customerId),
+          startAt: appointment.startAt
+            ? new Date(appointment.startAt).toISOString()
+            : "",
+        },
+      });
 
       return appointment;
     } catch (err) {
@@ -1693,6 +1798,12 @@ export class AppointmentService {
           null,
         )
         .catch(() => {});
+      await flushAppointmentOutboxEntry(
+        appointment._id,
+        organizationId,
+        rescheduledEntry,
+      );
+
       return updated;
     } catch (err) {
       if (err.code === 11000 && err.keyPattern?.slotMinutes) {
@@ -1791,6 +1902,22 @@ export class AppointmentService {
     await this.cancelReminders(appointment);
 
     try {
+      const startIso = startAt
+        ? new Date(startAt).toISOString()
+        : String(Date.now());
+      const rescheduledEntry = {
+        eventType: "appointment.rescheduled",
+        idempotencyKey: `appointment-rescheduled:${appointment._id}:${startIso}:${Date.now()}`,
+        branchId: appointment.branchId || branchId || null,
+        payload: {
+          appointmentId: String(appointment._id),
+          appointmentCode:
+            appointment.appointmentCode || String(appointment._id),
+          customerId: String(appointment.customerId),
+          startAt: startIso,
+        },
+        failedAt: new Date(),
+      };
       const updated = await appointmentRepo.update(
         id,
         {
@@ -1802,6 +1929,7 @@ export class AppointmentService {
           slotMinutes,
         },
         organizationId,
+        { pendingOutboxEvents: rescheduledEntry },
       );
 
       // Schedule new reminders
@@ -1843,6 +1971,12 @@ export class AppointmentService {
           );
         }
       }
+
+      await flushAppointmentOutboxEntry(
+        appointment._id,
+        organizationId,
+        rescheduledEntry,
+      );
 
       return updated;
     } catch (err) {
@@ -2176,12 +2310,73 @@ export class AppointmentService {
             },
           );
 
+          try {
+            await createOutboxEvent({
+              organizationId,
+              branchId: completedAppointment.branchId || branchId || null,
+              eventType: "appointment.service_completed",
+              idempotencyKey: `appointment-completed:${completedAppointment._id}`,
+              payload: {
+                appointmentId: String(completedAppointment._id),
+                appointmentCode:
+                  completedAppointment.appointmentCode ||
+                  String(completedAppointment._id),
+                customerId: String(completedAppointment.customerId),
+              },
+              session,
+            });
+          } catch {
+            // Non-blocking notification outbox
+          }
+
           return completedAppointment;
         },
         { requireTransaction: true },
       );
     } else {
-      updated = await appointmentRepo.update(id, updates, organizationId);
+      const statusEventType =
+        status === "cancelled"
+          ? "appointment.cancelled"
+          : status === "no_show"
+            ? "appointment.no_show"
+            : null;
+      const statusOutboxEntry = statusEventType
+        ? {
+            eventType: statusEventType,
+            idempotencyKey:
+              status === "cancelled"
+                ? `appointment-cancelled:${appointment._id}`
+                : `appointment-no-show:${appointment._id}`,
+            branchId: appointment.branchId || branchId || null,
+            payload: {
+              appointmentId: String(appointment._id),
+              appointmentCode:
+                appointment.appointmentCode || String(appointment._id),
+              customerId: String(appointment.customerId),
+            },
+          }
+        : null;
+      const statusOutboxPush = statusOutboxEntry
+        ? {
+            pendingOutboxEvents: {
+              ...statusOutboxEntry,
+              failedAt: new Date(),
+            },
+          }
+        : null;
+      updated = await appointmentRepo.update(
+        id,
+        updates,
+        organizationId,
+        statusOutboxPush,
+      );
+      if (statusOutboxEntry) {
+        await flushAppointmentOutboxEntry(
+          appointment._id,
+          organizationId,
+          statusOutboxEntry,
+        );
+      }
     }
 
     // Audit log for appointment status changes

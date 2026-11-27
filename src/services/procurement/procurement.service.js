@@ -13,6 +13,7 @@ import { FifoDepletionService } from "../inventory/fifoDepletion.service.js";
 import { PurchaseOrder } from "../../models/procurement/purchaseOrder.model.js";
 import { SupplierInvoice } from "../../models/procurement/supplierInvoice.model.js";
 import { AuditLog, AUDIT_ACTIONS } from "../../models/audit/auditLog.model.js";
+import { createOutboxEvent } from "../notifications/outbox.service.js";
 import { validateQuantityForUnit } from "../../validation/inventory/inventory.validation.js";
 
 export class ProcurementService {
@@ -74,6 +75,33 @@ export class ProcurementService {
       metadata: data,
     });
     await audit.save();
+
+    try {
+      const eventMap = {
+        submitted: "procurement.po_submitted",
+        pending_approval: "procurement.po_submitted",
+        approved: "procurement.po_approved",
+        rejected: "procurement.po_rejected",
+        cancelled: "procurement.po_rejected",
+      };
+      const eventType = eventMap[status];
+      if (eventType) {
+        await createOutboxEvent({
+          organizationId,
+          branchId: po.branchId._id || po.branchId,
+          eventType,
+          idempotencyKey: `po-status:${po._id}:${status}`,
+          payload: {
+            poId: String(po._id),
+            poNumber: po.poNumber,
+            status,
+            actorId: String(userId),
+          },
+        });
+      }
+    } catch {
+      // Non-blocking notification outbox
+    }
 
     return updated;
   }
@@ -269,6 +297,23 @@ export class ProcurementService {
     });
     await audit.save();
 
+    try {
+      await createOutboxEvent({
+        organizationId,
+        branchId: targetBranchId,
+        eventType: "procurement.po_created",
+        idempotencyKey: `po-created:${po._id}`,
+        payload: {
+          poId: String(po._id),
+          poNumber,
+          supplierName: supplier.name,
+          actorId: String(userId),
+        },
+      });
+    } catch {
+      // Non-blocking notification outbox
+    }
+
     return po;
   }
 
@@ -336,6 +381,33 @@ export class ProcurementService {
       metadata: { status, cancelReason },
     });
     await audit.save();
+
+    try {
+      const eventMap = {
+        submitted: "procurement.po_submitted",
+        pending_approval: "procurement.po_submitted",
+        approved: "procurement.po_approved",
+        rejected: "procurement.po_rejected",
+        cancelled: "procurement.po_rejected",
+      };
+      const eventType = eventMap[status];
+      if (eventType) {
+        await createOutboxEvent({
+          organizationId,
+          branchId: po.branchId._id || po.branchId,
+          eventType,
+          idempotencyKey: `po-status:${po._id}:${status}`,
+          payload: {
+            poId: String(po._id),
+            poNumber: po.poNumber,
+            status,
+            actorId: String(userId),
+          },
+        });
+      }
+    } catch {
+      // Non-blocking notification outbox
+    }
 
     return updated;
   }
@@ -594,6 +666,29 @@ export class ProcurementService {
       });
       await audit.save({ session });
 
+      try {
+        await createOutboxEvent({
+          organizationId,
+          branchId: po.branchId,
+          eventType: "procurement.goods_received",
+          idempotencyKey: `po-grn:${grn._id}`,
+          payload: {
+            grnId: String(grn._id),
+            grnNumber,
+            poId: String(po._id),
+            poNumber: po.poNumber,
+            supplierId: po.supplierId ? String(po.supplierId) : undefined,
+            poStatus: po.status,
+            isPartial: po.status === "partially_received",
+            itemsCount: receivedItemsRecord.length,
+            actorId: String(userId),
+          },
+          session,
+        });
+      } catch {
+        // Non-blocking notification outbox
+      }
+
       return {
         receipt: grn,
         purchaseOrder: po,
@@ -846,6 +941,29 @@ export class ProcurementService {
         },
       });
       await audit.save({ session });
+
+      try {
+        await createOutboxEvent({
+          organizationId,
+          branchId: po.branchId,
+          eventType: "procurement.goods_received",
+          idempotencyKey: `po-grn:${grn._id}`,
+          payload: {
+            grnId: String(grn._id),
+            grnNumber,
+            poId: String(po._id),
+            poNumber: po.poNumber,
+            supplierId: po.supplierId ? String(po.supplierId) : undefined,
+            poStatus: po.status,
+            isPartial: po.status === "partially_received",
+            itemsCount: receivedItemsRecord.length,
+            actorId: String(userId),
+          },
+          session,
+        });
+      } catch {
+        // Non-blocking notification outbox
+      }
 
       return {
         payment,

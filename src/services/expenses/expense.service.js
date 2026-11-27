@@ -6,6 +6,7 @@ import { Organization } from "../../models/organizations/organization.model.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
 import { AppError } from "../../utils/errors.js";
 import { runInTransaction } from "../../utils/transaction.js";
+import { emitExpenseOutboxEvent } from "./expenseNotificationOutbox.service.js";
 
 export class ExpenseService {
   /**
@@ -103,6 +104,22 @@ export class ExpenseService {
       const expenseJson = newExpense.toJSON();
       if (pettyCashTransaction) {
         expenseJson.pettyCashTransactionId = pettyCashTransaction._id.toString();
+      }
+
+      if (approvalStatus === "pending_approval") {
+        await emitExpenseOutboxEvent({
+          eventType: "expense.submitted",
+          expense: newExpense,
+          operationId: "created",
+          session,
+        });
+      } else if (approvalStatus === "approved") {
+        await emitExpenseOutboxEvent({
+          eventType: "expense.approved",
+          expense: newExpense,
+          operationId: "auto-approved",
+          session,
+        });
       }
       return expenseJson;
     }, { requireTransaction: true });
@@ -274,6 +291,12 @@ export class ExpenseService {
       }
 
       await expense.save({ session });
+      await emitExpenseOutboxEvent({
+        eventType: "expense.approved",
+        expense,
+        operationId: "approved",
+        session,
+      });
       const resJson = expense.toJSON();
       if (pettyCashTransaction) {
         resJson.pettyCashTransactionId = pettyCashTransaction._id.toString();
@@ -287,29 +310,37 @@ export class ExpenseService {
    * Settlement evidence is preserved if previously settled out-of-pocket; no petty cash is disbursed.
    */
   static async rejectExpense(organizationId, expenseId, branchId, userId, reason) {
-    const expense = await Expense.findOne({
-      _id: expenseId,
-      organizationId,
-      ...(branchId ? { branchId } : {}),
-      isDeleted: false,
-    });
+    return await runInTransaction(async (session) => {
+      const expense = await Expense.findOne({
+        _id: expenseId,
+        organizationId,
+        ...(branchId ? { branchId } : {}),
+        isDeleted: false,
+      }).session(session);
 
-    if (!expense) throw new AppError("Expense not found", 404);
-    if (expense.approvalStatus !== "pending_approval") {
-      throw new AppError(`Expense cannot be rejected from status '${expense.approvalStatus}'`, 400);
-    }
+      if (!expense) throw new AppError("Expense not found", 404);
+      if (expense.approvalStatus !== "pending_approval") {
+        throw new AppError(`Expense cannot be rejected from status '${expense.approvalStatus}'`, 400);
+      }
 
-    if (expense.recordedBy && expense.recordedBy.toString() === userId.toString()) {
-      throw new AppError("Separation of duties: recordedBy user cannot reject their own expense voucher", 403);
-    }
+      if (expense.recordedBy && expense.recordedBy.toString() === userId.toString()) {
+        throw new AppError("Separation of duties: recordedBy user cannot reject their own expense voucher", 403);
+      }
 
-    expense.approvalStatus = "rejected";
-    expense.rejectedBy = userId;
-    expense.rejectedAt = new Date();
-    expense.rejectionReason = reason.trim();
+      expense.approvalStatus = "rejected";
+      expense.rejectedBy = userId;
+      expense.rejectedAt = new Date();
+      expense.rejectionReason = reason.trim();
 
-    await expense.save();
-    return expense.toJSON();
+      await expense.save({ session });
+      await emitExpenseOutboxEvent({
+        eventType: "expense.rejected",
+        expense,
+        operationId: "rejected",
+        session,
+      });
+      return expense.toJSON();
+    }, { requireTransaction: true });
   }
 
   /**
@@ -562,6 +593,22 @@ export class ExpenseService {
         ],
         { session }
       );
+
+      const linkedExpense = await Expense.findOne({
+        _id: linkedExpenseId,
+        organizationId,
+        ...(branchId ? { branchId } : {}),
+        isDeleted: false,
+      }).session(session);
+
+      if (linkedExpense) {
+        await emitExpenseOutboxEvent({
+          eventType: "expense.payout_reversed",
+          expense: linkedExpense,
+          operationId: reversalTx._id,
+          session,
+        });
+      }
 
       return reversalTx.toJSON();
     }, { requireTransaction: true });

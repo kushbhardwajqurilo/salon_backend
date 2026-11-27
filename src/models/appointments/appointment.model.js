@@ -193,6 +193,15 @@ const appointmentSchema = new mongoose.Schema(
     },
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
+    pendingOutboxEvents: [
+      {
+        eventType: { type: String, required: true },
+        idempotencyKey: { type: String, required: true },
+        branchId: { type: mongoose.Schema.Types.ObjectId, default: null },
+        payload: { type: mongoose.Schema.Types.Mixed, default: {} },
+        failedAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true },
 );

@@ -12,6 +12,7 @@ import { Branch } from "../../models/branches/branch.model.js";
 import { StockMovement } from "../../models/inventory/stockMovement.model.js";
 import { AppError } from "../../utils/errors.js";
 import { runInTransaction } from "../../utils/transaction.js";
+import { emitFinanceDayClosureOutboxEvent } from "./financeNotificationOutbox.service.js";
 
 export class FinanceService {
   /**
@@ -260,6 +261,11 @@ export class FinanceService {
         ? closureDocs[0].toObject()
         : closureDocs[0];
       createdDoc.id = createdDoc._id.toString();
+      await emitFinanceDayClosureOutboxEvent({
+        eventType: "finance.day_closure_submitted",
+        closure: createdDoc,
+        session,
+      });
       return createdDoc;
     });
   }
@@ -274,34 +280,41 @@ export class FinanceService {
     managerUserId,
     managerNotes = "",
   ) {
-    const filter = { _id: closureId, organizationId };
-    if (branchId && branchId !== "all") filter.branchId = branchId;
+    return await runInTransaction(async (session) => {
+      const filter = { _id: closureId, organizationId };
+      if (branchId && branchId !== "all") filter.branchId = branchId;
 
-    const closure = await DayClosure.findOne(filter);
-    if (!closure) throw new AppError("Day closure not found", 404);
+      const closure = await DayClosure.findOne(filter).session(session);
+      if (!closure) throw new AppError("Day closure not found", 404);
 
-    if (closure.status === "approved") {
-      throw new AppError("Day closure is already approved.", 400);
-    }
+      if (closure.status === "approved") {
+        throw new AppError("Day closure is already approved.", 400);
+      }
 
-    // Enforce separation of duties: Submitter cannot approve their own register closure
-    if (
-      closure.submittedBy &&
-      closure.submittedBy.toString() === managerUserId.toString()
-    ) {
-      throw new AppError(
-        "Separation of duties: User cannot approve their own submitted day closure.",
-        403,
-      );
-    }
+      // Enforce separation of duties: Submitter cannot approve their own register closure
+      if (
+        closure.submittedBy &&
+        closure.submittedBy.toString() === managerUserId.toString()
+      ) {
+        throw new AppError(
+          "Separation of duties: User cannot approve their own submitted day closure.",
+          403,
+        );
+      }
 
-    closure.status = "approved";
-    closure.approvedBy = managerUserId;
-    closure.approvedAt = new Date();
-    closure.managerNotes = managerNotes ? managerNotes.trim() : "";
+      closure.status = "approved";
+      closure.approvedBy = managerUserId;
+      closure.approvedAt = new Date();
+      closure.managerNotes = managerNotes ? managerNotes.trim() : "";
 
-    await closure.save();
-    return closure;
+      await closure.save({ session });
+      await emitFinanceDayClosureOutboxEvent({
+        eventType: "finance.day_closure_approved",
+        closure,
+        session,
+      });
+      return closure;
+    }, { requireTransaction: true });
   }
 
   /**

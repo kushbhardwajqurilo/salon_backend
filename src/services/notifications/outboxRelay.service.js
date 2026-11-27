@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { OutboxEvent } from "../../models/notifications/outboxEvent.model.js";
+import { recoverPendingAppointmentOutboxEvents } from "../appointments/appointment.service.js";
 import { notificationQueue } from "../../queues/client.js";
 import { redactSensitiveText } from "./notificationEventContract.js";
 import { logger } from "../../utils/logger.js";
@@ -174,6 +175,11 @@ export async function publishClaimedOutboxEvent(
  */
 export async function runOutboxRelayCycle(options = {}) {
   const now = options.now ?? new Date();
+  try {
+    await recoverPendingAppointmentOutboxEvents(options.organizationId ?? null, options.limit ?? 50);
+  } catch (err) {
+    logger.warn(`[APPOINTMENT_OUTBOX_RELAY_RECOVERY_FAILED] err=${err?.message || err}`);
+  }
   const recoveredCount = await recoverStaleProcessingClaims({
     staleAfterMs: options.staleAfterMs,
     now,

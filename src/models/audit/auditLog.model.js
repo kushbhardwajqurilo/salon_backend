@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { sanitizeAuditMetadata } from "../../utils/auditSanitizer.js";
 
 export const AUDIT_ACTIONS = {
   CUSTOMER_CREATED: "CUSTOMER_CREATED",
@@ -302,6 +303,13 @@ auditLogSchema.index(
     name: "uniq_audit_idempotency_key",
   },
 );
+
+// Sanitize metadata on every save (protects both AuditLogService and direct new AuditLog/create paths)
+auditLogSchema.pre("save", function () {
+  if (this.metadata && typeof this.metadata === "object") {
+    this.metadata = sanitizeAuditMetadata(this.metadata);
+  }
+});
 
 // Enforce append-only immutability at the database-access layer
 const immutableError = () =>

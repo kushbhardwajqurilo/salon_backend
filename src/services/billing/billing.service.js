@@ -34,12 +34,17 @@ import { CouponUsage } from "../../models/coupons/couponUsage.model.js";
 import { CouponCustomerUsage } from "../../models/coupons/couponCustomerUsage.model.js";
 import { smsQueue } from "../../queues/client.js";
 import { emitBillingOutboxEvent } from "./billingNotificationOutbox.service.js";
+import {
+  emitCouponRedeemedOutboxEvent,
+  emitCouponUsageLimitExhaustedOutboxEvent,
+} from "../coupons/couponNotificationOutbox.service.js";
 import { logger } from "../../utils/logger.js";
 import {
   loadStaffAttributionSnapshot,
   resolveStaffAttribution,
 } from "./staffAttribution.service.js";
 import { CampaignAttributionService } from "../marketing/campaignAttribution.service.js";
+import { AuditLogService } from "../audit/auditLog.service.js";
 
 function allocatePaiseProportionally(totalPaise, weightedLines) {
   if (!Number.isInteger(totalPaise) || totalPaise < 0) {
@@ -147,6 +152,9 @@ export function isServiceEligibleForMembershipBenefits(service, benefits) {
 }
 
 export class BillingService {
+  constructor(deps = {}) {
+    this.auditLogService = deps.auditLogService || new AuditLogService();
+  }
   /**
    * Option B: Allocates discount only to uncovered, customer-payable services.
    * Enforces exact reconciliation between invoice header and line items.
@@ -4717,7 +4725,7 @@ export class BillingService {
       );
     }
 
-    await auditLogService
+    await this.auditLogService
       .createAuditLog(
         {
           action: AUDIT_ACTIONS.COUPON_REDEEMED,
@@ -4732,7 +4740,7 @@ export class BillingService {
           },
         },
         organizationId,
-        userId
+        userId,
       )
       .catch(() => {});
 
@@ -4791,7 +4799,7 @@ export class BillingService {
 
     await invoice.save();
 
-    await auditLogService
+    await this.auditLogService
       .createAuditLog(
         {
           action: AUDIT_ACTIONS.COUPON_REMOVED,
@@ -4802,7 +4810,7 @@ export class BillingService {
           metadata: { couponCode: removedCouponCode },
         },
         organizationId,
-        userId
+        userId,
       )
       .catch(() => {});
 
@@ -4867,16 +4875,17 @@ export class BillingService {
 
       // Server-authoritative Marketing Campaign Attribution Snapshot
       // Resolves hierarchy: Verified Direct Promo > Valid Appointment Booking Source > Valid Manual POS Selection > Unassigned
-      const attributionSnapshot = await CampaignAttributionService.resolveAttributionSnapshot({
-        organizationId,
-        branchId,
-        promoCode: invoice.appliedCouponCode || payload?.promoCode,
-        appointmentSource: invoice.appointmentCode || null,
-        appointmentCreatedAt: invoice.createdAt,
-        manualCampaignId: payload?.campaignId || null,
-        finalizedAt: invoice.finalizedAt,
-        session,
-      });
+      const attributionSnapshot =
+        await CampaignAttributionService.resolveAttributionSnapshot({
+          organizationId,
+          branchId,
+          promoCode: invoice.appliedCouponCode || payload?.promoCode,
+          appointmentSource: invoice.appointmentCode || null,
+          appointmentCreatedAt: invoice.createdAt,
+          manualCampaignId: payload?.campaignId || null,
+          finalizedAt: invoice.finalizedAt,
+          session,
+        });
       invoice.campaignAttribution = attributionSnapshot;
 
       // Capture historical Organization & Branch identity snapshots (never overwrite if already set)
@@ -5193,6 +5202,26 @@ export class BillingService {
         await usageLedger.save({ session });
 
         invoice.coupon.usageLedgerId = usageLedger._id;
+
+        await emitCouponRedeemedOutboxEvent({
+          invoice,
+          coupon: updatedCoupon,
+          usageLedgerId: usageLedger._id,
+          session,
+        });
+
+        if (
+          updatedCoupon.totalUsageLimit !== null &&
+          updatedCoupon.totalUsageLimit !== undefined &&
+          updatedCoupon.activeUsageCount >= updatedCoupon.totalUsageLimit
+        ) {
+          await emitCouponUsageLimitExhaustedOutboxEvent({
+            coupon: updatedCoupon,
+            organizationId,
+            branchId,
+            session,
+          });
+        }
       }
 
       await invoice.save({ session });
@@ -5392,14 +5421,6 @@ export class BillingService {
       });
       await auditLog.save({ session });
 
-      await emitBillingOutboxEvent({
-        eventType: "invoice.payment_reversed",
-        invoice: updatedInvoice,
-        operationId: String(payment._id),
-        amountInPaise: Math.round((payment.amount || 0) * 100),
-        session,
-      });
-
       return invoice;
     });
   }
@@ -5469,8 +5490,9 @@ export class BillingService {
       }
     }
 
-    return await this.executeTransaction(async (session) => {
-      // Re-check idempotency key within transaction to guard against concurrent attempts
+    try {
+      return await this.executeTransaction(async (session) => {
+        // Re-check idempotency key within transaction to guard against concurrent attempts
       if (idempotencyKey) {
         const racePayment = await Payment.findOne({
           organizationId,
@@ -5650,10 +5672,10 @@ export class BillingService {
       await auditLog.save({ session });
 
       await emitBillingOutboxEvent({
-        eventType: "invoice.payment_reversed",
+        eventType: "invoice.payment_recorded",
         invoice: updatedInvoice,
-        operationId: String(payment._id),
-        amountInPaise: Math.round((payment.amount || 0) * 100),
+        operationId: String(paymentDoc._id),
+        amountInPaise: Math.round((paymentDoc.amount || 0) * 100),
         session,
       });
 
@@ -6143,13 +6165,6 @@ export class BillingService {
 
         await updatedInvoice.save({ session });
 
-        await emitBillingOutboxEvent({
-          eventType: "invoice.payment_recorded",
-          invoice: updatedInvoice,
-          operationId: String(paymentDoc._id),
-          amountInPaise: Math.round((paymentDoc.amount || 0) * 100),
-          session,
-        });
         if (updatedInvoice.paymentStatus === "partial") {
           await emitBillingOutboxEvent({
             eventType: "invoice.partial_payment",
@@ -6226,7 +6241,42 @@ export class BillingService {
         payment: paymentDoc,
         invoice: updatedInvoice,
       };
-    });
+      });
+    } catch (err) {
+      if (
+        err?.code === 11000 &&
+        idempotencyKey &&
+        err?.keyPattern?.idempotencyKey
+      ) {
+        const existingPayment = await Payment.findOne({
+          organizationId,
+          idempotencyKey,
+          isDeleted: false,
+        });
+        if (existingPayment) {
+          if (
+            existingPayment.requestPayloadHash !== requestPayloadHash ||
+            existingPayment.invoiceId.toString() !== invoiceId.toString()
+          ) {
+            throw new AppError(
+              "Idempotency key reuse with differing payment parameters or target invoice",
+              409,
+            );
+          }
+          const invoice = await Invoice.findOne({
+            _id: invoiceId,
+            organizationId,
+            isDeleted: false,
+          });
+          return {
+            payment: existingPayment,
+            invoice,
+            isIdempotentReplay: true,
+          };
+        }
+      }
+      throw err;
+    }
   }
 
   /**
@@ -6508,7 +6558,9 @@ export class BillingService {
    * Resolve authoritative organization and branch branding from persisted models.
    */
   async resolveInvoiceBranding(organizationId, branchId, session = null) {
-    const orgQuery = Organization.findById(organizationId).select("name logo").lean();
+    const orgQuery = Organization.findById(organizationId)
+      .select("name logo")
+      .lean();
     const orgSettingsQuery = OrganizationSettings.findOne({ organizationId })
       .select("profile regional.timezone")
       .lean();
@@ -6577,7 +6629,10 @@ export class BillingService {
     }
 
     const isFinalized = invoice.status === "finalized";
-    const hasOrgSnapshot = Boolean(invoice.organizationSnapshot?.name || invoice.organizationSnapshot?.displayName);
+    const hasOrgSnapshot = Boolean(
+      invoice.organizationSnapshot?.name ||
+      invoice.organizationSnapshot?.displayName,
+    );
     const hasBranchSnapshot = Boolean(invoice.branchSnapshot?.name);
 
     let organization;

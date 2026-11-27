@@ -8,7 +8,10 @@ import {
   sendViaEmailAdapter,
   sendViaSmsAdapter,
   dispatchNotificationJob,
+  dispatchRenderedNotification,
 } from "../../services/notifications/channelAdapters.service.js";
+import { NotificationTemplate } from "../../models/notifications/notificationTemplate.model.js";
+import { OrganizationSettings } from "../../models/settings/organizationSettings.model.js";
 import {
   scheduleAppointmentReminderOutbox,
   cancelAppointmentReminderNotifications,
@@ -92,5 +95,38 @@ describe("Stage 2D — Channel Adapters & Appointment Reminder Migration", () =>
     const cancelled = await cancelAppointmentReminderNotifications({ organizationId: orgId, appointmentId: aptId });
     expect(cancelled.cancelledOutboxCount).toBe(1);
     expect(cancelled.cancelledCount).toBe(2);
+  });
+
+  it("renders template and dispatches email via dispatchRenderedNotification", async () => {
+    jest.spyOn(Notification, "findOneAndUpdate").mockResolvedValue({
+      _id: "n-tpl",
+      notificationId: "nid-tpl",
+      organizationId: orgId,
+      eventType: "appointment.reminder_due",
+      channel: "email",
+      status: "processing",
+    });
+    jest.spyOn(Notification, "updateOne").mockResolvedValue({ modifiedCount: 1 });
+    jest.spyOn(NotificationTemplate, "findOne")
+      .mockReturnValueOnce({ lean: jest.fn().mockResolvedValue(null) })
+      .mockReturnValueOnce({ lean: jest.fn().mockResolvedValue(null) });
+    jest.spyOn(OrganizationSettings, "findOne").mockReturnValue({
+      lean: jest.fn().mockResolvedValue({ businessName: "Luxe Salon" }),
+    });
+    const mailSpy = jest.spyOn(EmailService.prototype, "sendMail").mockResolvedValue({ messageId: "m-tpl" });
+
+    const res = await dispatchRenderedNotification("nid-tpl", {
+      to: "cust@test.com",
+      variables: { appointmentCode: "APT-9", startAt: "11:00 AM" },
+    });
+
+    expect(res.status).toBe("sent");
+    expect(mailSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "cust@test.com",
+        subject: expect.stringContaining("Luxe Salon"),
+        text: expect.stringContaining("APT-9"),
+      }),
+    );
   });
 });

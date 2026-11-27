@@ -350,4 +350,92 @@ export const removeCouponSchema = z.object({
   }),
 });
 
+export const previewRefundSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+  }),
+  body: z
+    .object({
+      branchId: objectIdSchema.optional(),
+      refundMode: z.enum(["financial_only", "item_linked"]),
+      requestedAmountPaise: z.coerce.number().int().positive().optional(),
+      items: z
+        .array(
+          z.object({
+            lineId: objectIdSchema,
+            quantity: z.coerce.number().positive("Quantity must be greater than zero"),
+            acceptPhysicalRestock: z.boolean().optional().default(false),
+          })
+        )
+        .optional(),
+    })
+    .refine(
+      (data) =>
+        (data.refundMode === "financial_only" && Number.isInteger(data.requestedAmountPaise)) ||
+        (data.refundMode === "item_linked" && Array.isArray(data.items) && data.items.length > 0),
+      {
+        message:
+          "financial_only requires requestedAmountPaise; item_linked requires at least one item",
+      }
+    ),
+});
+
+export const createRefundSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+  }),
+  body: z
+    .object({
+      branchId: objectIdSchema.optional(),
+      refundMode: z.enum(["financial_only", "item_linked"]),
+      refundMethod: z.enum(["cash", "card", "upi", "other"]),
+      requestedAmountPaise: z.coerce.number().int().positive().optional(),
+      items: z
+        .array(
+          z.object({
+            lineId: objectIdSchema,
+            quantity: z.coerce.number().positive("Quantity must be greater than zero"),
+            acceptPhysicalRestock: z.boolean().optional().default(false),
+          })
+        )
+        .optional(),
+      reason: z.string().trim().min(3, "Reason must be at least 3 characters").max(500),
+    })
+    .refine(
+      (data) =>
+        (data.refundMode === "financial_only" && Number.isInteger(data.requestedAmountPaise)) ||
+        (data.refundMode === "item_linked" && Array.isArray(data.items) && data.items.length > 0),
+      {
+        message:
+          "financial_only requires requestedAmountPaise; item_linked requires at least one item",
+      }
+    ),
+});
+
+export const settleRefundSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+    refundCaseId: objectIdSchema,
+  }),
+  body: z.object({
+    branchId: objectIdSchema.optional(),
+    refundMethod: z.enum(["cash", "card", "upi", "other"]).optional(),
+    amountPaise: z.coerce.number().int().positive().optional(),
+    referenceNote: z.string().trim().max(500).optional(),
+  }),
+});
+
+export const retryRefundReversalsSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+    refundCaseId: objectIdSchema,
+  }),
+  body: z
+    .object({
+      branchId: objectIdSchema.optional(),
+    })
+    .optional(),
+});
+
+
 

@@ -104,6 +104,10 @@ const notificationSchema = new Schema(
       type: Date,
       default: null,
     },
+    readAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -114,7 +118,9 @@ notificationSchema.index(
   { organizationId: 1, idempotencyKey: 1 },
   { unique: true },
 );
-notificationSchema.index({ organizationId: 1, recipientId: 1, createdAt: -1 });
+notificationSchema.index({ organizationId: 1, recipientId: 1, createdAt: -1, _id: -1 });
+notificationSchema.index({ organizationId: 1, createdAt: -1, _id: -1 });
+notificationSchema.index({ organizationId: 1, recipientId: 1, readAt: 1 });
 notificationSchema.index({ sourceEventId: 1 });
 
 export const Notification = mongoose.model("Notification", notificationSchema);

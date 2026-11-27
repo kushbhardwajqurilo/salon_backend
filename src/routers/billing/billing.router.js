@@ -21,6 +21,10 @@ import {
   getCheckoutQueueQuerySchema,
   returnInvoiceItemsSchema,
   refundMembershipLineSchema,
+  previewRefundSchema,
+  createRefundSchema,
+  settleRefundSchema,
+  retryRefundReversalsSchema,
 } from "../../validation/billing/billing.validation.js";
 import {
   createInvoice,
@@ -36,6 +40,11 @@ import {
   cancelInvoice,
   returnInvoiceItems,
   refundUnusedMembershipLine,
+  getRefundContext,
+  previewRefund,
+  createRefund,
+  settleRefund,
+  retryRefundReversals,
   recordPayment,
   voidPayment,
   getInvoiceById,
@@ -231,6 +240,45 @@ router.post(
   validate(refundMembershipLineSchema),
   requirePermission("payments.refund"),
   refundUnusedMembershipLine
+);
+
+router.get(
+  "/invoices/:id/refund-context",
+  requireBranchScope,
+  requirePermission(["payments.view", "payments.refund"]),
+  getRefundContext
+);
+
+router.post(
+  "/invoices/:id/refunds/preview",
+  validateMutationBranch,
+  validate(previewRefundSchema),
+  requirePermission("payments.refund"),
+  previewRefund
+);
+
+router.post(
+  "/invoices/:id/refunds",
+  validateMutationBranch,
+  validate(createRefundSchema),
+  requirePermission("payments.refund"),
+  createRefund
+);
+
+router.post(
+  "/invoices/:id/refunds/:refundCaseId/settle",
+  validateMutationBranch,
+  validate(settleRefundSchema),
+  requirePermission("payments.refund"),
+  settleRefund
+);
+
+router.post(
+  "/invoices/:id/refunds/:refundCaseId/retry-reversals",
+  validateMutationBranch,
+  validate(retryRefundReversalsSchema),
+  requirePermission("payments.refund"),
+  retryRefundReversals
 );
 
 // Payments

@@ -672,6 +672,18 @@ export const CANONICAL_PERMISSIONS = [
     description: "Modify templates for transactional notifications."
   },
   {
+    name: "notifications.templates.view",
+    module: "Notifications",
+    action: "View Templates",
+    description: "View notification templates and preview rendered content."
+  },
+  {
+    name: "notifications.automations.manage",
+    module: "Notifications",
+    action: "Manage Automations",
+    description: "Create, update, pause, and delete notification automations."
+  },
+  {
     name: "campaigns.send",
     module: "Campaigns",
     action: "Send Campaigns",

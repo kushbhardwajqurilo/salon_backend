@@ -37,9 +37,7 @@ export const baseReportQuerySchema = z
       .string()
       .regex(/^[0-9a-fA-F]{24}$/, "Invalid Mongo ObjectId format for branchId")
       .optional(),
-    limit: z.coerce.number().int().min(1).max(100).default(50),
-    page: z.coerce.number().int().min(1).default(1),
-  })
+  }).strict()
   .refine(
     (data) => {
       const start = new Date(`${data.startDate}T00:00:00.000Z`);
@@ -68,14 +66,31 @@ export const reportQuerySchema = z.object({
   query: baseReportQuerySchema,
 });
 
+const pageFields = {
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+};
+
+const pageField = (name) => ({
+  [`${name}Page`]: z.coerce.number().int().min(1).default(1),
+  [`${name}Limit`]: z.coerce.number().int().min(1).max(100).default(10),
+});
+
+export const paginatedReportQuerySchema = z.object({
+  query: baseReportQuerySchema.extend(pageFields),
+});
+
+export const serviceAnalyticsReportQuerySchema = z.object({
+  query: baseReportQuerySchema.extend({
+    ...pageFields,
+    ...pageField("category"),
+  }),
+});
+
 export const inventoryReportQuerySchema = z.object({
   query: baseReportQuerySchema.extend({
-    usageType: z
-      .enum(["all", "salon_consumption", "retail_sale", "both"])
-      .default("all"),
-    stockStatus: z
-      .enum(["all", "low_stock", "out_of_stock", "adequate"])
-      .default("all"),
+    ...pageField("lowStock"),
+    ...pageField("movement"),
   }),
 });
 

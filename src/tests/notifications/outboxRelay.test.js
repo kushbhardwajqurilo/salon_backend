@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 import mongoose from "mongoose";
 import { OutboxEvent } from "../../models/notifications/outboxEvent.model.js";
+import { Appointment } from "../../models/appointments/appointment.model.js";
 import { notificationQueue } from "../../queues/client.js";
 import {
   claimPendingOutboxEvents,
@@ -121,6 +122,13 @@ describe("Outbox Relay & Recovery Service (Stage 2B)", () => {
   });
 
   it("runs a full relay cycle cleanly on empty queue", async () => {
+    jest.spyOn(Appointment, "find").mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        limit: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue([]),
+        }),
+      }),
+    });
     jest.spyOn(OutboxEvent, "updateMany").mockResolvedValue({ modifiedCount: 0 });
     jest.spyOn(OutboxEvent, "findOneAndUpdate").mockResolvedValue(null);
 

@@ -59,8 +59,12 @@ export default class eTimeAdapter {
     }
 
     const rawFlag = String(raw.M_Flag ?? rawPayload?.punchType ?? "").trim().toLowerCase();
-    const punchType =
-      rawFlag === "out" || rawFlag === "o" || rawFlag === "1" ? "out" : "in";
+    let punchType = null;
+    if (rawFlag === "out" || rawFlag === "o" || rawFlag === "1") {
+      punchType = "out";
+    } else if (rawFlag === "in" || rawFlag === "i" || rawFlag === "0") {
+      punchType = "in";
+    }
 
     return {
       provider: "eTimeOffice",

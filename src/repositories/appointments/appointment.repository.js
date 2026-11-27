@@ -73,10 +73,14 @@ export class AppointmentRepository {
     };
   }
 
-  async update(id, updateData, organizationId) {
+  async update(id, updateData, organizationId, pushData = null) {
+    const updateOp = { $set: updateData };
+    if (pushData) {
+      updateOp.$push = pushData;
+    }
     return await Appointment.findOneAndUpdate(
       { _id: id, organizationId, isDeleted: false },
-      { $set: updateData },
+      updateOp,
       { new: true, runValidators: true },
     );
   }

@@ -8,6 +8,7 @@ const createQueue = (name) => {
   if (process.env.NODE_ENV === "test" || process.env.JEST_WORKER_ID !== undefined) {
     return {
       add: async (jobName, data) => ({ id: `mock-${name}-${Date.now()}` }),
+      removeJobScheduler: async () => true,
       close: async () => {},
     };
   }
@@ -52,6 +53,7 @@ export const whatsappQueue = {
 
 export const notificationQueue = {
   add: (name, data, opts) => createQueue("notification").add(name, data, opts),
+  removeJobScheduler: (id) => createQueue("notification").removeJobScheduler(id),
 };
 
 export const reportsQueue = {

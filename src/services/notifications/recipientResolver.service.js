@@ -1,12 +1,21 @@
 import { Customer } from "../../models/customers/customer.model.js";
 import { User } from "../../models/users/user.model.js";
+import { Role } from "../../models/roles/role.model.js";
 
 /**
  * Checks whether a customer/recipient is eligible for a given purpose & channel.
  */
-export function evaluateConsentAndChannel({ recipient, purpose, channel }) {
+export function evaluateConsentAndChannel({ recipient, purpose, channel, eventType = null }) {
   if (!recipient) {
     return { eligible: false, reason: "Recipient not found" };
+  }
+
+  if (
+    recipient.doNotContact &&
+    typeof eventType === "string" &&
+    eventType.startsWith("coupon.")
+  ) {
+    return { eligible: false, reason: "Recipient opted out (doNotContact)" };
   }
 
   // Global opt-out blocks reminders and marketing; transactional security/payment bypasses
@@ -31,26 +40,118 @@ export function evaluateConsentAndChannel({ recipient, purpose, channel }) {
   return { eligible: true, reason: null };
 }
 
+async function resolveStaffByPermissions({ organizationId, branchId, permissionNames }) {
+  const roles = await Role.find({
+    $or: [{ organizationId }, { isSystem: true }],
+  })
+    .populate("permissions")
+    .lean();
+
+  const eligibleRoleIds = roles
+    .filter((r) =>
+      Array.isArray(r.permissions) &&
+      r.permissions.some((p) => permissionNames.includes(p?.name || p?.key || p?.code)),
+    )
+    .map((r) => r._id);
+
+  if (eligibleRoleIds.length === 0) {
+    return [];
+  }
+
+  const branchFilter = branchId
+    ? {
+        $or: [
+          { hasOrgWideAccess: true },
+          { branchAccess: { $elemMatch: { branchId, isActive: true } } },
+        ],
+      }
+    : { hasOrgWideAccess: true };
+
+  const users = await User.find({
+    organizationId,
+    status: "active",
+    role: { $in: eligibleRoleIds },
+    ...branchFilter,
+  }).lean();
+
+  return users.map((user) => ({
+    recipientType: "staff",
+    recipientId: user._id,
+    recipient: user,
+    purpose: "operational",
+    channels: ["in_app", "email"],
+  }));
+}
+
 /**
  * Resolves recipients for an outbox event strictly within `organizationId` (and `branchId`).
  */
 export async function resolveRecipientsForEvent(event) {
-  const { organizationId, eventType, payload = {} } = event;
+  const { organizationId, branchId = null, eventType, payload = {} } = event;
   const resolved = [];
 
-  if (eventType.startsWith("payroll.")) {
+  if (eventType.startsWith("inventory.")) {
+    return resolveStaffByPermissions({
+      organizationId,
+      branchId,
+      permissionNames: ["inventory.adjust", "inventory.view"],
+    });
+  }
+
+  if (eventType.startsWith("procurement.")) {
+    return resolveStaffByPermissions({
+      organizationId,
+      branchId,
+      permissionNames: ["procurement.orders.update", "procurement.orders.view"],
+    });
+  }
+
+  if (eventType === "coupon.usage_limit_exhausted") {
+    return resolveStaffByPermissions({
+      organizationId,
+      branchId,
+      permissionNames: ["coupons.view", "coupons.configure"],
+    });
+  }
+
+  if (
+    eventType === "expense.submitted" ||
+    eventType === "expense.payout_reversed"
+  ) {
+    return resolveStaffByPermissions({
+      organizationId,
+      branchId,
+      permissionNames: ["expenses.update", "expenses.view"],
+    });
+  }
+
+  if (eventType.startsWith("finance.")) {
+    return resolveStaffByPermissions({
+      organizationId,
+      branchId,
+      permissionNames: ["finance.edit", "finance.view"],
+    });
+  }
+
+  if (
+    eventType.startsWith("payroll.") ||
+    eventType.startsWith("leave.") ||
+    eventType.startsWith("attendance.") ||
+    eventType === "expense.approved" ||
+    eventType === "expense.rejected"
+  ) {
     if (payload.employeeUserId) {
       const user = await User.findOne({
         _id: payload.employeeUserId,
         organizationId,
-        isActive: true,
+        status: "active",
       });
       if (user) {
         resolved.push({
           recipientType: "employee",
           recipientId: user._id,
           recipient: user,
-          purpose: "payroll",
+          purpose: eventType.startsWith("payroll.") ? "payroll" : "operational",
           channels: ["email"],
         });
       }

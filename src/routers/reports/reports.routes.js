@@ -37,7 +37,7 @@ router.get(
 router.get(
   "/revenue",
   authorize("reports.revenue.view"),
-  validate(reportsValidation.reportQuerySchema),
+  validate(reportsValidation.paginatedReportQuerySchema),
   reportsController.getRevenueReport
 );
 
@@ -47,7 +47,7 @@ router.get(
 router.get(
   "/staff-performance",
   authorize("reports.performance.view"),
-  validate(reportsValidation.reportQuerySchema),
+  validate(reportsValidation.paginatedReportQuerySchema),
   reportsController.getStaffPerformanceReport
 );
 
@@ -57,7 +57,7 @@ router.get(
 router.get(
   "/customer-retention",
   authorize("reports.retention.view"),
-  validate(reportsValidation.reportQuerySchema),
+  validate(reportsValidation.paginatedReportQuerySchema),
   reportsController.getCustomerRetentionReport
 );
 
@@ -67,7 +67,7 @@ router.get(
 router.get(
   "/service-analytics",
   authorize("reports.services.view"),
-  validate(reportsValidation.reportQuerySchema),
+  validate(reportsValidation.serviceAnalyticsReportQuerySchema),
   reportsController.getServiceAnalyticsReport
 );
 

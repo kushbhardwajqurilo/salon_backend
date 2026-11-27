@@ -18,6 +18,37 @@ import {
   maskPhoneNumber,
 } from "./reportCalculations.js";
 
+const DEFAULT_PAGE_SIZE = 10;
+
+const resolvePagination = (
+  query,
+  total,
+  pageKey = "page",
+  limitKey = "limit",
+  includeAllRows = false,
+) => {
+  const requestedLimit = Number(query[limitKey]) || DEFAULT_PAGE_SIZE;
+  const totalPages = Math.ceil(total / requestedLimit);
+  const requestedPage = Number(query[pageKey]) || 1;
+  const page = totalPages > 0 ? Math.min(requestedPage, totalPages) : 1;
+  const limit = includeAllRows ? Math.max(total, 1) : requestedLimit;
+
+  return {
+    page: includeAllRows ? 1 : page,
+    limit,
+    total,
+    totalPages: includeAllRows ? (total > 0 ? 1 : 0) : totalPages,
+    skip: includeAllRows ? 0 : (page - 1) * requestedLimit,
+  };
+};
+
+const getPaginationMetadata = ({ page, limit, total, totalPages }) => ({
+  page,
+  limit,
+  total,
+  totalPages,
+});
+
 class ReportsService {
   /**
    * Builds tenant and branch scoped match filters.
@@ -64,10 +95,20 @@ class ReportsService {
     };
   }
 
+  _getComparisonQuery(query, meta) {
+    if (!meta.comparisonStartDate || !meta.comparisonEndDate) return null;
+    return {
+      ...query,
+      startDate: meta.comparisonStartDate,
+      endDate: meta.comparisonEndDate,
+      compareWith: "none",
+    };
+  }
+
   // =========================================================================
   // 1. REVENUE REPORT
   // =========================================================================
-  async getRevenueReport(organizationId, branchId, query) {
+  async getRevenueReport(organizationId, branchId, query, options = {}) {
     const { startDate, endDate, compareWith } = query;
     const meta = await this._resolveMeta(organizationId, branchId, startDate, endDate, compareWith);
 
@@ -311,11 +352,23 @@ class ReportsService {
     const timeSeries = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 
     // Recent transactions for table drill-down
-    const recentInvoices = await Invoice.find(invoiceScope)
-      .sort({ finalizedAt: -1 })
-      .limit(query.limit || 50)
-      .select("invoiceNumber customerSnapshot finalizedAt payableAmount amountPaid amountDue paymentStatus")
-      .lean();
+    const recentTransactionsCount = await Invoice.countDocuments(invoiceScope);
+    const recentTransactionsPagination = resolvePagination(
+      query,
+      recentTransactionsCount,
+      "page",
+      "limit",
+      options.includeAllRows,
+    );
+    let recentInvoicesQuery = Invoice.find(invoiceScope)
+      .sort({ finalizedAt: -1, _id: -1 })
+      .select("invoiceNumber customerSnapshot finalizedAt payableAmount amountPaid amountDue paymentStatus");
+    if (!options.includeAllRows) {
+      recentInvoicesQuery = recentInvoicesQuery
+        .skip(recentTransactionsPagination.skip)
+        .limit(recentTransactionsPagination.limit);
+    }
+    const recentInvoices = await recentInvoicesQuery.lean();
 
     const recentTransactions = recentInvoices.map((inv) => ({
       invoiceId: inv._id.toString(),
@@ -355,13 +408,16 @@ class ReportsService {
       tenderBreakdown,
       timeSeries,
       recentTransactions,
+      pagination: {
+        recentTransactions: getPaginationMetadata(recentTransactionsPagination),
+      },
     };
   }
 
   // =========================================================================
   // 2. STAFF PERFORMANCE REPORT
   // =========================================================================
-  async getStaffPerformanceReport(organizationId, branchId, query) {
+  async getStaffPerformanceReport(organizationId, branchId, query, options = {}) {
     const { startDate, endDate, compareWith } = query;
     const meta = await this._resolveMeta(organizationId, branchId, startDate, endDate, compareWith);
 
@@ -471,9 +527,14 @@ class ReportsService {
       retailSalesCredit: Number(st.retailSalesCredit.toFixed(2)),
       packageSalesCredit: Number(st.packageSalesCredit.toFixed(2)),
       totalRevenueContribution: Number(st.totalRevenueContribution.toFixed(2)),
+      totalRevenueCredit: Number(st.totalRevenueContribution.toFixed(2)),
     }));
 
-    rankings.sort((a, b) => b.totalRevenueContribution - a.totalRevenueContribution);
+    rankings.sort(
+      (a, b) =>
+        b.totalRevenueContribution - a.totalRevenueContribution ||
+        a.staffId.localeCompare(b.staffId),
+    );
 
     // Summary totals
     let totalServices = 0;
@@ -489,24 +550,62 @@ class ReportsService {
     });
 
     const topStaff = rankings.length > 0 && rankings[0].staffId !== "unassigned" ? rankings[0].name : null;
+    const rankingsPagination = resolvePagination(
+      query,
+      rankings.length,
+      "page",
+      "limit",
+      options.includeAllRows,
+    );
+    const paginatedRankings = options.includeAllRows
+      ? rankings
+      : rankings.slice(
+          rankingsPagination.skip,
+          rankingsPagination.skip + rankingsPagination.limit,
+        );
+    const comparisonQuery = this._getComparisonQuery(query, meta);
+    const previousReport = comparisonQuery
+      ? await this.getStaffPerformanceReport(organizationId, branchId, comparisonQuery)
+      : null;
 
     return {
       meta,
       summary: {
-        totalServicesDelivered: calculateMetricDelta(totalServices, null),
-        totalChairTimeHours: calculateMetricDelta(Number(totalHours.toFixed(1)), null),
-        serviceRevenueGenerated: calculateMetricDelta(totalServiceRev, null),
-        retailSalesGenerated: calculateMetricDelta(totalRetailRev, null),
+        totalServicesDelivered: calculateMetricDelta(
+          totalServices,
+          previousReport?.summary.totalServicesDelivered.current,
+        ),
+        totalChairTimeHours: calculateMetricDelta(
+          Number(totalHours.toFixed(1)),
+          previousReport?.summary.totalChairTimeHours.current,
+        ),
+        serviceRevenueGenerated: calculateMetricDelta(
+          totalServiceRev,
+          previousReport?.summary.serviceRevenueGenerated.current,
+        ),
+        retailSalesGenerated: calculateMetricDelta(
+          totalRetailRev,
+          previousReport?.summary.retailSalesGenerated.current,
+        ),
         topPerformingStaffName: topStaff,
       },
-      rankings,
+      rankings: paginatedRankings,
+      pagination: {
+        rankings: getPaginationMetadata(rankingsPagination),
+      },
     };
   }
 
   // =========================================================================
   // 3. CUSTOMER RETENTION REPORT
   // =========================================================================
-  async getCustomerRetentionReport(organizationId, branchId, query, userPermissions = []) {
+  async getCustomerRetentionReport(
+    organizationId,
+    branchId,
+    query,
+    userPermissions = [],
+    options = {},
+  ) {
     const { startDate, endDate, compareWith } = query;
     const meta = await this._resolveMeta(organizationId, branchId, startDate, endDate, compareWith);
 
@@ -568,14 +667,14 @@ class ReportsService {
     );
 
     const priorInvoiceClients = await Invoice.distinct("customerId", {
-      organizationId: new mongoose.Types.ObjectId(organizationId),
+      ...baseScope,
       customerId: { $in: visitingCustomerIds },
       status: "finalized",
       finalizedAt: { $lt: startUtc },
     });
 
     const priorApptClients = await Appointment.distinct("customerId", {
-      organizationId: new mongoose.Types.ObjectId(organizationId),
+      ...baseScope,
       customerId: { $in: visitingCustomerIds },
       status: "completed",
       startAt: { $lt: startUtc },
@@ -609,18 +708,67 @@ class ReportsService {
     const allCustomerLatestVisits = await Invoice.aggregate([
       {
         $match: {
-          ...this._buildScope(organizationId, branchId),
+          ...baseScope,
           status: "finalized",
           finalizedAt: { $lte: reportEndInstant },
+          customerId: { $ne: null },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          customerId: 1,
+          visitKey: {
+            $cond: [
+              { $ifNull: ["$appointmentId", false] },
+              { $concat: ["appointment:", { $toString: "$appointmentId" }] },
+              { $concat: ["invoice:", { $toString: "$_id" }] },
+            ],
+          },
+          visitDate: "$finalizedAt",
+          sourcePriority: { $literal: 1 },
+        },
+      },
+      {
+        $unionWith: {
+          coll: Appointment.collection.name,
+          pipeline: [
+            {
+              $match: {
+                ...baseScope,
+                status: "completed",
+                startAt: { $lte: reportEndInstant },
+                customerId: { $ne: null },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                customerId: 1,
+                visitKey: { $concat: ["appointment:", { $toString: "$_id" }] },
+                visitDate: "$startAt",
+                sourcePriority: { $literal: 0 },
+              },
+            },
+          ],
+        },
+      },
+      { $sort: { visitKey: 1, sourcePriority: -1 } },
+      {
+        $group: {
+          _id: "$visitKey",
+          customerId: { $first: "$customerId" },
+          visitDate: { $first: "$visitDate" },
         },
       },
       {
         $group: {
           _id: "$customerId",
-          latestVisit: { $max: "$finalizedAt" },
+          latestVisit: { $max: "$visitDate" },
           visitCount: { $sum: 1 },
         },
       },
+      { $sort: { latestVisit: -1, _id: 1 } },
     ]);
 
     const recencyBuckets = { active: 0, dueForService: 0, atRisk: 0, lapsed: 0 };
@@ -644,7 +792,20 @@ class ReportsService {
     });
 
     // 4. Client Directory drill-down table
-    const targetCustomerIds = allCustomerLatestVisits.slice(0, 50).map((c) => c._id);
+    const clientDirectoryPagination = resolvePagination(
+      query,
+      allCustomerLatestVisits.length,
+      "page",
+      "limit",
+      options.includeAllRows,
+    );
+    const directoryVisits = options.includeAllRows
+      ? allCustomerLatestVisits
+      : allCustomerLatestVisits.slice(
+          clientDirectoryPagination.skip,
+          clientDirectoryPagination.skip + clientDirectoryPagination.limit,
+        );
+    const targetCustomerIds = directoryVisits.map((c) => c._id);
     const customerProfiles = await Customer.find({
       _id: { $in: targetCustomerIds },
       organizationId,
@@ -654,7 +815,7 @@ class ReportsService {
 
     const profileMap = new Map(customerProfiles.map((p) => [p._id.toString(), p]));
 
-    const clientDirectory = allCustomerLatestVisits.slice(0, 50).map((cv) => {
+    const clientDirectory = directoryVisits.map((cv) => {
       const cIdStr = cv._id.toString();
       const prof = profileMap.get(cIdStr);
       const days = Math.max(
@@ -664,8 +825,8 @@ class ReportsService {
 
       let statusTier = "active";
       if (days > 105) statusTier = "lapsed";
-      else if (days > 75) statusTier = "at_risk";
-      else if (days > 45) statusTier = "due";
+      else if (days > 75) statusTier = "atRisk";
+      else if (days > 45) statusTier = "dueForService";
 
       return {
         customerId: cIdStr,
@@ -678,13 +839,35 @@ class ReportsService {
       };
     });
 
+    const comparisonQuery = this._getComparisonQuery(query, meta);
+    const previousReport = comparisonQuery
+      ? await this.getCustomerRetentionReport(
+          organizationId,
+          branchId,
+          comparisonQuery,
+          userPermissions,
+        )
+      : null;
+
     return {
       meta,
       summary: {
-        totalVisitingClients: calculateMetricDelta(totalVisitingClientsCount, null),
-        newClientsAcquired: calculateMetricDelta(newClientsCount, null),
-        returningClients: calculateMetricDelta(returningClientsCount, null),
-        repeatVisitRate: calculateRateDelta(repeatVisitRate, null),
+        totalVisitingClients: calculateMetricDelta(
+          totalVisitingClientsCount,
+          previousReport?.summary.totalVisitingClients.current,
+        ),
+        newClientsAcquired: calculateMetricDelta(
+          newClientsCount,
+          previousReport?.summary.newClientsAcquired.current,
+        ),
+        returningClients: calculateMetricDelta(
+          returningClientsCount,
+          previousReport?.summary.returningClients.current,
+        ),
+        repeatVisitRate: calculateRateDelta(
+          repeatVisitRate,
+          previousReport?.summary.repeatVisitRate.current,
+        ),
         atRiskClientsCount: recencyBuckets.atRisk,
         historyCompleteness: "truncated",
         historyCompletenessNote: "Historical customer visit logs begin from available system records; earlier lifetime visits prior to system digital records cannot be certified.",
@@ -699,13 +882,16 @@ class ReportsService {
             : 0,
       })),
       clientDirectory,
+      pagination: {
+        clientDirectory: getPaginationMetadata(clientDirectoryPagination),
+      },
     };
   }
 
   // =========================================================================
   // 4. SERVICE ANALYTICS REPORT
   // =========================================================================
-  async getServiceAnalyticsReport(organizationId, branchId, query) {
+  async getServiceAnalyticsReport(organizationId, branchId, query, options = {}) {
     const { startDate, endDate, compareWith } = query;
     const meta = await this._resolveMeta(organizationId, branchId, startDate, endDate, compareWith);
 
@@ -731,7 +917,7 @@ class ReportsService {
           totalDuration: { $sum: { $multiply: ["$lines.duration", "$lines.quantity"] } },
         },
       },
-      { $sort: { executionCount: -1 } },
+      { $sort: { executionCount: -1, _id: 1 } },
     ]);
 
     // Populate category names
@@ -795,25 +981,67 @@ class ReportsService {
 
     const averageServiceTicket =
       totalExecutions > 0 ? Number((totalGrossRev / totalExecutions).toFixed(2)) : 0;
+    categoryShare.sort(
+      (a, b) => b.revenue - a.revenue || a.category.localeCompare(b.category),
+    );
+    const topServicePagination = resolvePagination(
+      query,
+      topServices.length,
+      "page",
+      "limit",
+      options.includeAllRows,
+    );
+    const categoryPagination = resolvePagination(
+      query,
+      categoryShare.length,
+      "categoryPage",
+      "categoryLimit",
+      options.includeAllRows,
+    );
+    const paginatedTopServices = options.includeAllRows
+      ? topServices
+      : topServices.slice(
+          topServicePagination.skip,
+          topServicePagination.skip + topServicePagination.limit,
+        );
+    const paginatedCategoryShare = options.includeAllRows
+      ? categoryShare
+      : categoryShare.slice(
+          categoryPagination.skip,
+          categoryPagination.skip + categoryPagination.limit,
+        );
+    const comparisonQuery = this._getComparisonQuery(query, meta);
+    const previousReport = comparisonQuery
+      ? await this.getServiceAnalyticsReport(organizationId, branchId, comparisonQuery)
+      : null;
 
     return {
       meta,
       summary: {
-        totalServicesCompleted: calculateMetricDelta(totalExecutions, null),
-        averageServiceTicket: calculateMetricDelta(averageServiceTicket, null),
+        totalServicesCompleted: calculateMetricDelta(
+          totalExecutions,
+          previousReport?.summary.totalServicesCompleted.current,
+        ),
+        averageServiceTicket: calculateMetricDelta(
+          averageServiceTicket,
+          previousReport?.summary.averageServiceTicket.current,
+        ),
         mostRequestedServiceName: topServices.length > 0 ? topServices[0].name : "N/A",
-        topRevenueCategoryName:
-          categoryShare.sort((a, b) => b.revenue - a.revenue)[0]?.category || "N/A",
+        topRevenueCategoryName: categoryShare[0]?.category || "N/A",
       },
-      topServices,
-      categoryShare,
+      topServices: paginatedTopServices,
+      categoryShare: paginatedCategoryShare,
+      pagination: {
+        topServices: getPaginationMetadata(topServicePagination),
+        categoryShare: getPaginationMetadata(categoryPagination),
+      },
     };
   }
 
   // =========================================================================
   // 5. INVENTORY REPORT
   // =========================================================================
-  async getInventoryReport(organizationId, branchId, query) {
+  async getInventoryReport(organizationId, branchId, query, options = {}) {
     const { startDate, endDate, compareWith } = query;
     const meta = await this._resolveMeta(organizationId, branchId, startDate, endDate, compareWith);
 
@@ -823,95 +1051,286 @@ class ReportsService {
     const baseScope = this._buildScope(organizationId, branchId);
 
     // 1. StockBalances and reorderLevel comparison
-    const stockBalances = await StockBalance.find({
-      organizationId,
-      ...(branchId ? { branchId } : {}),
-    })
-      .populate("productId", "name sku category usageType reorderLevel")
-      .lean();
-
-    let lowStockConsumablesCount = 0;
-    let lowStockRetailCount = 0;
-    const lowStockAlerts = [];
-
-    stockBalances.forEach((sb) => {
-      const prod = sb.productId;
-      if (!prod) return;
-
-      const reorderLevel = prod.reorderLevel || 0;
-      let isLow = false;
-      let urgency = "warning";
-
-      if (prod.usageType === "salon_consumption") {
-        if (reorderLevel > 0 && sb.onHandConsumables <= reorderLevel) {
-          isLow = true;
-          lowStockConsumablesCount++;
-          if (sb.onHandConsumables === 0) urgency = "critical";
-        }
-      } else if (prod.usageType === "retail_sale") {
-        if (reorderLevel > 0 && sb.onHandRetail <= reorderLevel) {
-          isLow = true;
-          lowStockRetailCount++;
-          if (sb.onHandRetail === 0) urgency = "critical";
-        }
-      } else if (prod.usageType === "both") {
-        if (
-          sb.onHandConsumables === 0 ||
-          sb.onHandRetail === 0 ||
-          (reorderLevel > 0 && sb.onHand <= reorderLevel)
-        ) {
-          isLow = true;
-          if (sb.onHandConsumables === 0 || sb.onHandRetail === 0) urgency = "critical";
-        }
-      }
-
-      if (isLow) {
-        lowStockAlerts.push({
-          productId: prod._id.toString(),
-          name: prod.name,
-          sku: prod.sku,
-          category: prod.category,
-          usageType: prod.usageType,
-          onHandConsumables: sb.onHandConsumables,
-          onHandRetail: sb.onHandRetail,
-          totalOnHand: sb.onHand,
-          reorderLevel,
-          urgency,
-        });
-      }
-    });
+    const stockBalanceScope = {
+      organizationId: new mongoose.Types.ObjectId(organizationId),
+      ...(branchId ? { branchId: new mongoose.Types.ObjectId(branchId) } : {}),
+    };
+    const stockBalanceWithProduct = [
+      { $match: stockBalanceScope },
+      {
+        $lookup: {
+          from: Product.collection.name,
+          localField: "productId",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+    ];
+    const lowStockExpression = {
+      $or: [
+        {
+          $and: [
+            { $eq: ["$product.usageType", "salon_consumption"] },
+            { $gt: ["$product.reorderLevel", 0] },
+            { $lte: ["$onHandConsumables", "$product.reorderLevel"] },
+          ],
+        },
+        {
+          $and: [
+            { $eq: ["$product.usageType", "retail_sale"] },
+            { $gt: ["$product.reorderLevel", 0] },
+            { $lte: ["$onHandRetail", "$product.reorderLevel"] },
+          ],
+        },
+        {
+          $and: [
+            { $eq: ["$product.usageType", "both"] },
+            {
+              $or: [
+                { $eq: ["$onHandConsumables", 0] },
+                { $eq: ["$onHandRetail", 0] },
+                {
+                  $and: [
+                    { $gt: ["$product.reorderLevel", 0] },
+                    { $lte: ["$onHand", "$product.reorderLevel"] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const [stockSummary] = await StockBalance.aggregate([
+      ...stockBalanceWithProduct,
+      {
+        $group: {
+          _id: null,
+          totalTrackedSkuCount: { $sum: 1 },
+          lowStockConsumablesCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$product.usageType", "salon_consumption"] },
+                    { $gt: ["$product.reorderLevel", 0] },
+                    { $lte: ["$onHandConsumables", "$product.reorderLevel"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          lowStockRetailCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$product.usageType", "retail_sale"] },
+                    { $gt: ["$product.reorderLevel", 0] },
+                    { $lte: ["$onHandRetail", "$product.reorderLevel"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
+    const [lowStockCountResult] = await StockBalance.aggregate([
+      ...stockBalanceWithProduct,
+      { $match: { $expr: lowStockExpression } },
+      { $count: "total" },
+    ]);
+    const lowStockAlertsPagination = resolvePagination(
+      query,
+      lowStockCountResult?.total || 0,
+      "lowStockPage",
+      "lowStockLimit",
+      options.includeAllLowStockAlerts || options.includeAllRows,
+    );
+    let lowStockAlertsQuery = StockBalance.aggregate([
+      ...stockBalanceWithProduct,
+      { $match: { $expr: lowStockExpression } },
+      { $sort: { "product.name": 1, _id: 1 } },
+    ]);
+    if (!(options.includeAllLowStockAlerts || options.includeAllRows)) {
+      lowStockAlertsQuery = lowStockAlertsQuery
+        .skip(lowStockAlertsPagination.skip)
+        .limit(lowStockAlertsPagination.limit);
+    }
+    const paginatedLowStockAlerts = await lowStockAlertsQuery
+      .project({
+        _id: 0,
+        stockBalanceId: { $toString: "$_id" },
+        productId: { $toString: "$product._id" },
+        name: "$product.name",
+        sku: "$product.sku",
+        category: "$product.category",
+        usageType: "$product.usageType",
+        onHandConsumables: 1,
+        onHandRetail: 1,
+        totalOnHand: "$onHand",
+        reorderLevel: { $ifNull: ["$product.reorderLevel", 0] },
+        urgency: {
+          $cond: [
+            {
+              $or: [
+                {
+                  $and: [
+                    { $eq: ["$product.usageType", "salon_consumption"] },
+                    { $eq: ["$onHandConsumables", 0] },
+                  ],
+                },
+                {
+                  $and: [
+                    { $eq: ["$product.usageType", "retail_sale"] },
+                    { $eq: ["$onHandRetail", 0] },
+                  ],
+                },
+                {
+                  $and: [
+                    { $eq: ["$product.usageType", "both"] },
+                    {
+                      $or: [
+                        { $eq: ["$onHandConsumables", 0] },
+                        { $eq: ["$onHandRetail", 0] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            "critical",
+            "warning",
+          ],
+        },
+      })
+      .exec();
 
     // 2. Stock movements in period
     const movementScope = {
       organizationId: new mongoose.Types.ObjectId(organizationId),
       ...(branchId ? { branchId: new mongoose.Types.ObjectId(branchId) } : {}),
-      createdAt: { $gte: startUtc, $lte: finalEndUtc },
+      accountingDate: { $gte: startUtc, $lte: finalEndUtc },
     };
 
-    const movements = await StockMovement.find(movementScope)
-      .sort({ createdAt: -1 })
-      .limit(query.limit || 50)
-      .populate("productId", "name sku")
-      .populate("actorId", "name")
-      .lean();
+    const [movementTotals] = await StockMovement.aggregate([
+      { $match: movementScope },
+      {
+        $lookup: {
+          from: StockMovement.collection.name,
+          localField: "reversesMovementId",
+          foreignField: "_id",
+          as: "reversedMovement",
+        },
+      },
+      {
+        $unwind: {
+          path: "$reversedMovement",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          consumablesUsed: {
+            $sum: {
+              $switch: {
+                branches: [
+                  {
+                    case: { $eq: ["$movementType", "service_consumption"] },
+                    then: { $abs: "$quantityDelta" },
+                  },
+                  {
+                    case: {
+                      $and: [
+                        { $eq: ["$movementType", "movement_reversal"] },
+                        { $eq: ["$reversedMovement.movementType", "service_consumption"] },
+                      ],
+                    },
+                    then: { $multiply: [{ $abs: "$quantityDelta" }, -1] },
+                  },
+                ],
+                default: 0,
+              },
+            },
+          },
+          retailUnitsSold: {
+            $sum: {
+              $switch: {
+                branches: [
+                  {
+                    case: { $eq: ["$movementType", "pos_sale"] },
+                    then: { $abs: "$quantityDelta" },
+                  },
+                  {
+                    case: {
+                      $and: [
+                        { $eq: ["$movementType", "movement_reversal"] },
+                        { $eq: ["$reversedMovement.movementType", "pos_sale"] },
+                      ],
+                    },
+                    then: { $multiply: [{ $abs: "$quantityDelta" }, -1] },
+                  },
+                ],
+                default: 0,
+              },
+            },
+          },
+          auditNetDiscrepancy: {
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $in: ["$movementType", ["stocktake", "adjustment"]] },
+                    {
+                      $and: [
+                        { $eq: ["$movementType", "movement_reversal"] },
+                        { $in: ["$reversedMovement.movementType", ["stocktake", "adjustment"]] },
+                      ],
+                    },
+                  ],
+                },
+                "$quantityDelta",
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
 
-    let consumablesUsed = 0;
-    let retailUnitsSold = 0;
-    let auditNetDiscrepancy = 0;
-
-    movements.forEach((m) => {
-      if (m.movementType === "service_consumption") {
-        consumablesUsed += Math.abs(m.quantityDelta);
-      } else if (m.movementType === "pos_sale") {
-        retailUnitsSold += Math.abs(m.quantityDelta);
-      } else if (m.movementType === "stocktake" || m.movementType === "adjustment") {
-        auditNetDiscrepancy += m.quantityDelta;
+    const movementCount = await StockMovement.countDocuments(movementScope);
+    const movementLogsPagination = resolvePagination(
+      query,
+      movementCount,
+      "movementPage",
+      "movementLimit",
+      options.includeAllMovementLogs,
+    );
+    let movements = [];
+    if (options.includeMovementLogs !== false) {
+      let movementQuery = StockMovement.find(movementScope)
+        .sort({ accountingDate: -1, _id: -1 })
+        .populate("productId", "name sku")
+        .populate("actorId", "name")
+        .populate("reversesMovementId", "movementType");
+      if (!options.includeAllMovementLogs) {
+        movementQuery = movementQuery
+          .skip(movementLogsPagination.skip)
+          .limit(movementLogsPagination.limit);
       }
-    });
+      movements = await movementQuery.lean();
+    }
 
     const movementLogs = movements.map((m) => ({
       movementId: m._id.toString(),
-      timestamp: m.createdAt.toISOString(),
+      timestamp: m.accountingDate.toISOString(),
       productName: m.productId?.name || "Product",
       sku: m.productId?.sku || "N/A",
       movementType: m.movementType,
@@ -921,18 +1340,33 @@ class ReportsService {
       notes: m.notes || "",
     }));
 
+    const comparisonQuery = this._getComparisonQuery(query, meta);
+    const previousReport = comparisonQuery
+      ? await this.getInventoryReport(organizationId, branchId, comparisonQuery)
+      : null;
+
     return {
       meta,
       summary: {
-        totalTrackedSkuCount: stockBalances.length,
-        lowStockConsumablesCount,
-        lowStockRetailCount,
-        consumablesUsedInPeriod: calculateMetricDelta(consumablesUsed, null),
-        retailUnitsSoldInPeriod: calculateMetricDelta(retailUnitsSold, null),
-        auditNetDiscrepancyDelta: auditNetDiscrepancy,
+        totalTrackedSkuCount: stockSummary?.totalTrackedSkuCount || 0,
+        lowStockConsumablesCount: stockSummary?.lowStockConsumablesCount || 0,
+        lowStockRetailCount: stockSummary?.lowStockRetailCount || 0,
+        consumablesUsedInPeriod: calculateMetricDelta(
+          movementTotals?.consumablesUsed || 0,
+          previousReport?.summary.consumablesUsedInPeriod.current,
+        ),
+        retailUnitsSoldInPeriod: calculateMetricDelta(
+          movementTotals?.retailUnitsSold || 0,
+          previousReport?.summary.retailUnitsSoldInPeriod.current,
+        ),
+        auditNetDiscrepancyDelta: movementTotals?.auditNetDiscrepancy || 0,
       },
-      lowStockAlerts,
+      lowStockAlerts: paginatedLowStockAlerts,
       movementLogs,
+      pagination: {
+        lowStockAlerts: getPaginationMetadata(lowStockAlertsPagination),
+        movementLogs: getPaginationMetadata(movementLogsPagination),
+      },
     };
   }
 
@@ -969,7 +1403,7 @@ class ReportsService {
         title: `${inventoryReport.summary.lowStockConsumablesCount} Salon Consumables Below Reorder Level`,
         description: "Back-bar products are running low and may halt service execution.",
         actionLabel: "Review Inventory",
-        actionHref: "/reports/inventory?stockStatus=low_stock",
+        actionHref: "/reports/inventory",
       });
     }
 
@@ -1027,7 +1461,9 @@ class ReportsService {
     let csvData = "";
 
     if (reportType === "revenue") {
-      const rep = await this.getRevenueReport(organizationId, branchId, query);
+      const rep = await this.getRevenueReport(organizationId, branchId, query, {
+        includeAllRows: true,
+      });
       const headers = ["Invoice Number", "Client Name", "Date", "Billed (INR)", "Paid (INR)", "Due (INR)", "Status"];
       const rows = rep.recentTransactions.map((t) => [
         `"${t.invoiceNumber}"`,
@@ -1040,7 +1476,9 @@ class ReportsService {
       ]);
       csvData = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     } else if (reportType === "staff-performance") {
-      const rep = await this.getStaffPerformanceReport(organizationId, branchId, query);
+      const rep = await this.getStaffPerformanceReport(organizationId, branchId, query, {
+        includeAllRows: true,
+      });
       const headers = ["Staff Name", "Code", "Services Completed", "Chair Hours", "Service Revenue (INR)", "Retail Sales (INR)", "Total Production (INR)"];
       const rows = rep.rankings.map((r) => [
         `"${r.name}"`,
@@ -1053,7 +1491,13 @@ class ReportsService {
       ]);
       csvData = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     } else if (reportType === "customer-retention") {
-      const rep = await this.getCustomerRetentionReport(organizationId, branchId, query, userPermissions);
+      const rep = await this.getCustomerRetentionReport(
+        organizationId,
+        branchId,
+        query,
+        userPermissions,
+        { includeAllRows: true },
+      );
       const headers = ["Client Name", "Phone", "Last Visit Date", "Lifetime Visits", "Days Inactive", "Status Tier"];
       const rows = rep.clientDirectory.map((c) => [
         `"${c.name}"`,
@@ -1065,7 +1509,9 @@ class ReportsService {
       ]);
       csvData = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     } else if (reportType === "service-analytics") {
-      const rep = await this.getServiceAnalyticsReport(organizationId, branchId, query);
+      const rep = await this.getServiceAnalyticsReport(organizationId, branchId, query, {
+        includeAllRows: true,
+      });
       const headers = ["Service Name", "Category", "Executions", "Avg Duration (Min)", "Gross Revenue (INR)", "Share (%)"];
       const rows = rep.topServices.map((s) => [
         `"${s.name}"`,
@@ -1077,7 +1523,10 @@ class ReportsService {
       ]);
       csvData = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     } else if (reportType === "inventory") {
-      const rep = await this.getInventoryReport(organizationId, branchId, query);
+      const rep = await this.getInventoryReport(organizationId, branchId, query, {
+        includeAllLowStockAlerts: true,
+        includeMovementLogs: false,
+      });
       const headers = ["Product Name", "SKU", "Category", "Usage Type", "Consumables On-Hand", "Retail On-Hand", "Reorder Level", "Urgency"];
       const rows = rep.lowStockAlerts.map((a) => [
         `"${a.name}"`,
