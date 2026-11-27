@@ -1,4 +1,5 @@
 import { settlementFulfillmentEventService } from "../incentives/settlementFulfillmentEvent.service.js";
+import { refundService } from "./refund.service.js";
 import mongoose from "mongoose";
 import { AppError } from "../../utils/errors.js";
 import { Invoice } from "../../models/billing/invoice.model.js";
@@ -7281,423 +7282,73 @@ export class BillingService {
         400,
       );
     }
-    const requestPayloadHash = crypto
-      .createHash("sha256")
-      .update(
-        JSON.stringify({ items: normalizedItems, refundPaymentMethod, reason }),
-      )
-      .digest("hex");
-    const returnEventKey = `RETURN:INV:${invoiceId}:KEY:${idempotencyKey}`;
-    const refundPaymentKey = `INVOICE_RETURN:${invoiceId}:${idempotencyKey}`;
 
-    return await this.executeTransaction(async (session) => {
-      const invoice = await Invoice.findOne({
-        _id: invoiceId,
-        organizationId,
-        isDeleted: false,
-      }).session(session);
-
-      if (!invoice) {
-        throw new AppError("Invoice not found", 404);
-      }
-      if (invoice.branchId.toString() !== branchId.toString()) {
-        throw new AppError(
-          "Target branchId does not match invoice branch",
-          400,
-        );
-      }
-
-      const existingReturn = await InvoiceSettlementEvent.findOne({
-        organizationId,
-        idempotencyKey: returnEventKey,
-      }).session(session);
-      if (existingReturn) {
-        if (existingReturn.requestPayloadHash !== requestPayloadHash) {
-          throw new AppError(
-            "Idempotency key was already used for a different return request",
-            409,
-          );
-        }
-        const [refundPayment, restockedMovements] = await Promise.all([
-          Payment.findOne({
-            _id: existingReturn.paymentId,
-            organizationId,
-          }).session(session),
-          StockMovement.find({
-            _id: { $in: existingReturn.restockedMovementIds || [] },
-            organizationId,
-          }).session(session),
-        ]);
-        if (!refundPayment) {
-          throw new AppError(
-            "The recorded return is missing its refund payment",
-            500,
-          );
-        }
-        return {
-          invoice,
-          totalRefundAmount:
-            Number(
-              existingReturn.refundAllocations.reduce(
-                (sum, allocation) => sum + allocation.refundAmountInPaise,
-                0,
-              ),
-            ) / 100,
-          refundPayment,
-          restockedMovements,
-          isIdempotentReplay: true,
-        };
-      }
-
-      if (invoice.status !== "finalized") {
-        throw new AppError(
-          `Cannot process return on invoice with status '${invoice.status}'. Must be 'finalized'.`,
-          400,
-        );
-      }
-
-      const previousReturnEvents = await InvoiceSettlementEvent.find({
-        organizationId,
-        invoiceId: invoice._id,
-        eventType: "RETURN_PROCESSED",
-      })
-        .select("refundAllocations")
-        .session(session)
-        .lean();
-      const previouslyRefundedByLine = new Map();
-      for (const event of previousReturnEvents) {
-        for (const allocation of event.refundAllocations || []) {
-          const lineId = allocation.lineItemId.toString();
-          previouslyRefundedByLine.set(
-            lineId,
-            (previouslyRefundedByLine.get(lineId) || 0) +
-              allocation.refundAmountInPaise,
-          );
-        }
-      }
-
-      const preparedReturns = normalizedItems.map((item) => {
-        const line = invoice.lines.id(item.lineId);
-        if (!line) {
-          throw new AppError(`Invoice line not found: ${item.lineId}`, 404);
-        }
-        if (line.lineType !== "product") {
-          throw new AppError(
-            `Line '${line.name}' is not a physical product item`,
-            400,
-          );
-        }
-        const quantityUnits = Math.round(Number(line.quantity) * 1000);
-        const returnQuantityUnits = Math.round(item.quantity * 1000);
-        const alreadyReturnedUnits = Math.round(
-          Number(line.returnedQuantity || 0) * 1000,
-        );
-        const returnableUnits = quantityUnits - alreadyReturnedUnits;
-        if (
-          returnQuantityUnits <= 0 ||
-          returnQuantityUnits > returnableUnits ||
-          !Number.isFinite(quantityUnits) ||
-          quantityUnits <= 0
-        ) {
-          throw new AppError(
-            `Return quantity (${item.quantity}) exceeds remaining returnable quantity for '${line.name}'`,
-            400,
-          );
-        }
-
-        const nextReturnedUnits = alreadyReturnedUnits + returnQuantityUnits;
-        const lineNetPaise = Math.max(
-          0,
-          Math.round(Number(line.customerPayable || 0) * 100),
-        );
-        const cumulativeRefundPaise = Number(
-          (BigInt(lineNetPaise) * BigInt(nextReturnedUnits) +
-            BigInt(Math.floor(quantityUnits / 2))) /
-            BigInt(quantityUnits),
-        );
-        const lineGrossPaise = Math.max(
-          0,
-          Math.round(Number(line.lineTotal || 0) * 100),
-        );
-        const cumulativeGrossPaise = Number(
-          (BigInt(lineGrossPaise) * BigInt(nextReturnedUnits) +
-            BigInt(Math.floor(quantityUnits / 2))) /
-            BigInt(quantityUnits),
-        );
-        const previouslyReturnedGrossPaise = Number(
-          (BigInt(lineGrossPaise) * BigInt(alreadyReturnedUnits) +
-            BigInt(Math.floor(quantityUnits / 2))) /
-            BigInt(quantityUnits),
-        );
-        const previouslyRefundedPaise =
-          previouslyRefundedByLine.get(item.lineId) || 0;
-        const refundDuePaise = Math.max(
-          0,
-          cumulativeRefundPaise - previouslyRefundedPaise,
-        );
-
-        return {
-          ...item,
-          line,
-          nextReturnedQuantity: nextReturnedUnits / 1000,
-          weight: refundDuePaise,
-          refundDuePaise,
-          grossReturnPaise: cumulativeGrossPaise - previouslyReturnedGrossPaise,
-        };
-      });
-
-      if (Number(invoice.amountPaid || 0) <= 0) {
-        throw new AppError("Only paid invoice items can be returned", 400);
-      }
-
-      const totalRefundDuePaise = preparedReturns.reduce(
-        (sum, item) => sum + item.refundDuePaise,
-        0,
-      );
-      const amountPaidPaise = Math.max(
-        0,
-        Math.round(Number(invoice.amountPaid || 0) * 100),
-      );
-      const actualRefundPaise = Math.min(amountPaidPaise, totalRefundDuePaise);
-      if (actualRefundPaise <= 0) {
-        throw new AppError(
-          "No paid, refundable value remains for the selected items",
-          409,
-        );
-      }
-      const refundAllocations = allocatePaiseProportionally(
-        actualRefundPaise,
-        preparedReturns.map((item) => ({
-          lineId: item.line._id.toString(),
-          lineItemId: item.line._id,
-          weight: item.refundDuePaise,
+    const createResult = await refundService.createPendingRefundCase(
+      invoiceId,
+      {
+        branchId,
+        refundMode: "item_linked",
+        refundMethod: refundPaymentMethod,
+        items: normalizedItems.map((item) => ({
+          lineId: item.lineId,
           quantity: item.quantity,
-          refundDuePaise: item.refundDuePaise,
+          acceptPhysicalRestock: item.acceptPhysicalRestock,
         })),
-      );
-      const restockedMovements = [];
+        reason,
+      },
+      organizationId,
+      branchId,
+      userId,
+      idempotencyKey,
+    );
 
-      for (const item of preparedReturns) {
-        const { line } = item;
-        const returnQty = item.quantity;
-        line.returnedQuantity = item.nextReturnedQuantity;
-
-        // Rule 9: Restock ONLY if physical return acceptance is confirmed (e.g. unopened/resalable)
-        if (item.acceptPhysicalRestock === true) {
-          const updatedBalance = await StockBalance.findOneAndUpdate(
-            {
-              organizationId,
-              branchId: invoice.branchId,
-              productId: line.productId,
-            },
-            {
-              $inc: { onHand: returnQty },
-              $set: { lastMovementAt: new Date() },
-            },
-            { session, returnDocument: "after" },
-          );
-
-          const movement = await stockMovementRepository.create(
-            {
-              organizationId,
-              branchId: invoice.branchId,
-              productId: line.productId,
-              quantityDelta: returnQty,
-              balanceAfter: updatedBalance.onHand,
-              movementType: "adjustment",
-              reference: {
-                entityType: "Invoice",
-                entityId: invoice._id,
-                identifier: `RETURN_${invoice.invoiceNumber}`,
-              },
-              actorId: userId,
-              notes:
-                item.restockReason ||
-                `Physical return restock on Invoice #${invoice.invoiceNumber} (${reason})`,
-            },
-            session,
-          );
-          restockedMovements.push(movement);
-        }
-      }
-
-      const refundDueAmount = totalRefundDuePaise / 100;
-      const actualRefundAmount = actualRefundPaise / 100;
-      const returnedGrossAmount =
-        preparedReturns.reduce((sum, item) => sum + item.grossReturnPaise, 0) /
-        100;
-      const returnedDiscountAmount = Math.max(
-        0,
-        Number((returnedGrossAmount - refundDueAmount).toFixed(2)),
-      );
-      invoice.subtotal = Math.max(
-        0,
-        Number(
-          (Number(invoice.subtotal || 0) - returnedGrossAmount).toFixed(2),
-        ),
-      );
-      invoice.discountTotal = Math.max(
-        0,
-        Number(
-          (Number(invoice.discountTotal || 0) - returnedDiscountAmount).toFixed(
-            2,
-          ),
-        ),
-      );
-      invoice.grossPayable = Math.max(
-        0,
-        Number(
-          (Number(invoice.grossPayable || 0) - returnedGrossAmount).toFixed(2),
-        ),
-      );
-      invoice.payableAmount = Math.max(
-        0,
-        Number(
-          (Number(invoice.payableAmount || 0) - refundDueAmount).toFixed(2),
-        ),
-      );
-      invoice.amountPaid = Math.max(
-        0,
-        Number(
-          (Number(invoice.amountPaid || 0) - actualRefundAmount).toFixed(2),
-        ),
-      );
-      invoice.amountDue = Math.max(
-        0,
-        Number((invoice.payableAmount - invoice.amountPaid).toFixed(2)),
-      );
-      invoice.paymentStatus = this.derivePaymentStatus(
-        invoice.amountPaid,
-        invoice.amountDue,
-      );
-      await invoice.save({ session });
-
-      const paymentNumber = await this.generatePaymentNumber(organizationId);
-      const refundPayment = new Payment({
-        organizationId,
+    const refundCaseId = createResult.refundCase._id;
+    const settleResult = await refundService.settleRefundCase(
+      invoiceId,
+      refundCaseId,
+      {
         branchId,
-        invoiceId: invoice._id,
-        customerId: invoice.customerId,
-        paymentNumber,
-        amount: -actualRefundAmount,
-        type: "refund",
-        method: refundPaymentMethod,
-        referenceNote: `Refund for returned items: ${reason}`,
-        status: "completed",
-        recordedBy: userId,
-        paymentDate: new Date(),
-        idempotencyKey: refundPaymentKey,
-        requestPayloadHash,
-      });
-      await refundPayment.save({ session });
+        settlementType: "refund",
+        refundMethod: refundPaymentMethod,
+        reason,
+      },
+      organizationId,
+      branchId,
+      userId,
+      `SETTLE:${idempotencyKey}`,
+    );
 
-      const returnCount = await InvoiceSettlementEvent.countDocuments({
-        organizationId,
-        invoiceId: invoice._id,
-        eventType: "RETURN_PROCESSED",
-      }).session(session);
-      const [returnEvent] = await InvoiceSettlementEvent.create(
-        [
-          {
-            organizationId,
-            branchId,
-            invoiceId: invoice._id,
-            paymentId: refundPayment._id,
-            eventType: "RETURN_PROCESSED",
-            settlementCycle: returnCount + 1,
-            grossAmountInPaise: Math.round(returnedGrossAmount * 100),
-            discountAmountInPaise: Math.max(
-              0,
-              Math.round(returnedGrossAmount * 100) - totalRefundDuePaise,
-            ),
-            taxAmountInPaise: 0,
-            netSettledInPaise: 0,
-            refundAllocations: refundAllocations
-              .filter((allocation) => allocation.paise > 0)
-              .map((allocation) => ({
-                lineItemId: allocation.lineItemId,
-                refundAmountInPaise: allocation.paise,
-                quantity: allocation.quantity,
-              })),
-            returnItems: preparedReturns.map((item) => ({
-              lineItemId: item.line._id,
-              productId: item.line.productId,
-              quantity: item.quantity,
-              condition: item.condition,
-              physicalRestockAccepted: item.acceptPhysicalRestock,
-              restockReason: item.restockReason,
-              refundDueInPaise: item.refundDuePaise,
-              refundAmountInPaise:
-                refundAllocations.find(
-                  (allocation) =>
-                    allocation.lineItemId.toString() ===
-                    item.line._id.toString(),
-                )?.paise || 0,
-            })),
-            requestPayloadHash,
-            restockedMovementIds: restockedMovements.map(
-              (movement) => movement._id,
-            ),
-            reason,
-            recordedBy: userId,
-            idempotencyKey: returnEventKey,
-            eventTimestamp: new Date(),
-          },
-        ],
-        { session },
-      );
-
-      const auditLog = new AuditLog({
-        organizationId,
-        branchId,
-        actorId: userId,
-        action: AUDIT_ACTIONS.INVOICE_RETURN_PROCESSED,
-        entityType: "Invoice",
-        entityId: invoice._id,
-        description: `Processed return for Invoice ${invoice.invoiceNumber}: ${items.length} item(s)`,
-        metadata: {
-          invoiceNumber: invoice.invoiceNumber,
-          refundAmount: actualRefundAmount,
-          restockedMovementsCount: restockedMovements.length,
-          reason,
-          idempotencyKey,
-        },
-      });
-      await auditLog.save({ session });
-
-      await emitBillingOutboxEvent({
-        eventType: "invoice.payment_reversed",
-        invoice: updatedInvoice,
-        operationId: String(payment._id),
-        amountInPaise: Math.round((payment.amount || 0) * 100),
-        session,
-      });
-
-      // Trigger Incentives Return Clawback Hook
-      const returnedLineItems = refundAllocations
-        .filter((allocation) => allocation.paise > 0)
-        .map((allocation) => ({
-          lineItemId: allocation.lineItemId,
-          returnQty: allocation.quantity,
-          refundPaise: allocation.paise,
-          refundDuePaise: allocation.refundDuePaise,
-        }));
-      await settlementFulfillmentEventService.handleProductReturnProcessed({
-        invoice,
-        returnedItems: returnedLineItems,
-        returnOperationId: returnEvent._id.toString(),
-        session,
-        userId,
-      });
-
-      return {
-        invoice,
-        totalRefundAmount: actualRefundAmount,
-        refundPayment,
-        restockedMovements,
-        isIdempotentReplay: false,
-      };
+    const invoice = await Invoice.findOne({
+      _id: invoiceId,
+      organizationId,
+      isDeleted: false,
     });
+
+    const movementIds =
+      settleResult.domainReversals?.inventory?.movementIds || [];
+    const restockedMovements =
+      movementIds.length > 0
+        ? await StockMovement.find({
+            _id: { $in: movementIds },
+            organizationId,
+          })
+        : [];
+
+    const settledAmountPaise = Number(
+      settleResult.refundCase?.settledAmountPaise || 0,
+    );
+
+    return {
+      invoice,
+      totalRefundAmount: settledAmountPaise / 100,
+      refundPayment: settleResult.refundPayment,
+      restockedMovements,
+      refundCase: settleResult.refundCase,
+      domainReversals: settleResult.domainReversals,
+      isIdempotentReplay: Boolean(
+        createResult.isIdempotentReplay || settleResult.isIdempotentReplay,
+      ),
+    };
   }
 
   /**
