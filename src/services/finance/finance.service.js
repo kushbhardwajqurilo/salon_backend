@@ -1084,6 +1084,7 @@ export class FinanceService {
     branchId,
     startDateStr,
     endDateStr,
+    options = {},
   ) {
     const orgId = new mongoose.Types.ObjectId(organizationId);
 
@@ -1182,10 +1183,23 @@ export class FinanceService {
       operatingMarginPercentage: consolidatedMargin,
     };
 
+    const total = branchResults.length;
+    const limit = Math.min(100, Math.max(1, Number(options.limit) || 20));
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const page = Math.min(totalPages, Math.max(1, Number(options.page) || 1));
+    const startIdx = (page - 1) * limit;
+    const paginatedBranches = branchResults.slice(startIdx, startIdx + limit);
+
     return {
       period: { startDate: startDateStr, endDate: endDateStr },
-      branches: branchResults,
+      branches: paginatedBranches,
       consolidated,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
     };
   }
 

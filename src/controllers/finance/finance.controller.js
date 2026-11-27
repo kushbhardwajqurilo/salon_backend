@@ -126,13 +126,14 @@ export const getFinancialAlertsAndObligations = asyncHandler(async (req, res) =>
 export const getBranchPerformance = asyncHandler(async (req, res) => {
   const organizationId = req.organizationId;
   const branchId = req.branchId; // Undefined if authorized for org-wide view
-  const { startDate, endDate } = req.query;
+  const { startDate, endDate, page, limit } = req.query;
 
   const result = await FinanceService.getBranchPerformance(
     organizationId,
     branchId,
     startDate,
-    endDate
+    endDate,
+    { page, limit }
   );
   res.status(200).json({ success: true, data: result });
 });
