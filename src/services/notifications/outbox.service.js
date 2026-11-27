@@ -40,6 +40,21 @@ export async function createOutboxEvent(input, options = {}) {
     }
   }
 
+  const existingQuery = OutboxEvent.findOne({
+    organizationId: validated.organizationId,
+    idempotencyKey: validated.idempotencyKey,
+  });
+  if (session) existingQuery.session(session);
+  const existing = await existingQuery;
+  if (existing) {
+    return {
+      created: false,
+      duplicate: true,
+      persistenceMode,
+      event: existing,
+    };
+  }
+
   const doc = {
     eventId: crypto.randomUUID(),
     organizationId: validated.organizationId,
