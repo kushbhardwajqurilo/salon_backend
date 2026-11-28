@@ -1,5 +1,9 @@
+import mongoose from "mongoose";
 import { asyncHandler, AppError } from "../../utils/errors.js";
 import { Notification } from "../../models/notifications/notification.model.js";
+import { Customer } from "../../models/customers/customer.model.js";
+import { Staff } from "../../models/staff/staff.model.js";
+import { User } from "../../models/users/user.model.js";
 import { NotificationTemplate } from "../../models/notifications/notificationTemplate.model.js";
 import { NotificationAutomation } from "../../models/notifications/notificationAutomation.model.js";
 import { SENSITIVE_PAYLOAD_KEYS } from "../../services/notifications/notificationEventContract.js";
@@ -10,6 +14,43 @@ import {
   updateAutomationSchedule,
   deleteAutomation,
 } from "../../services/notifications/notificationAutomation.service.js";
+
+async function resolveRecipientNames(items) {
+  const customerIds = [];
+  const staffIds = [];
+  const userIds = [];
+
+  for (const n of items) {
+    const id = n.recipientId ? String(n.recipientId) : "";
+    if (!mongoose.Types.ObjectId.isValid(id)) continue;
+    if (n.recipientType === "customer") customerIds.push(id);
+    else if (n.recipientType === "staff") staffIds.push(id);
+    else if (n.recipientType === "user") userIds.push(id);
+  }
+
+  const [customers, staffs, users] = await Promise.all([
+    customerIds.length
+      ? Customer.find({ _id: { $in: customerIds } }).select("name").lean()
+      : [],
+    staffIds.length
+      ? Staff.find({ _id: { $in: staffIds } }).select("name").lean()
+      : [],
+    userIds.length
+      ? User.find({ _id: { $in: userIds } }).select("name").lean()
+      : [],
+  ]);
+
+  const nameMap = new Map();
+  for (const c of customers) nameMap.set(`customer:${c._id}`, c.name);
+  for (const s of staffs) nameMap.set(`staff:${s._id}`, s.name);
+  for (const u of users) nameMap.set(`user:${u._id}`, u.name);
+
+  return items.map((n) => ({
+    ...n,
+    recipientName:
+      nameMap.get(`${n.recipientType}:${n.recipientId}`) || null,
+  }));
+}
 
 export const listNotifications = asyncHandler(async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
@@ -31,7 +72,8 @@ export const listNotifications = asyncHandler(async (req, res) => {
     Notification.countDocuments(filter),
   ]);
 
-  const sanitized = items.map((n) => ({
+  const enriched = await resolveRecipientNames(items);
+  const sanitized = enriched.map((n) => ({
     ...n,
     metadata: n.purpose === "payroll" ? { portalLinkOnly: true } : n.metadata,
   }));
@@ -46,10 +88,12 @@ export const getNotificationById = asyncHandler(async (req, res) => {
   const doc = await Notification.findOne(filter).select("-failureReason").lean();
   if (!doc) throw new AppError("Notification not found", 404);
 
+  const [enriched] = await resolveRecipientNames([doc]);
+
   res.json({
     success: true,
     data: {
-      ...doc,
+      ...enriched,
       metadata: doc.purpose === "payroll" ? { portalLinkOnly: true } : doc.metadata,
     },
   });

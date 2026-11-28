@@ -597,7 +597,17 @@ export function renderTemplateString(
     if (!allowSet.has(key)) return "";
     const raw = variables[key];
     if (raw === null || raw === undefined) return "";
-    const str = String(raw);
+    let str = String(raw);
+    if (
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(str) &&
+      !Number.isNaN(Date.parse(str))
+    ) {
+      str = new Intl.DateTimeFormat("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "Asia/Kolkata",
+      }).format(new Date(str));
+    }
     return escapeHtmlValues ? escapeHtml(str) : str;
   });
 }

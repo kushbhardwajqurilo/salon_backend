@@ -6903,13 +6903,41 @@ export class BillingService {
                 isRedeemedViaSubscription: {
                   $ifNull: ["$$svc.isRedeemedViaSubscription", false],
                 },
+                subscriptionUsageId: {
+                  $cond: [
+                    { $ifNull: ["$$svc.subscriptionUsageId", false] },
+                    { $toString: "$$svc.subscriptionUsageId" },
+                    null,
+                  ],
+                },
+                appliedCustomerMembershipId: {
+                  $cond: [
+                    { $ifNull: ["$$svc.appliedCustomerMembershipId", false] },
+                    { $toString: "$$svc.appliedCustomerMembershipId" },
+                    null,
+                  ],
+                },
+                membershipCode: {
+                  $ifNull: ["$$svc.membershipCode", null],
+                },
+                membershipDiscountAmount: {
+                  $ifNull: ["$$svc.membershipDiscountAmount", 0],
+                },
+                membershipDiscountPercentage: {
+                  $ifNull: ["$$svc.membershipDiscountPercentage", 0],
+                },
               },
             },
           },
           pricing: {
             subtotal: "$pricing.subtotal",
+            grossSubtotal: "$pricing.grossSubtotal",
+            subscriptionWaivedAmount: "$pricing.subscriptionWaivedAmount",
+            membershipDiscountAmount: "$pricing.membershipDiscountAmount",
+            manualDiscountAmount: "$pricing.manualDiscountAmount",
             discount: "$pricing.discount",
             total: "$pricing.total",
+            totalPayable: "$pricing.totalPayable",
           },
           estimatedPayable: {
             $ifNull: [
@@ -6938,6 +6966,8 @@ export class BillingService {
         inProgressCount++;
       }
 
+      const reconciledPricing = reconcileAppointmentPricing(item);
+
       return {
         id: item._id.toString(),
         appointmentCode: item.appointmentCode,
@@ -6948,8 +6978,8 @@ export class BillingService {
         customer: item.customer,
         staff: item.staff,
         services: item.services,
-        pricing: item.pricing,
-        estimatedPayable: item.estimatedPayable,
+        pricing: reconciledPricing,
+        estimatedPayable: reconciledPricing.totalPayable,
         branchId: item.branchId
           ? item?.branchId?.toString()
           : branchId

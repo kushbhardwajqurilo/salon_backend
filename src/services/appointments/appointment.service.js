@@ -4633,11 +4633,10 @@ export class AppointmentService {
 
         // 6. Create subscription doc
         // Status policy:
-        // If billImmediately is true and price > 0, invoice is generated and subscription starts as "pending_payment"
-        // until the invoice is paid via POS payment recording.
-        // If price is 0 (complimentary/deferred), status is "active".
+        // If price > 0, subscription starts as "pending_payment" until paid via POS.
+        // If price is 0 (complimentary), status is "active".
         const initialStatus =
-          billImmediately && Number(price) > 0 ? "pending_payment" : "active";
+          Number(price) > 0 ? "pending_payment" : "active";
         const newSubscription = new Subscription({
           organizationId,
           payerCustomerId: customer._id,
@@ -4944,12 +4943,10 @@ export class AppointmentService {
         const baseMembershipCode = `MEM-${yyyy}${mm}${dd}-${num}`;
 
         // Status policy:
-        // If billImmediately and price > 0, invoice is generated and starts as "pending_payment"
+        // If price > 0, membership starts as "pending_payment" until paid via POS.
         // Eligible benefits apply immediately, even while in "pending_payment".
         const initialStatus =
-          billImmediately && Number(plan.price) > 0
-            ? "pending_payment"
-            : "active";
+          Number(plan.price) > 0 ? "pending_payment" : "active";
         const membershipPurchaseId = new mongoose.Types.ObjectId();
         const createdMemberships = [];
 
