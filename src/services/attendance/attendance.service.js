@@ -389,7 +389,7 @@ async function adjustAttendanceRecord({
         },
       },
     },
-    { new: true, runValidators: true },
+    { returnDocument: 'after', runValidators: true },
   ).lean();
   if (!updated)
     throw new AppError("Attendance record could not be updated.", 409);
@@ -560,7 +560,7 @@ async function resolveLeaveAppointmentConflict({
         isActive: true,
       },
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
+    { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
   );
   if (!conflict) throw new AppError("Conflict could not be recorded.", 500);
   conflict.status = "resolved";
@@ -629,7 +629,7 @@ async function recordLeaveException({
       },
       $setOnInsert: { organizationId, leaveId, resolvedDate, isActive: true },
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true },
+    { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true, runValidators: true },
   );
   await AuditLog.create({
     organizationId,
@@ -751,7 +751,7 @@ async function resolveBranchAttendanceConflict({
           reconciledAt: resolvedAt,
         },
       },
-      { new: true, ...sessionOption },
+      { returnDocument: 'after', ...sessionOption },
     );
 
     let updatedConflict;
@@ -774,7 +774,7 @@ async function resolveBranchAttendanceConflict({
             resolvedAt: resolvedAt,
           },
         },
-        { new: true, ...sessionOption },
+        { returnDocument: 'after', ...sessionOption },
       );
 
       if (!updatedConflict) {
@@ -1158,7 +1158,7 @@ async function recoverReconciliationAuditLog({
       },
       {
         upsert: true,
-        new: true,
+        returnDocument: 'after',
         setDefaultsOnInsert: true,
         ...sessionOption,
       },
@@ -1579,7 +1579,7 @@ async function updateStaffDeviceMapping({
   const updatedMapping = await StaffDeviceMapping.findByIdAndUpdate(
     id,
     { $set: updates },
-    { new: true, runValidators: true },
+    { returnDocument: 'after', runValidators: true },
   )
     .populate("staffId", "name staffCode email phone avatar role isActive")
     .populate("createdBy", "name staffCode")
@@ -1794,7 +1794,7 @@ async function reconcileConflict(conflictData) {
         resolvedBy: conflictData.actorId,
         resolvedAt: new Date(),
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
 
     attendance.status = "present";
@@ -2190,7 +2190,7 @@ async function ingestProviderEvents({
           $inc: { retryCount: 1 },
         },
         {
-          new: true,
+          returnDocument: 'after',
           upsert: true,
           setDefaultsOnInsert: true,
           runValidators: true,
@@ -2220,7 +2220,7 @@ async function ingestProviderEvents({
         lastSuccessfulAt: new Date(),
       },
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true },
+    { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true, runValidators: true },
   );
   if (!completedSync) {
     throw new Error("Provider sync completion was not durably recorded.");
@@ -2302,14 +2302,14 @@ async function persistCrossBranchConflict(claimResult, details) {
         },
         $addToSet: { branchesInvolved: { $each: branchesInvolved } },
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
+      { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
     );
   } catch (error) {
     if (error.code !== 11000) throw error;
     persistedConflict = await AttendanceBranchConflict.findOneAndUpdate(
       filter,
       { $addToSet: { branchesInvolved: { $each: branchesInvolved } } },
-      { new: true },
+      { returnDocument: 'after' },
     );
     if (!persistedConflict) throw error;
   }
@@ -2448,7 +2448,7 @@ async function reconcileAttendanceStatusFromPunches({
         : "incomplete",
     },
     { $set: { status } },
-    { new: true, runValidators: true },
+    { returnDocument: 'after', runValidators: true },
   );
   if (updated) return updated;
 
@@ -3137,7 +3137,7 @@ async function upsertProviderConfiguration({
         createdBy: actorId,
       },
     },
-    { new: true, upsert: true, runValidators: true },
+    { returnDocument: 'after', upsert: true, runValidators: true },
   ).lean();
 
   return {
@@ -3165,7 +3165,7 @@ async function toggleProviderConfigurationStatus({
   const doc = await ProviderConfiguration.findOneAndUpdate(
     { organizationId, branchId, providerName: cleanProvider },
     { $set: { isActive: Boolean(isActive), updatedBy: actorId } },
-    { new: true },
+    { returnDocument: 'after' },
   ).lean();
 
   if (!doc) {

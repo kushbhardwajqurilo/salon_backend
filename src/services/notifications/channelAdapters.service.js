@@ -38,7 +38,7 @@ export async function dispatchNotificationJob(notificationId, dispatchFn) {
       status: { $in: ["queued", "pending"] },
     },
     { $set: { status: "processing" } },
-    { new: true },
+    { returnDocument: 'after' },
   );
 
   if (!notification) {

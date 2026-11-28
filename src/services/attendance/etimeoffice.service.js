@@ -238,7 +238,7 @@ export async function syncETimeOfficeForBranch({
           lastError: null,
         },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
 
     await ProviderConfiguration.findOneAndUpdate(

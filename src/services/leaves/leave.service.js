@@ -1101,7 +1101,7 @@ export class LeaveService {
     const seqDoc = await Sequence.findOneAndUpdate(
       { key: `leaveCode:${organizationId}` },
       { $inc: { seq: 1 } },
-      { new: true, upsert: true, session },
+      { returnDocument: 'after', upsert: true, session },
     );
     return `${LEAVE_CODE_PREFIX}${String(seqDoc.seq).padStart(4, "0")}`;
   }

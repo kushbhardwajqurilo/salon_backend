@@ -42,7 +42,7 @@ describe("Finance Integration Suite (Day Closure & Operating Profit)", () => {
       const doc = await Permission.findOneAndUpdate(
         { name: perm.name },
         { ...perm },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
       permissionDocs.push(doc);
     }

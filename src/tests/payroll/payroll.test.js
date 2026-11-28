@@ -77,42 +77,42 @@ describe("Salary / Payroll Module — Comprehensive Backend Tests", () => {
       Permission.findOneAndUpdate(
         { name: "payroll.view" },
         { $setOnInsert: { name: "payroll.view", module: "Salary / Payroll", action: "View", description: "View payroll" } },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       ),
       Permission.findOneAndUpdate(
         { name: "payroll.structure.manage" },
         { $setOnInsert: { name: "payroll.structure.manage", module: "Salary / Payroll", action: "Manage Structure", description: "Manage salary" } },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       ),
       Permission.findOneAndUpdate(
         { name: "payroll.calculate" },
         { $setOnInsert: { name: "payroll.calculate", module: "Salary / Payroll", action: "Calculate", description: "Calculate payroll" } },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       ),
       Permission.findOneAndUpdate(
         { name: "payroll.approve" },
         { $setOnInsert: { name: "payroll.approve", module: "Salary / Payroll", action: "Approve", description: "Approve payroll" } },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       ),
       Permission.findOneAndUpdate(
         { name: "payroll.disburse" },
         { $setOnInsert: { name: "payroll.disburse", module: "Salary / Payroll", action: "Disburse", description: "Disburse payroll" } },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       ),
       Permission.findOneAndUpdate(
         { name: "payroll.adjust" },
         { $setOnInsert: { name: "payroll.adjust", module: "Salary / Payroll", action: "Adjust", description: "Adjust payroll" } },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       ),
       Permission.findOneAndUpdate(
         { name: "payroll.reverse" },
         { $setOnInsert: { name: "payroll.reverse", module: "Salary / Payroll", action: "Reverse", description: "Reverse payroll" } },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       ),
       Permission.findOneAndUpdate(
         { name: "payroll.export" },
         { $setOnInsert: { name: "payroll.export", module: "Salary / Payroll", action: "Export", description: "Export payslips" } },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       ),
     ]);
 

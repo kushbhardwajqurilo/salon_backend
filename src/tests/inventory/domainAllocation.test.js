@@ -39,7 +39,7 @@ describe("Manager-Controlled Stock Domain Allocation & Legacy Stock Isolation Su
     const perm = await Permission.findOneAndUpdate(
       { name: "inventory.adjust" },
       { name: "inventory.adjust", module: "Inventory", action: "inventory.adjust", description: "Stock Adjustments" },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     const role = await Role.create({

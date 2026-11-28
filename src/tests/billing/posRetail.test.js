@@ -71,7 +71,7 @@ describe("Retail POS & Unified Invoice Checkout Integration Test Suite", () => {
         Permission.findOneAndUpdate(
           { name },
           { name, module: "Billing & POS", action: name, description: name },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         )
       )
     );

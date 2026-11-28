@@ -58,7 +58,7 @@ export class SubscriptionService {
     const seq = await Sequence.findOneAndUpdate(
       { key: sequenceKey },
       { $inc: { seq: 1 } },
-      { new: true, upsert: true },
+      { returnDocument: 'after', upsert: true },
     );
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -2014,7 +2014,7 @@ export class SubscriptionService {
                 : `[Cancelled]: ${reason}`,
             },
           },
-          { new: true, session },
+          { returnDocument: 'after', session },
         );
         if (!updatedSubscription) {
           throw new AppError(
@@ -2114,7 +2114,7 @@ export class SubscriptionService {
     const seq = await Sequence.findOneAndUpdate(
       { key: sequenceKey },
       { $inc: { seq: 1 } },
-      { new: true, upsert: true },
+      { returnDocument: 'after', upsert: true },
     );
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -2194,7 +2194,7 @@ export class SubscriptionService {
                 : `[Cancelled]: ${reason}`,
             },
           },
-          { session, new: true },
+          { session, returnDocument: 'after' },
         );
       }
 
@@ -2295,7 +2295,7 @@ export class SubscriptionService {
             heartbeatAt: new Date(),
           },
         },
-        { new: true },
+        { returnDocument: 'after' },
       );
 
     if (!claimedOperation && operation.status === "processing") {
@@ -2349,7 +2349,7 @@ export class SubscriptionService {
                 "members.$[].status": "cancelled",
               },
             },
-            { session, new: true },
+            { session, returnDocument: 'after' },
           );
         }
 
@@ -2429,7 +2429,7 @@ export class SubscriptionService {
           {
             $set: { heartbeatAt: new Date() },
           },
-          { new: true },
+          { returnDocument: 'after' },
         );
 
       if (!renewedOp) {

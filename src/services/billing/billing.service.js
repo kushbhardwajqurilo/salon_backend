@@ -481,7 +481,7 @@ export class BillingService {
     const seq = await Sequence.findOneAndUpdate(
       { key: sequenceKey },
       { $inc: { seq: 1 } },
-      { new: true, upsert: true },
+      { returnDocument: 'after', upsert: true },
     );
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -499,7 +499,7 @@ export class BillingService {
     const seq = await Sequence.findOneAndUpdate(
       { key: sequenceKey },
       { $inc: { seq: 1 } },
-      { new: true, upsert: true },
+      { returnDocument: 'after', upsert: true },
     );
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -3890,7 +3890,7 @@ export class BillingService {
     };
 
     const updatedInvoice = await Invoice.findOneAndUpdate(query, updateDoc, {
-      new: true,
+      returnDocument: 'after',
     });
     if (!updatedInvoice) {
       throw new AppError(
@@ -4193,7 +4193,7 @@ export class BillingService {
     };
 
     const updatedInvoice = await Invoice.findOneAndUpdate(query, updateDoc, {
-      new: true,
+      returnDocument: 'after',
     });
     if (!updatedInvoice) {
       throw new AppError(
@@ -4402,7 +4402,7 @@ export class BillingService {
     };
 
     const updatedInvoice = await Invoice.findOneAndUpdate(query, updateDoc, {
-      new: true,
+      returnDocument: 'after',
     });
     if (!updatedInvoice) {
       throw new AppError(
@@ -5113,7 +5113,7 @@ export class BillingService {
             $inc: { usageCount: 1, activeUsageCount: 1 },
             $set: { updatedBy: userId },
           },
-          { session, new: true },
+          { session, returnDocument: 'after' },
         );
 
         if (!updatedCoupon) {
@@ -5588,7 +5588,7 @@ export class BillingService {
                 lastPaymentAttemptAt: new Date(),
               },
             },
-            { session, new: true },
+            { session, returnDocument: 'after' },
           );
 
           if (!lockedSub || lockedSub.status === "cancelled") {
@@ -5621,7 +5621,7 @@ export class BillingService {
             amountDue: -paymentAmount,
           },
         },
-        { new: true, session },
+        { returnDocument: 'after', session },
       );
 
       if (!updatedInvoice) {
@@ -6355,7 +6355,7 @@ export class BillingService {
             amountDue: payment.amount,
           },
         },
-        { new: true, session },
+        { returnDocument: 'after', session },
       );
 
       // Re-evaluate payment status

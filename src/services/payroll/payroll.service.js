@@ -503,7 +503,7 @@ export class PayrollService {
                   updatedBy: userId,
                 },
               },
-              { new: true, ...options },
+              { returnDocument: 'after', ...options },
             );
             if (!reopened) {
               throw new AppError("Approved payroll changed before recalculation", 409);
@@ -950,7 +950,7 @@ export class PayrollService {
           $set: recordData,
           $setOnInsert: { createdBy: userId },
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
       calculatedRecords.push(record);
@@ -1181,7 +1181,7 @@ export class PayrollService {
                   },
                 },
               },
-              { new: true, ...options },
+              { returnDocument: 'after', ...options },
             );
             if (!reallocated) throw new AppError("Commission allocation changed concurrently", 409);
           } else {
@@ -1228,7 +1228,7 @@ export class PayrollService {
               updatedBy: userId,
             },
           },
-          { new: true, ...options },
+          { returnDocument: 'after', ...options },
         );
         if (!updated) {
           throw new AppError("Approval failed: record was modified concurrently or is blocked", 409);
@@ -1419,7 +1419,7 @@ export class PayrollService {
               updatedBy: userId,
             },
           },
-          { new: true, ...options },
+          { returnDocument: 'after', ...options },
         );
         if (!updatedRecord) {
           throw new AppError("Payroll record changed while recording the payment", 409);
@@ -1496,7 +1496,7 @@ export class PayrollService {
           $set: { status: "confirmed", confirmedBy: userId, confirmedAt },
           $push: { history: { action: "confirmed", actorId: userId, occurredAt: confirmedAt } },
         },
-        { new: true, ...options },
+        { returnDocument: 'after', ...options },
       );
       if (!updatedPayment) throw new AppError("Payment attempt changed before confirmation", 409);
 
@@ -1518,7 +1518,7 @@ export class PayrollService {
             updatedBy: userId,
           },
         },
-        { new: true, ...options },
+        { returnDocument: 'after', ...options },
       );
       if (!updatedRecord) throw new AppError("Payroll record changed before payment confirmation", 409);
       for (const allocation of allocations) {
@@ -1540,7 +1540,7 @@ export class PayrollService {
               },
             },
           },
-          { new: true, ...options },
+          { returnDocument: 'after', ...options },
         );
         if (!updatedAllocation) {
           throw new AppError("Commission allocation changed before payment confirmation", 409);
@@ -1585,7 +1585,7 @@ export class PayrollService {
           $set: { status: "failed", failedBy: userId, failedAt, failureReason: reason },
           $push: { history: { action: "failed", actorId: userId, occurredAt: failedAt, reason } },
         },
-        { new: true, ...options },
+        { returnDocument: 'after', ...options },
       );
       if (!updatedPayment) throw new AppError("Payment attempt changed before failure was recorded", 409);
       const updatedRecord = await PayrollRecord.findOneAndUpdate(
@@ -1598,7 +1598,7 @@ export class PayrollService {
           ...branchCondition(branchId),
         },
         { $set: { manualPaymentStatus: "failed", updatedBy: userId } },
-        { new: true, ...options },
+        { returnDocument: 'after', ...options },
       );
       if (!updatedRecord) throw new AppError("Payroll record changed while recording payment failure", 409);
       return { record: updatedRecord, payment: updatedPayment, isIdempotentReplay: false };
@@ -1679,7 +1679,7 @@ export class PayrollService {
             },
             $push: { history: { action: "reversed", actorId: userId, occurredAt: reversedAt, reason: reversalReason } },
           },
-          { new: true, ...options },
+          { returnDocument: 'after', ...options },
         );
         if (!updatedPayment) throw new AppError("Payment attempt changed before reversal", 409);
       }
@@ -1701,7 +1701,7 @@ export class PayrollService {
             updatedBy: userId,
           },
         },
-        { new: true, ...options },
+        { returnDocument: 'after', ...options },
       );
       if (!reversedRecord) throw new AppError("Payroll record changed before reversal", 409);
       for (const allocation of paidAllocations) {
@@ -1726,7 +1726,7 @@ export class PayrollService {
               },
             },
           },
-          { new: true, ...options },
+          { returnDocument: 'after', ...options },
         );
         if (!releasedAllocation) {
           throw new AppError("Commission allocation changed before payroll reversal completed", 409);

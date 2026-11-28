@@ -170,7 +170,7 @@ export class FifoDepletionService {
             },
           },
         ],
-        { session, new: true, updatePipeline: true }
+        { session, returnDocument: 'after', updatePipeline: true }
       );
 
       if (!updatedBatch) {
@@ -227,7 +227,7 @@ export class FifoDepletionService {
         },
         $set: { lastMovementAt: new Date() },
       },
-      { session, new: true }
+      { session, returnDocument: 'after' }
     );
 
     if (!updatedBalance) {
@@ -327,7 +327,7 @@ export class FifoDepletionService {
       const lockOriginal = await StockMovement.findOneAndUpdate(
         { _id: originalMovement._id, isReversed: false },
         { $set: { isReversed: true } },
-        { session, new: true }
+        { session, returnDocument: 'after' }
       );
       if (!lockOriginal) {
         throw new AppError("Concurrent reversal conflict: movement already reversed", 409);
@@ -400,7 +400,7 @@ export class FifoDepletionService {
         },
         $set: { lastMovementAt: new Date() },
       },
-      { session, new: true }
+      { session, returnDocument: 'after' }
     );
 
     // 5. Create compensating reversal StockMovement

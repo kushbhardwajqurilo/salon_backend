@@ -79,22 +79,22 @@ describe("Inventory Stocktake Lifecycle Integration Tests", () => {
     const permView = await Permission.findOneAndUpdate(
       { name: "inventory.view" },
       { name: "inventory.view", module: "Inventory", action: "View", description: "View inventory" },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
     const permAdjust = await Permission.findOneAndUpdate(
       { name: "inventory.adjust" },
       { name: "inventory.adjust", module: "Inventory", action: "Adjust", description: "Adjust inventory" },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
     const permStocktake = await Permission.findOneAndUpdate(
       { name: "inventory.stocktake" },
       { name: "inventory.stocktake", module: "Inventory", action: "Stocktake", description: "Audit stocktake" },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
     const permConsume = await Permission.findOneAndUpdate(
       { name: "inventory.consume" },
       { name: "inventory.consume", module: "Inventory", action: "Consume", description: "Consume inventory" },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
 
     adminRole = await Role.create({
@@ -1425,7 +1425,7 @@ describe("Inventory Stocktake Lifecycle Integration Tests", () => {
             totalCostPaise: 45000, // 1 unit left * 45000
           },
         },
-        { new: true }
+        { returnDocument: 'after' }
       );
       expect(valuedFoundBatch.isValued).toBe(true);
       expect(valuedFoundBatch.unitCostPaise).toBe(45000);

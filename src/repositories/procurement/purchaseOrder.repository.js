@@ -20,7 +20,7 @@ export class PurchaseOrderRepository {
     let query = PurchaseOrder.findOneAndUpdate(
       { _id: id, organizationId },
       { $set: updateData },
-      { new: true, runValidators: true, session }
+      { returnDocument: 'after', runValidators: true, session }
     );
     return await query.exec();
   }

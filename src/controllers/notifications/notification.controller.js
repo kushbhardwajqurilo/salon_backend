@@ -89,7 +89,7 @@ export const upsertOrgTemplate = asyncHandler(async (req, res) => {
         isActive: Boolean(isActive),
       },
     },
-    { upsert: true, new: true, runValidators: true },
+    { upsert: true, returnDocument: 'after', runValidators: true },
   );
 
   res.json({ success: true, data: doc });

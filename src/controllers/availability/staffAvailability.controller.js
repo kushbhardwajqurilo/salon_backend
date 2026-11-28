@@ -229,7 +229,7 @@ export const updateStaffRoster = asyncHandler(async (req, res) => {
     },
     {
       upsert: true,
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
     },
   );

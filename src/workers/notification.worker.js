@@ -60,7 +60,7 @@ export async function processOrchestratedNotificationJob(job, channel) {
       status: { $in: ["queued", "pending", "failed"] },
     },
     { $set: { status: "processing" } },
-    { new: true },
+    { returnDocument: 'after' },
   );
 
   if (!claimed) {
@@ -227,7 +227,7 @@ export const processSmsJob = async (job) => {
         {
           $set: { "reminder.sms.status": "processing" },
         },
-        { new: true },
+        { returnDocument: 'after' },
       );
 
       if (!apt) {
@@ -434,7 +434,7 @@ export const startNotificationWorkers = () => {
               {
                 $set: { "reminder.email.status": "processing" },
               },
-              { new: true },
+              { returnDocument: 'after' },
             );
 
             if (!apt) {

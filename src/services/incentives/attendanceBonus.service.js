@@ -323,7 +323,7 @@ export class AttendanceBonusService {
       const updated = await IncentiveEvaluation.findOneAndUpdate(
         { _id: evaluation._id, organizationId, branchId, status: "computed" },
         { $set: { status: "finalized", finalizedBy: userId, finalizedAt: new Date() } },
-        { new: true, session, runValidators: true },
+        { returnDocument: 'after', session, runValidators: true },
       );
       if (!updated) throw new AppError("Attendance evaluation changed concurrently", 409);
 

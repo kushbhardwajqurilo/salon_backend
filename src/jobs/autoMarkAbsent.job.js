@@ -228,7 +228,7 @@ async function markStaffAbsent({
         },
       },
     },
-    { new: true, runValidators: true },
+    { returnDocument: 'after', runValidators: true },
   ).lean();
 
   if (!updated) {
@@ -266,7 +266,7 @@ async function markStaffAbsent({
         },
       },
     },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
+    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
   );
 
   logger.info(

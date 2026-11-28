@@ -70,27 +70,27 @@ describe("Membership Standalone Sale & Audit Trail Integration Tests", () => {
     const sellPerm = await Permission.findOneAndUpdate(
       { name: "memberships.sell" },
       { name: "memberships.sell", module: "memberships", description: "Sell memberships" },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     const viewPerm = await Permission.findOneAndUpdate(
       { name: "memberships.view" },
       { name: "memberships.view", module: "memberships", description: "View memberships" },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     const checkoutPerm = await Permission.findOneAndUpdate(
       { name: "billing.checkout" },
       { name: "billing.checkout", module: "billing", description: "Create invoices" },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     const billViewPerm = await Permission.findOneAndUpdate(
       { name: "billing.view" },
       { name: "billing.view", module: "billing", description: "View invoices" },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     const configPerm = await Permission.findOneAndUpdate(
       { name: "memberships.configure" },
       { name: "memberships.configure", module: "memberships", description: "Configure memberships" },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     const ownerRole = await Role.create({

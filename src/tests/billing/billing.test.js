@@ -121,7 +121,7 @@ describe("Billing / POS Module Comprehensive Test Suite", () => {
         Permission.findOneAndUpdate(
           { name },
           { name, module: "Billing & POS", action: name, description: name },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         )
       )
     );

@@ -43,7 +43,7 @@ describe("Historical Stock Record Acceptance Suite (Zero Domain Fields)", () => 
         action: "inventory.adjust",
         description: "Stock Adjustments",
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
 
     const role = await Role.create({

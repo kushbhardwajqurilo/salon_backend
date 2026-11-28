@@ -4337,7 +4337,7 @@ describe("Appointment ↔ Subscription Integration Flow Tests", () => {
                 description: name,
               },
             },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
           )
         )
       );

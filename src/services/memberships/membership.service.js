@@ -1100,7 +1100,7 @@ class MembershipService {
       const seq = await Sequence.findOneAndUpdate(
         { key: sequenceKey },
         { $inc: { seq: 1 } },
-        { new: true, upsert: true, session },
+        { returnDocument: 'after', upsert: true, session },
       );
       const today = new Date();
       const yyyy = today.getFullYear();

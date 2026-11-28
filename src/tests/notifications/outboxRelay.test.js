@@ -34,7 +34,7 @@ describe("Outbox Relay & Recovery Service (Stage 2B)", () => {
         $set: expect.objectContaining({ status: "processing", claimedBy: "w-1" }),
         $inc: { attempts: 1 },
       }),
-      expect.objectContaining({ new: true }),
+      expect.objectContaining({ returnDocument: 'after' }),
     );
   });
 

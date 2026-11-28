@@ -57,7 +57,7 @@ export class StaffService {
           const seqDoc = await Sequence.findOneAndUpdate(
             { key: `staffCode:${organizationId}` },
             { $inc: { seq: 1 } },
-            { new: true, upsert: true, session },
+            { returnDocument: 'after', upsert: true, session },
           );
 
           const staffCode = `STF-${String(seqDoc.seq).padStart(4, "0")}`;

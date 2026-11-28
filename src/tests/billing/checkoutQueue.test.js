@@ -76,12 +76,12 @@ describe("POS Checkout Queue Endpoint (GET /api/v1/billing/checkout-queue)", () 
     const billingViewPerm = await Permission.findOneAndUpdate(
       { name: "billing.view" },
       { name: "billing.view", module: "Billing & POS", action: "View", description: "View invoices and queue" },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     const billingCheckoutPerm = await Permission.findOneAndUpdate(
       { name: "billing.checkout" },
       { name: "billing.checkout", module: "Billing & POS", action: "Checkout", description: "Checkout queue" },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     const ownerRole = await Role.create({

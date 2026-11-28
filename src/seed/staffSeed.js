@@ -124,7 +124,7 @@ export const seedStaffWithServices = async () => {
         const seqDoc = await Sequence.findOneAndUpdate(
           { key: `staffCode:${org._id}` },
           { $inc: { seq: 1 } },
-          { new: true, upsert: true }
+          { returnDocument: 'after', upsert: true }
         );
         const staffCode = `STF-${String(seqDoc.seq).padStart(4, "0")}`;
 

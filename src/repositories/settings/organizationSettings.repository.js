@@ -18,7 +18,7 @@ export class OrganizationSettingsRepository extends BaseRepository {
     return this.model.findOneAndUpdate(
       { organizationId },
       { $set: payload, $setOnInsert: { organizationId } },
-      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true, session }
+      { returnDocument: 'after', upsert: true, runValidators: true, setDefaultsOnInsert: true, session }
     );
   }
 }

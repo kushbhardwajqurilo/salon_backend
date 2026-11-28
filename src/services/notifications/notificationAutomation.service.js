@@ -80,7 +80,7 @@ export async function setAutomationEnabled(automationId, isEnabled, { organizati
   const updated = await NotificationAutomation.findOneAndUpdate(
     { _id: automationId, organizationId },
     { $set: { isEnabled: Boolean(isEnabled), updatedBy: userId } },
-    { new: true },
+    { returnDocument: 'after' },
   );
   if (!updated) {
     throw new Error("Automation not found");
@@ -106,7 +106,7 @@ export async function updateAutomationSchedule(
   const updated = await NotificationAutomation.findOneAndUpdate(
     { _id: automationId, organizationId, triggerType: "schedule" },
     { $set: { scheduleCron: scheduleCron.trim(), updatedBy: userId } },
-    { new: true },
+    { returnDocument: 'after' },
   );
   if (!updated) {
     throw new Error("Scheduled automation not found");

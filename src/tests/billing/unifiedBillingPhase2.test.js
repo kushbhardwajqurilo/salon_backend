@@ -82,7 +82,7 @@ describe("Phase 2: Unified Billing Engine & Same-Appointment Upsell Suite", () =
         Permission.findOneAndUpdate(
           { name },
           { name, module: "Billing & POS", action: name, description: name },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         )
       )
     );

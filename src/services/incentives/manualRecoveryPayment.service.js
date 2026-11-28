@@ -312,7 +312,7 @@ export class ManualRecoveryPaymentService {
           $set: { status: "confirmed", confirmedBy: userId, confirmedAt },
           $push: { history: { action: "confirmed", actorId: userId, occurredAt: confirmedAt, reason: payment.reason } },
         },
-        { new: true, ...options },
+        { returnDocument: 'after', ...options },
       );
       if (!updatedPayment) throw new AppError("Recovery payment changed before confirmation", 409);
 
@@ -379,7 +379,7 @@ export class ManualRecoveryPaymentService {
           $set: { status: "failed", failedBy: userId, failedAt, failureReason: reason },
           $push: { history: { action: "failed", actorId: userId, occurredAt: failedAt, reason } },
         },
-        { new: true, ...options },
+        { returnDocument: 'after', ...options },
       );
       if (!updatedPayment) throw new AppError("Recovery payment changed before failure was recorded", 409);
       const updatedObligation = await IncentiveRecoveryObligation.findById(obligation._id, null, options);
@@ -450,7 +450,7 @@ export class ManualRecoveryPaymentService {
           $set: { status: "reversed", reversedBy: userId, reversedAt, reversalReason: reason },
           $push: { history: { action: "reversed", actorId: userId, occurredAt: reversedAt, reason } },
         },
-        { new: true, ...options },
+        { returnDocument: 'after', ...options },
       );
       if (!updatedPayment) throw new AppError("Recovery payment changed before reversal", 409);
       const updatedObligation = await IncentiveRecoveryObligation.findById(obligation._id, null, options);

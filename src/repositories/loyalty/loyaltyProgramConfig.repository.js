@@ -27,7 +27,7 @@ export class LoyaltyProgramConfigRepository extends BaseRepository {
     }
 
     const options = {
-      new: true,
+      returnDocument: 'after',
       upsert: true,
       runValidators: true,
       setDefaultsOnInsert: true,

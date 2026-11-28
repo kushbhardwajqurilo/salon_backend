@@ -72,17 +72,17 @@ describe('Attendance Web Punch & Monthly Muster Roll Suite', () => {
     const permPunch = await Permission.findOneAndUpdate(
       { name: 'attendance.punch' },
       { $setOnInsert: { name: 'attendance.punch', module: 'Attendance', action: 'Punch', description: 'Punch' } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     const permView = await Permission.findOneAndUpdate(
       { name: 'attendance.view' },
       { $setOnInsert: { name: 'attendance.view', module: 'Attendance', action: 'View', description: 'View' } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     const permAdjust = await Permission.findOneAndUpdate(
       { name: 'attendance.adjust' },
       { $setOnInsert: { name: 'attendance.adjust', module: 'Attendance', action: 'Adjust', description: 'Adjust' } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     // Roles

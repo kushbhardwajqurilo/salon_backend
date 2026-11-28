@@ -90,7 +90,7 @@ export class AppointmentRepository {
     return await Appointment.findOneAndUpdate(
       { _id: id, organizationId, isDeleted: false },
       updateOp,
-      { new: true, runValidators: true },
+      { returnDocument: 'after', runValidators: true },
     );
   }
 
@@ -98,7 +98,7 @@ export class AppointmentRepository {
     return await Appointment.findOneAndUpdate(
       { _id: id, organizationId, isDeleted: false },
       { $set: { isDeleted: true, deletedAt: new Date(), slotMinutes: [] } },
-      { new: true },
+      { returnDocument: 'after' },
     );
   }
 }

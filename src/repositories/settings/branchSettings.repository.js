@@ -18,7 +18,7 @@ export class BranchSettingsRepository extends BaseRepository {
     return this.model.findOneAndUpdate(
       { organizationId, branchId },
       { $set: payload, $setOnInsert: { organizationId, branchId } },
-      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true, session }
+      { returnDocument: 'after', upsert: true, runValidators: true, setDefaultsOnInsert: true, session }
     );
   }
 }

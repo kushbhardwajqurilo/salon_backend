@@ -101,7 +101,7 @@ export class ServiceRepository extends BaseRepository {
     return this.model.findOneAndUpdate(
       { _id: id, organizationId },
       { $set: update },
-      { new: true, includeDeleted: true }
+      { returnDocument: 'after', includeDeleted: true }
     );
   }
 }

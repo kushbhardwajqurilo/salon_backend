@@ -62,33 +62,33 @@ describe("Finance — Full Payroll Integration & Reconciliation Test Suite", () 
     const permFinanceView = await Permission.findOneAndUpdate(
       { name: "finance.view" },
       { $setOnInsert: { name: "finance.view", module: "Finance", action: "View", description: "View" } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     const permFinanceTxView = await Permission.findOneAndUpdate(
       { name: "finance.transactions.view" },
       { $setOnInsert: { name: "finance.transactions.view", module: "Finance", action: "View", description: "View" } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     const permPayrollView = await Permission.findOneAndUpdate(
       { name: "payroll.view" },
       { $setOnInsert: { name: "payroll.view", module: "Payroll", action: "View", description: "View" } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     const permPayrollDisburse = await Permission.findOneAndUpdate(
       { name: "payroll.disburse" },
       { $setOnInsert: { name: "payroll.disburse", module: "Payroll", action: "Disburse", description: "Disburse" } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     const permPayrollReverse = await Permission.findOneAndUpdate(
       { name: "payroll.reverse" },
       { $setOnInsert: { name: "payroll.reverse", module: "Payroll", action: "Reverse", description: "Reverse" } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     const permPayrollApprove = await Permission.findOneAndUpdate(
       { name: "payroll.approve" },
       { $setOnInsert: { name: "payroll.approve", module: "Payroll", action: "Approve", description: "Approve" } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     const [ownerRole, managerRole] = await Role.create([

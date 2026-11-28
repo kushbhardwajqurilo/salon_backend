@@ -560,7 +560,7 @@ export class ProcurementService {
             },
             $set: { lastMovementAt: new Date() },
           },
-          { session, upsert: true, new: true, setDefaultsOnInsert: true },
+          { session, upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
         );
 
         // Immutable StockMovement ledger entry

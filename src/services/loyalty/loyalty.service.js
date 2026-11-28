@@ -334,7 +334,7 @@ export class LoyaltyService {
         $inc: { loyaltyPoints: -points },
       },
       {
-        new: true,
+        returnDocument: 'after',
         session,
       }
     );
@@ -654,7 +654,7 @@ export class LoyaltyService {
         $inc: { loyaltyPoints: pointsToRestore },
       },
       {
-        new: true,
+        returnDocument: 'after',
         session,
       }
     );
@@ -766,7 +766,7 @@ export class LoyaltyService {
       const updatedCustomer = await Customer.findOneAndUpdate(
         condition,
         { $inc: { loyaltyPoints: signedDelta } },
-        { new: true, session }
+        { returnDocument: 'after', session }
       );
 
       if (!updatedCustomer) {
@@ -905,7 +905,7 @@ export class LoyaltyService {
       },
       {
         upsert: true,
-        new: true,
+        returnDocument: 'after',
         session,
       }
     );

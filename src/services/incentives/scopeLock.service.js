@@ -86,7 +86,7 @@ export class ScopeLockService {
               leaseExpiresAt,
             },
           },
-          { session, new: true }
+          { session, returnDocument: 'after' }
         );
 
         if (lock) {

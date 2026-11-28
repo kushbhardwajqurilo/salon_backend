@@ -13,7 +13,7 @@ export class SupplierRepository {
     return await Supplier.findOneAndUpdate(
       { _id: id, organizationId, isDeleted: false },
       { $set: updateData },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
   }
 

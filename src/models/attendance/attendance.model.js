@@ -162,7 +162,7 @@ attendanceSchema.statics = {
           // NO $addToSet — we do not mark normal first claims as cross-branch conflict.
           // Branch comparison happens at the application level after re-reading the record.
         },
-        { upsert: true, new: true },
+        { upsert: true, returnDocument: 'after' },
       );
     } catch (error) {
       // E11000: MongoDB duplicate-key error — another concurrent request created the record

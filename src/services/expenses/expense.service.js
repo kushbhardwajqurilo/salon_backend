@@ -20,7 +20,7 @@ export class ExpenseService {
     const seqDoc = await Sequence.findOneAndUpdate(
       { key: sequenceKey },
       { $inc: { seq: 1 } },
-      { new: true, upsert: true }
+      { returnDocument: 'after', upsert: true }
     );
 
     const paddedNumber = String(seqDoc.seq).padStart(4, "0");
@@ -562,7 +562,7 @@ export class ExpenseService {
           },
         },
         { $inc: { recoveredAmountSoFar: recoveredAmount } },
-        { session, new: true }
+        { session, returnDocument: 'after' }
       );
 
       if (!payout) {
