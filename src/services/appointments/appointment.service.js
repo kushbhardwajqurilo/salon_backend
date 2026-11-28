@@ -4530,7 +4530,7 @@ export class AppointmentService {
       startDate,
       endDate,
       notes = "",
-      billImmediately = true,
+      billImmediately = false,
     } = upsellData;
 
     return await runInTransaction(
@@ -4820,7 +4820,7 @@ export class AppointmentService {
       beneficiaries = [],
       soldByStaffId = null,
       notes = "",
-      billImmediately = true,
+      billImmediately = false,
       customPlan = null,
     } = upsellData;
 

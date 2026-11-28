@@ -1,5 +1,5 @@
 import { Queue } from "bullmq";
-import { redisOptions } from "../config/redis.js";
+import { getRedisClient, redisOptions } from "../config/redis.js";
 import { logger } from "../utils/logger.js";
 
 const queues = {};
@@ -18,7 +18,7 @@ const createQueue = (name) => {
   }
   try {
     const queue = new Queue(name, {
-      connection: redisOptions,
+      connection: getRedisClient() || redisOptions,
       defaultJobOptions: {
         attempts: 3,
         backoff: {
