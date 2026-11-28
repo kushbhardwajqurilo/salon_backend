@@ -387,79 +387,25 @@ export class AppointmentService {
       throw new AppError("Customer record not found", 404);
     }
 
-    const channel = appointment.reminder?.channel || "sms";
-    const { EmailService } = await import("../notifications/email.service.js");
-    const { SmsService } = await import("../notifications/sms.service.js");
-
-    const emailService = new EmailService();
-    const smsService = new SmsService();
-
     const branch = await Branch.findOne({ _id: branchId, organizationId });
     const tz = branch?.timezone || "Asia/Kolkata";
     const formattedStart = formatUTCToLocal(appointment.startAt, tz);
 
-    const now = new Date();
-    const channelResults = {};
+    await createOutboxEvent({
+      eventType: "appointment.reminder_due",
+      organizationId,
+      branchId,
+      idempotencyKey: `appointment.reminder_due.manual:${appointment._id}:${Date.now()}`,
+      payload: {
+        appointmentId: appointment._id.toString(),
+        appointmentCode: appointment.appointmentCode,
+        customerId: customer._id.toString(),
+        customerName: customer.name,
+        startAt: `${formattedStart.dateStr} at ${formattedStart.timeStr}`,
+      },
+    });
 
-    // 1. Process Email Channel if requested
-    if (channel === "email" || channel === "both") {
-      if (!customer.email) {
-        channelResults.email = {
-          status: "failed",
-          failedAt: now,
-          failureReason: "Customer has no email address configured",
-        };
-      } else {
-        try {
-          await emailService.sendMail({
-            to: customer.email,
-            subject: `Appointment Reminder — ${appointment.appointmentCode}`,
-            text: `Hello ${customer.name}, this is a reminder for your upcoming salon appointment on ${formattedStart.dateStr} at ${formattedStart.timeStr}.`,
-            html: `<p>Hello <strong>${customer.name}</strong>,</p><p>This is a reminder for your upcoming salon appointment (Code: <code>${appointment.appointmentCode}</code>) scheduled on <strong>${formattedStart.dateStr}</strong> at <strong>${formattedStart.timeStr}</strong>.</p>`,
-          });
-          channelResults.email = {
-            status: "sent",
-            sentAt: now,
-            failureReason: null,
-          };
-        } catch (err) {
-          channelResults.email = {
-            status: "failed",
-            failedAt: now,
-            failureReason: `Email dispatch failed: ${err.message}`,
-          };
-        }
-      }
-    }
-
-    // 2. Process SMS Channel if requested
-    if (channel === "sms" || channel === "both") {
-      if (!customer.phone) {
-        channelResults.sms = {
-          status: "failed",
-          failedAt: now,
-          failureReason: "Customer has no phone number configured",
-        };
-      } else {
-        try {
-          await smsService.sendSms({
-            phone: customer.phone,
-            message: `Reminder: Your appointment ${appointment.appointmentCode} is scheduled for ${formattedStart.dateStr} at ${formattedStart.timeStr}.`,
-          });
-          channelResults.sms = {
-            status: "sent",
-            sentAt: now,
-            failureReason: null,
-          };
-        } catch (err) {
-          channelResults.sms = {
-            status: "failed",
-            failedAt: now,
-            failureReason: `SMS dispatch failed: ${err.message}`,
-          };
-        }
-      }
-    }
+    return appointment;
 
     // Build update object
     const updateObj = {};
@@ -913,7 +859,7 @@ export class AppointmentService {
     const seq = await Sequence.findOneAndUpdate(
       { key: sequenceKey },
       { $inc: { seq: 1 } },
-      { returnDocument: 'after', upsert: true },
+      { returnDocument: "after", upsert: true },
     );
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -4670,7 +4616,7 @@ export class AppointmentService {
         const seq = await Sequence.findOneAndUpdate(
           { key: sequenceKey },
           { $inc: { seq: 1 } },
-          { returnDocument: 'after', upsert: true, session },
+          { returnDocument: "after", upsert: true, session },
         );
         const today = new Date();
         const yyyy = today.getFullYear();
@@ -4982,7 +4928,7 @@ export class AppointmentService {
         const seq = await Sequence.findOneAndUpdate(
           { key: sequenceKey },
           { $inc: { seq: 1 } },
-          { returnDocument: 'after', upsert: true, session },
+          { returnDocument: "after", upsert: true, session },
         );
         const today = new Date();
         const yyyy = today.getFullYear();
