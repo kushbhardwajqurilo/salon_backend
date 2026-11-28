@@ -1340,12 +1340,18 @@ export class AppointmentService {
     organizationId,
     branchId = null,
   ) {
-    return await appointmentRepo.find(
+    const result = await appointmentRepo.find(
       filter,
       pagination,
       organizationId,
       branchId,
     );
+    if (Array.isArray(result?.data)) {
+      for (const appointment of result.data) {
+        appointment.pricing = reconcileAppointmentPricing(appointment);
+      }
+    }
+    return result;
   }
 
   /**
