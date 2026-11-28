@@ -425,11 +425,24 @@ export class BillingService {
     );
 
     // Pass 5: Total aggregation & reconciliation
+    const membershipDiscountTotal = Number(
+      (lines || [])
+        .reduce(
+          (sum, l) =>
+            sum +
+            (l.isCoveredBySubscription
+              ? 0
+              : Math.max(0, Number(l.membershipDiscountAmount) || 0)),
+          0,
+        )
+        .toFixed(2),
+    );
     const discountTotal = Number(
       (
         lineDiscountsTotal +
         invoiceDiscountsTotal +
-        loyaltyDiscountAmount
+        loyaltyDiscountAmount +
+        membershipDiscountTotal
       ).toFixed(2),
     );
     const grossPayable = Math.max(
