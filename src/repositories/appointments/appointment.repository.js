@@ -6,6 +6,12 @@ const subscriptionReferencePopulation = {
   transform: (subscription, id) => subscription || id,
 };
 
+const membershipReferencePopulation = {
+  path: "services.appliedCustomerMembershipId",
+  select: "membershipCode tier benefitSnapshot startDate endDate status",
+  transform: (membership, id) => membership || id,
+};
+
 export class AppointmentRepository {
   async create(appointmentData) {
     const appointment = new Appointment(appointmentData);
@@ -21,7 +27,8 @@ export class AppointmentRepository {
       .populate("branchId", "name")
       .populate("customerId", "name phone email")
       .populate("staffId", "name")
-    .populate(subscriptionReferencePopulation);
+    .populate(subscriptionReferencePopulation)
+    .populate(membershipReferencePopulation);
   }
 
   async findOne(filter, organizationId) {
@@ -33,7 +40,8 @@ export class AppointmentRepository {
       .populate("branchId", "name")
       .populate("customerId", "name phone email")
       .populate("staffId", "name")
-    .populate(subscriptionReferencePopulation);
+    .populate(subscriptionReferencePopulation)
+    .populate(membershipReferencePopulation);
   }
 
   async find(filter = {}, pagination = {}, organizationId, branchId = null) {
@@ -56,6 +64,7 @@ export class AppointmentRepository {
         .populate("customerId", "name phone email")
         .populate("staffId", "name")
         .populate(subscriptionReferencePopulation)
+        .populate(membershipReferencePopulation)
         .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 })
         .skip(skip)
         .limit(limit),

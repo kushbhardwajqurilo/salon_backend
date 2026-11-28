@@ -10,6 +10,7 @@ import { inventoryService } from "../inventory/inventory.service.js";
 import { loyaltyService } from "../loyalty/loyalty.service.js";
 import { subscriptionService } from "../subscriptions/subscription.service.js";
 import { settlementFulfillmentEventService } from "../incentives/settlementFulfillmentEvent.service.js";
+import { computeBenefitAccountingForInvoice } from "./benefitAccounting.service.js";
 import { AppError } from "../../utils/errors.js";
 
 const SUPPORTED_REFUND_METHODS = ["cash", "card", "upi", "other"];
@@ -115,7 +116,7 @@ class RefundService {
       })
         .sort({ createdAt: -1 })
         .select(
-          "refundNumber refundMode requestedAmountPaise pendingAmountPaise settledAmountPaise refundMethod settlementType status paymentSettlementStatus reason createdAt",
+          "refundNumber refundMode requestedAmountPaise pendingAmountPaise settledAmountPaise refundMethod settlementType status paymentSettlementStatus allocations domainReversals reason createdAt",
         )
         .session(session)
         .lean(),
@@ -150,6 +151,13 @@ class RefundService {
       refundableBalancePaise,
     });
 
+    const effectivePaymentStatus = this._deriveEffectivePaymentStatus({
+      invoice,
+      completedPaymentsPaise,
+      completedRefundsPaise,
+      refundableBalancePaise,
+    });
+
     const derivedRefundStatus = this._deriveRefundStatus({
       invoice,
       completedPaymentsPaise,
@@ -158,16 +166,26 @@ class RefundService {
       refundableBalancePaise,
     });
 
-    const refundableItems = this._buildRefundableItems(
+    const {
+      refundableItems,
+      netLinePaidByLineId,
+      benefitAccounting,
+      reconciliationRequired,
+      reconciliationReasons,
+    } = await this._buildRefundableItemsWithBenefits({
       invoice,
+      organizationId,
       refundableBalancePaise,
-    );
+      refundCases,
+      session,
+    });
 
     return {
       invoiceId: invoice._id.toString(),
       invoiceNumber: invoice.invoiceNumber,
+      invoiceDate: invoice.createdAt,
       invoiceStatus: invoice.status,
-      invoicePaymentStatus: invoice.paymentStatus,
+      invoicePaymentStatus: effectivePaymentStatus,
       eligibility,
       summary: {
         originalPayablePaise: toPaise(invoice.payableAmount),
@@ -179,11 +197,24 @@ class RefundService {
           0,
           completedPaymentsPaise - completedRefundsPaise,
         ),
+        effectivePaymentStatus,
         derivedRefundStatus,
       },
+      originalPayments: payments.map((p) => ({
+        id: String(p._id),
+        paymentNumber: p.paymentNumber,
+        type: p.type,
+        method: p.method,
+        amountPaise: toPaise(p.amount),
+        paymentDate: p.paymentDate,
+      })),
       refundableItems,
+      benefitAccounting,
+      reconciliationRequired,
+      reconciliationReasons,
       supportedRefundMethods: SUPPORTED_REFUND_METHODS,
       refundHistory: refundCases.map((rc) => ({
+        _id: rc._id.toString(),
         id: rc._id.toString(),
         refundNumber: rc.refundNumber,
         refundMode: rc.refundMode,
@@ -194,6 +225,7 @@ class RefundService {
         settlementType: rc.settlementType,
         status: rc.status,
         paymentSettlementStatus: rc.paymentSettlementStatus,
+        domainReversals: rc.domainReversals || {},
         reason: rc.reason,
         createdAt: rc.createdAt,
       })),
@@ -248,11 +280,22 @@ class RefundService {
         consequences: [
           "Financial-only compensation: no inventory restock, membership/subscription cancellation, loyalty reversal, or incentive clawback will occur.",
         ],
-        warnings: [],
+        warnings: context.reconciliationRequired ? context.reconciliationReasons : [],
+        benefitAccounting: context.benefitAccounting || [],
+        reconciliationRequired: context.reconciliationRequired || false,
+        reconciliationReasons: context.reconciliationReasons || [],
+        customerExplanation: `Financial-only refund of ₹${(requestedAmountPaise / 100).toFixed(2)} for invoice ${context.invoiceNumber}. No entitlements or inventory items were reversed.`,
       };
     }
 
     if (refundMode === "item_linked") {
+      if (context.reconciliationRequired) {
+        throw new AppError(
+          `Reconciliation required before item-linked refund: ${(context.reconciliationReasons || []).join("; ")}`,
+          409,
+        );
+      }
+
       const items = Array.isArray(payload.items) ? payload.items : [];
       if (items.length === 0) {
         throw new AppError(
@@ -347,6 +390,11 @@ class RefundService {
         );
       }
 
+      const benefitSummaryLines = (context.benefitAccounting || []).map(
+        (b) =>
+          `${b.name}: Paid ₹${(b.originalNetPaidPaise / 100).toFixed(2)}, Consumed ₹${(b.lifetimeConsumedPaise / 100).toFixed(2)}, Prior/Pending Refunds ₹${((b.previouslySettledRefundsPaise + b.pendingRefundReservationsPaise) / 100).toFixed(2)}, Remaining ₹${(b.remainingRefundablePaise / 100).toFixed(2)}.`,
+      );
+
       return {
         refundMode: "item_linked",
         totalRefundAmountPaise,
@@ -355,6 +403,13 @@ class RefundService {
         allocations,
         consequences,
         warnings,
+        benefitAccounting: context.benefitAccounting || [],
+        reconciliationRequired: context.reconciliationRequired || false,
+        reconciliationReasons: context.reconciliationReasons || [],
+        customerExplanation: [
+          `Refund of ₹${(totalRefundAmountPaise / 100).toFixed(2)} for invoice ${context.invoiceNumber}.`,
+          ...benefitSummaryLines,
+        ].join(" "),
       };
     }
 
@@ -683,6 +738,40 @@ class RefundService {
         refundCase.paymentSettlementStatus = "settled";
         refundCase.settledAmountPaise = settleAmountPaise;
         refundCase.pendingAmountPaise = 0;
+
+        // Synchronize invoice.paymentStatus from authoritative completed payments & refunds
+        const allInvoicePayments = await Payment.find({
+          organizationId,
+          invoiceId: refundCase.invoiceId,
+          isDeleted: false,
+          status: "completed",
+        })
+          .select("amount type")
+          .session(session)
+          .lean();
+        const totalPaidPaise = allInvoicePayments
+          .filter((p) => p.type === "payment" && Number(p.amount) > 0)
+          .reduce((sum, p) => sum + toPaise(p.amount), 0);
+        const totalRefundedPaise = allInvoicePayments
+          .filter((p) => p.type === "refund")
+          .reduce((sum, p) => sum + Math.abs(toPaise(p.amount)), 0);
+        const remainingRefundablePaise = Math.max(
+          0,
+          totalPaidPaise - totalRefundedPaise,
+        );
+        const nextPaymentStatus =
+          totalPaidPaise <= 0
+            ? "unpaid"
+            : totalRefundedPaise > 0 && remainingRefundablePaise === 0
+              ? "refunded"
+              : totalRefundedPaise > 0
+                ? "partially_refunded"
+                : "paid";
+        await Invoice.updateOne(
+          { _id: refundCase.invoiceId, organizationId, isDeleted: false },
+          { $set: { paymentStatus: nextPaymentStatus } },
+          { session },
+        );
         if (refundCase.refundMode === "financial_only") {
           refundCase.status = "completed";
         } else {
@@ -1737,6 +1826,25 @@ class RefundService {
     };
   }
 
+  _deriveEffectivePaymentStatus({
+    invoice,
+    completedPaymentsPaise,
+    completedRefundsPaise,
+    refundableBalancePaise,
+  }) {
+    if (completedPaymentsPaise <= 0) {
+      return "unpaid";
+    }
+    if (completedRefundsPaise > 0 && refundableBalancePaise === 0) {
+      return "refunded";
+    }
+    if (completedRefundsPaise > 0 && refundableBalancePaise > 0) {
+      return "partially_refunded";
+    }
+    const payablePaise = toPaise(invoice.payableAmount);
+    return completedPaymentsPaise >= payablePaise ? "paid" : "partially_paid";
+  }
+
   _deriveRefundStatus({
     invoice,
     completedPaymentsPaise,
@@ -1744,23 +1852,121 @@ class RefundService {
     pendingReservedPaise,
     refundableBalancePaise,
   }) {
-    if (invoice.status !== "finalized" || invoice.paymentStatus !== "paid") {
+    if (invoice.status !== "finalized" || completedPaymentsPaise <= 0) {
       return "not_eligible";
     }
-    if (
-      completedPaymentsPaise > 0 &&
-      refundableBalancePaise === 0 &&
-      pendingReservedPaise === 0
-    ) {
+    if (completedRefundsPaise > 0 && refundableBalancePaise === 0) {
       return "fully_refunded";
-    }
-    if (pendingReservedPaise > 0 && completedRefundsPaise === 0) {
-      return "pending_refund";
     }
     if (completedRefundsPaise > 0 && refundableBalancePaise > 0) {
       return "partially_refunded";
     }
+    if (pendingReservedPaise > 0 && completedRefundsPaise === 0) {
+      return "pending_refund";
+    }
     return "none";
+  }
+
+  async _buildRefundableItemsWithBenefits({
+    invoice,
+    organizationId,
+    refundableBalancePaise,
+    refundCases = [],
+    session = null,
+  }) {
+    const baseItems = this._buildRefundableItems(invoice, refundableBalancePaise);
+    const netLinePaidByLineId = new Map(
+      baseItems.map((item) => [item.lineId, item.lineNetRemainingPaise]),
+    );
+
+    const {
+      benefitAccounting,
+      byLineId,
+      reconciliationRequired,
+      reconciliationReasons,
+    } = await computeBenefitAccountingForInvoice({
+      invoice,
+      organizationId,
+      refundCases,
+      netLinePaidByLineId,
+      session,
+    });
+
+    const linesById = new Map(
+      (invoice.lines || []).map((l) => [String(l._id), l]),
+    );
+
+    const refundableItems = baseItems.map((item) => {
+      const rawLine = linesById.get(item.lineId);
+      const benefit = byLineId.get(item.lineId);
+
+      // Per-line prior settled and pending refund allocations
+      let priorRefundedPaise = 0;
+      let pendingReservedPaise = 0;
+      for (const rc of refundCases) {
+        const matching = (rc.allocations || []).filter(
+          (a) => String(a.lineId) === item.lineId,
+        );
+        const sum = matching.reduce(
+          (s, a) => s + Number(a.allocatedAmountPaise || 0),
+          0,
+        );
+        if (["completed", "partially_completed"].includes(rc.status)) {
+          priorRefundedPaise += sum;
+        } else if (ACTIVE_RESERVATION_STATUSES.includes(rc.status)) {
+          pendingReservedPaise += sum;
+        }
+      }
+
+      let maxRefundablePaise = Math.max(
+        0,
+        item.maxRefundablePaise - priorRefundedPaise - pendingReservedPaise,
+      );
+      let isEligible = item.isEligible && maxRefundablePaise > 0;
+      let ineligibilityReason = item.ineligibilityReason;
+
+      if (rawLine?.isCoveredBySubscription && item.customerPayablePaise === 0) {
+        isEligible = false;
+        ineligibilityReason = "SUBSCRIPTION_COVERED_SERVICE";
+        maxRefundablePaise = 0;
+      } else if (benefit) {
+        if (benefit.reconciliationRequired) {
+          isEligible = false;
+          ineligibilityReason = "RECONCILIATION_REQUIRED";
+          maxRefundablePaise = 0;
+        } else {
+          maxRefundablePaise = Math.min(
+            maxRefundablePaise,
+            benefit.remainingRefundablePaise,
+          );
+          isEligible = item.remainingQuantity > 0 && maxRefundablePaise > 0;
+          if (!isEligible && !ineligibilityReason) {
+            ineligibilityReason = "ENTITLEMENT_EXHAUSTED";
+          }
+        }
+      }
+
+      return {
+        ...item,
+        priorRefundedPaise,
+        pendingReservedPaise,
+        maxRefundablePaise,
+        lineNetRemainingPaise: benefit
+          ? benefit.remainingRefundablePaise
+          : Math.max(0, item.lineNetRemainingPaise - priorRefundedPaise - pendingReservedPaise),
+        isEligible,
+        ineligibilityReason,
+        benefitSummary: benefit || null,
+      };
+    });
+
+    return {
+      refundableItems,
+      netLinePaidByLineId,
+      benefitAccounting,
+      reconciliationRequired,
+      reconciliationReasons,
+    };
   }
 
   _buildRefundableItems(invoice, refundableBalancePaise) {

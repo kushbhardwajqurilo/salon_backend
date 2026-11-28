@@ -1,5 +1,9 @@
 import { settlementFulfillmentEventService } from "../incentives/settlementFulfillmentEvent.service.js";
 import { createOutboxEvent } from "../notifications/outbox.service.js";
+import {
+  calculateAppointmentPricing,
+  reconcileAppointmentPricing,
+} from "../../utils/appointmentPricing.js";
 
 async function flushAppointmentOutboxEntry(
   appointmentId,
@@ -1258,14 +1262,10 @@ export class AppointmentService {
     }
 
     // 6. Calculate Pricing
-    const baseDiscount = Number((discount || 0).toFixed(2));
-    const effectiveDiscount = Number(
-      (baseDiscount + totalMembershipDiscount).toFixed(2),
-    );
-    const total = Math.max(
-      0,
-      Number((subtotal - effectiveDiscount).toFixed(2)),
-    );
+    const computedPricing = calculateAppointmentPricing({
+      services: serviceSnapshots,
+      manualDiscountAmount: discount || 0,
+    });
 
     // 7. Generate Code & Minute Buckets
     const appointmentCode = await this.generateAppointmentCode(organizationId);
@@ -1321,11 +1321,7 @@ export class AppointmentService {
         status: initialStatus,
         arrivedAt,
         bookingType,
-        pricing: {
-          subtotal: Number(subtotal.toFixed(2)),
-          discount: effectiveDiscount,
-          total,
-        },
+        pricing: computedPricing,
         notes,
         reminder: reminderConfig,
       });
@@ -1414,6 +1410,7 @@ export class AppointmentService {
     if (!appointment) {
       throw new AppError("Appointment not found", 404);
     }
+    appointment.pricing = reconcileAppointmentPricing(appointment);
     return appointment;
   }
 
@@ -1690,22 +1687,19 @@ export class AppointmentService {
       const endAt = new Date(startAt.getTime() + totalDuration * 60000);
       const formattedEnd = formatUTCToLocal(endAt);
 
-      const effectiveDiscount =
-        discount !== undefined ? discount : appointment.pricing.discount;
-      const total = Math.max(
-        0,
-        Number((subtotal - effectiveDiscount).toFixed(2)),
-      );
-
       updates.services = serviceSnapshots;
       updates.totalDuration = totalDuration;
       updates.endAt = endAt;
       updates.endTime = formattedEnd.timeStr;
-      updates.pricing = {
-        subtotal: Number(subtotal.toFixed(2)),
-        discount: Number(effectiveDiscount.toFixed(2)),
-        total,
-      };
+      updates.pricing = calculateAppointmentPricing({
+        services: serviceSnapshots,
+        manualDiscountAmount:
+          discount !== undefined
+            ? discount
+            : appointment.pricing?.manualDiscountAmount,
+        legacyDiscount:
+          discount !== undefined ? undefined : appointment.pricing?.discount,
+      });
 
       // Invalidate any pending OTP consumption challenge on service modifications
       await SubscriptionConsumptionChallenge.deleteMany({
@@ -1719,13 +1713,10 @@ export class AppointmentService {
         updates.slotMinutes = generateSlotMinutes(startAt, endAt);
       }
     } else if (discount !== undefined) {
-      const subtotal = appointment.pricing.subtotal;
-      const total = Math.max(0, Number((subtotal - discount).toFixed(2)));
-      updates.pricing = {
-        ...appointment.pricing.toObject(),
-        discount: Number(discount.toFixed(2)),
-        total,
-      };
+      updates.pricing = calculateAppointmentPricing({
+        services: appointment.services || [],
+        manualDiscountAmount: discount,
+      });
     }
 
     let staffAvailabilityValidated = false;
@@ -3948,15 +3939,15 @@ export class AppointmentService {
       }
     }
 
-    const baseDiscount =
-      discount !== undefined ? discount : appointment.pricing?.discount || 0;
-    const effectiveDiscount = Number(
-      (baseDiscount + totalMembershipDiscount).toFixed(2),
-    );
-    const total = Math.max(
-      0,
-      Number((subtotal - effectiveDiscount).toFixed(2)),
-    );
+    const proposedPricing = calculateAppointmentPricing({
+      services: proposedServiceSnapshots,
+      manualDiscountAmount:
+        discount !== undefined
+          ? discount
+          : appointment.pricing?.manualDiscountAmount,
+      legacyDiscount:
+        discount !== undefined ? undefined : appointment.pricing?.discount,
+    });
 
     const initiatingAppointmentProposal = {
       id: appointment._id.toString(),
@@ -3973,11 +3964,7 @@ export class AppointmentService {
       proposedEndTime: initiatingFormattedProposedEnd.timeStr,
       totalDuration,
       remainingMinutes,
-      pricing: {
-        subtotal: Number(subtotal.toFixed(2)),
-        discount: Number(effectiveDiscount.toFixed(2)),
-        total,
-      },
+      pricing: proposedPricing,
       services: proposedServiceSnapshots,
     };
 
@@ -5165,17 +5152,11 @@ export class AppointmentService {
             (acc, s) => acc + (s.price || 0),
             0,
           );
-          const discount = Number(
-            (
-              (appointment.pricing?.discount || 0) + totalMembershipDiscount
-            ).toFixed(2),
-          );
-          const total = Math.max(0, Number((subtotal - discount).toFixed(2)));
-          appointment.pricing = {
-            subtotal: Number(subtotal.toFixed(2)),
-            discount,
-            total,
-          };
+          appointment.pricing = calculateAppointmentPricing({
+            services: appointment.services || [],
+            manualDiscountAmount: appointment.pricing?.manualDiscountAmount,
+            legacyDiscount: appointment.pricing?.discount,
+          });
           await appointment.save({ session });
         }
 

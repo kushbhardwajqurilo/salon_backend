@@ -123,8 +123,13 @@ const appointmentSchema = new mongoose.Schema(
     bookingType: { type: String, enum: ["advance", "walk_in"], required: true },
     pricing: {
       subtotal: { type: Number, required: true, min: 0 },
+      grossSubtotal: { type: Number, default: 0, min: 0 },
+      subscriptionWaivedAmount: { type: Number, default: 0, min: 0 },
+      membershipDiscountAmount: { type: Number, default: 0, min: 0 },
+      manualDiscountAmount: { type: Number, default: 0, min: 0 },
       discount: { type: Number, default: 0, min: 0 },
       total: { type: Number, required: true, min: 0 },
+      totalPayable: { type: Number, default: 0, min: 0 },
     },
     notes: { type: String, trim: true, maxlength: 1000, default: "" },
     cancellation: {

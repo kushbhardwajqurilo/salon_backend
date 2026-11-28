@@ -6,6 +6,7 @@ import { Invoice } from "../../models/billing/invoice.model.js";
 import { Payment } from "../../models/billing/payment.model.js";
 import { InvoiceSettlementEvent } from "../../models/incentives/invoiceSettlementEvent.model.js";
 import { Appointment } from "../../models/appointments/appointment.model.js";
+import { reconcileAppointmentPricing } from "../../utils/appointmentPricing.js";
 import { Subscription } from "../../models/subscriptions/subscription.model.js";
 import { Customer } from "../../models/customers/customer.model.js";
 import { Sequence } from "../../models/sequence/sequence.model.js";
@@ -607,10 +608,16 @@ export class BillingService {
     };
 
     // Construct immutable appointment pricing snapshot
+    const reconciledPricing = reconcileAppointmentPricing(appointment);
     const appointmentPricingSnapshot = {
-      subtotal: appointment.pricing?.subtotal ?? 0,
-      discount: appointment.pricing?.discount ?? 0,
-      total: appointment.pricing?.total ?? 0,
+      subtotal: reconciledPricing.grossSubtotal,
+      grossSubtotal: reconciledPricing.grossSubtotal,
+      subscriptionWaivedAmount: reconciledPricing.subscriptionWaivedAmount,
+      membershipDiscountAmount: reconciledPricing.membershipDiscountAmount,
+      manualDiscountAmount: reconciledPricing.manualDiscountAmount,
+      discount: reconciledPricing.discount,
+      total: reconciledPricing.totalPayable,
+      totalPayable: reconciledPricing.totalPayable,
     };
 
     // Map service snapshots to invoice lines
@@ -6952,6 +6959,48 @@ export class BillingService {
    * 8. PROCESS INVOICE RETURN & RESTOCK (SEPARATE FINANCIAL REFUND & PHYSICAL RESTOCK)
    */
   async refundUnusedMembershipLine(
+    invoiceId,
+    payload,
+    organizationId,
+    branchId,
+    userId,
+    idempotencyKey,
+  ) {
+    // Consolidated into authoritative RefundCase workflow
+    const { refundService } = await import("./refund.service.js");
+    const { lineId, refundPaymentMethod = "cash", reason } = payload;
+    const created = await refundService.createPendingRefundCase(
+      invoiceId,
+      {
+        refundMode: "item_linked",
+        items: [{ lineId, quantity: 1 }],
+        refundMethod: refundPaymentMethod,
+        reason: reason || "Membership refund",
+        branchId,
+      },
+      organizationId,
+      branchId,
+      userId,
+      idempotencyKey,
+    );
+    const settled = await refundService.settleRefundCase(
+      invoiceId,
+      String(created.refundCase._id),
+      { refundMethod: refundPaymentMethod, branchId },
+      organizationId,
+      branchId,
+      userId,
+      `${idempotencyKey}:settle`,
+    );
+    return {
+      refundCase: settled.refundCase,
+      refundPayment: settled.refundPayment,
+      idempotentReplay: Boolean(created.idempotentReplay),
+      consolidatedViaRefundCase: true,
+    };
+  }
+
+  async _legacyRefundUnusedMembershipLineUnused(
     invoiceId,
     payload,
     organizationId,

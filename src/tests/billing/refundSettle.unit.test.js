@@ -65,6 +65,10 @@ describe("Refund Case Payment Settlement (Isolated Unit Verification)", () => {
     const rc = makeRefundCase();
     const invUpdateSpy = jest.spyOn(Invoice, "findOneAndUpdate");
     jest.spyOn(RefundCase, "findOne").mockReturnValue(mockQuery(rc));
+    jest.spyOn(Payment, "find").mockReturnValue(
+      mockQuery([{ type: "payment", amount: 500 }]),
+    );
+    jest.spyOn(Invoice, "updateOne").mockResolvedValue({ modifiedCount: 1 });
     const payCreateSpy = jest
       .spyOn(Payment, "create")
       .mockImplementation(async (docs) => [
@@ -118,6 +122,10 @@ describe("Refund Case Payment Settlement (Isolated Unit Verification)", () => {
     };
 
     jest.spyOn(RefundCase, "findOne").mockReturnValue(mockQuery(rc));
+    jest.spyOn(Payment, "find").mockReturnValue(
+      mockQuery([{ type: "payment", amount: 500 }]),
+    );
+    jest.spyOn(Invoice, "updateOne").mockResolvedValue({ modifiedCount: 1 });
     jest.spyOn(Payment, "findOne").mockReturnValue(mockQuery(existingPay));
     const payCreateSpy = jest.spyOn(Payment, "create");
 
@@ -154,6 +162,10 @@ describe("Refund Case Payment Settlement (Isolated Unit Verification)", () => {
     });
     jest.spyOn(Payment, "findOne").mockReturnValue(mockQuery(existingPay));
     jest.spyOn(RefundCase, "findOne").mockReturnValue(mockQuery(rc));
+    jest.spyOn(Payment, "find").mockReturnValue(
+      mockQuery([{ type: "payment", amount: 500 }]),
+    );
+    jest.spyOn(Invoice, "updateOne").mockResolvedValue({ modifiedCount: 1 });
 
     const res = await refundService.settleRefundCase(
       invoiceId,
@@ -172,6 +184,10 @@ describe("Refund Case Payment Settlement (Isolated Unit Verification)", () => {
   it("6 & 8 & 9. Rejects amount exceeding pendingAmountPaise and rejects cancelled/rejected cases", async () => {
     const rc = makeRefundCase({ pendingAmountPaise: 30000 });
     jest.spyOn(RefundCase, "findOne").mockReturnValue(mockQuery(rc));
+    jest.spyOn(Payment, "find").mockReturnValue(
+      mockQuery([{ type: "payment", amount: 500 }]),
+    );
+    jest.spyOn(Invoice, "updateOne").mockResolvedValue({ modifiedCount: 1 });
 
     await expect(
       refundService.settleRefundCase(
@@ -204,6 +220,10 @@ describe("Refund Case Payment Settlement (Isolated Unit Verification)", () => {
   it("10. Rejects cross-organization / unauthorized branch", async () => {
     const rc = makeRefundCase();
     jest.spyOn(RefundCase, "findOne").mockReturnValue(mockQuery(rc));
+    jest.spyOn(Payment, "find").mockReturnValue(
+      mockQuery([{ type: "payment", amount: 500 }]),
+    );
+    jest.spyOn(Invoice, "updateOne").mockResolvedValue({ modifiedCount: 1 });
 
     await expect(
       refundService.settleRefundCase(

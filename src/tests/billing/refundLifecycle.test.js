@@ -290,7 +290,7 @@ describe("Refund Lifecycle: Creation, Idempotency, Concurrency & Settlement (Liv
     const freshInvoice = await Invoice.findById(invoice._id);
     const freshOrigPayment = await Payment.findById(payment._id);
     expect(freshInvoice.payableAmount).toBe(1000);
-    expect(freshInvoice.paymentStatus).toBe("paid");
+    expect(freshInvoice.paymentStatus).toBe("partially_refunded");
     expect(freshOrigPayment.amount).toBe(1000);
   });
 });
