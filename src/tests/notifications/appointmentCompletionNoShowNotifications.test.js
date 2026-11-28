@@ -37,6 +37,9 @@ jest.unstable_mockModule("../../models/appointments/appointment.model.js", () =>
 }));
 
 jest.unstable_mockModule("../../services/incentives/settlementFulfillmentEvent.service.js", () => ({
+  SettlementFulfillmentEventService: class {
+    static rupeesToPaise = (r) => Math.round(Number(r || 0) * 100);
+  },
   settlementFulfillmentEventService: {
     handlePhysicalFulfillmentCompleted: mockHandlePhysicalFulfillmentCompleted,
   },

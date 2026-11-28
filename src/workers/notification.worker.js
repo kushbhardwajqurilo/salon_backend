@@ -3,12 +3,147 @@ import { logger } from "../utils/logger.js";
 import { EmailService } from "../services/notifications/email.service.js";
 import { SmsService } from "../services/notifications/sms.service.js";
 import { redisOptions } from "../config/redis.js";
+import { orchestrateOutboxEvent } from "../services/notifications/notificationOrchestrator.service.js";
+import { resolveAndRenderNotificationTemplate } from "../services/notifications/notificationTemplate.service.js";
+import { redactSensitiveText } from "../services/notifications/notificationEventContract.js";
+import { Notification } from "../models/notifications/notification.model.js";
 
 const emailService = new EmailService();
 const smsService = new SmsService();
 
+let notificationWorker = null;
 let emailWorker = null;
 let smsWorker = null;
+
+/**
+ * Resolves contact info (email or phone) for an orchestrated notification recipient.
+ */
+async function resolveRecipientContact({ recipientType, recipientId, organizationId }) {
+  if (!recipientId) return { email: null, phone: null };
+
+  if (recipientType === "customer" || recipientType === "payer" || recipientType === "beneficiary") {
+    const { Customer } = await import("../models/customers/customer.model.js");
+    const cust = await Customer.findOne({ _id: recipientId, organizationId }).lean();
+    if (cust) return { email: cust.email || null, phone: cust.phone || null };
+  }
+
+  const { User } = await import("../models/users/user.model.js");
+  const user = await User.findOne({ _id: recipientId, organizationId }).lean();
+  if (user) return { email: user.email || null, phone: user.phone || null };
+
+  return { email: null, phone: null };
+}
+
+/**
+ * Processes an orchestrated notification job (email or sms) from BullMQ.
+ */
+export async function processOrchestratedNotificationJob(job, channel) {
+  const { notificationId, organizationId, recipientId, metadata } = job.data || {};
+  if (!notificationId || !organizationId) {
+    logger.warn(`[ORCHESTRATED_JOB_INVALID] Missing notificationId or organizationId for ${job.name}`);
+    return false;
+  }
+
+  const existing = await Notification.findOne({ notificationId, organizationId }).lean();
+  if (!existing) {
+    logger.warn(`[ORCHESTRATED_JOB_NOT_FOUND] Notification ${notificationId} not found`);
+    return false;
+  }
+
+  if (["sent", "delivered", "cancelled"].includes(existing.status)) {
+    return true;
+  }
+
+  const claimed = await Notification.findOneAndUpdate(
+    {
+      _id: existing._id,
+      status: { $in: ["queued", "pending", "failed"] },
+    },
+    { $set: { status: "processing" } },
+    { new: true },
+  );
+
+  if (!claimed) {
+    return true;
+  }
+
+  const markFailed = async (reason) => {
+    await Notification.updateOne(
+      { _id: claimed._id },
+      {
+        $set: {
+          status: "failed",
+          failureReason: redactSensitiveText(String(reason || "Delivery failed")).slice(0, 500),
+        },
+      },
+    );
+  };
+
+  const contact = await resolveRecipientContact({
+    recipientType: claimed.recipientType,
+    recipientId: recipientId || claimed.recipientId,
+    organizationId,
+  });
+
+  const targetAddress = channel === "email" ? contact.email : contact.phone;
+  if (!targetAddress) {
+    await markFailed(`Recipient ${channel} contact missing`);
+    logger.warn(`[ORCHESTRATED_JOB_NO_CONTACT] id=${notificationId} channel=${channel}`);
+    return false;
+  }
+
+  const rendered = await resolveAndRenderNotificationTemplate({
+    organizationId,
+    eventType: job.name,
+    channel,
+    variables: metadata || claimed.metadata || {},
+  });
+
+  if (rendered.source === "none" || !rendered.body) {
+    await markFailed(`No active template found for ${job.name} (${channel})`);
+    logger.warn(`[ORCHESTRATED_JOB_NO_TEMPLATE] id=${notificationId} event=${job.name} channel=${channel}`);
+    return false;
+  }
+
+  try {
+    if (channel === "email") {
+      await emailService.sendMail({
+        to: targetAddress,
+        subject: rendered.subject || "Notification",
+        html: rendered.html || rendered.body,
+        text: rendered.body,
+      });
+    } else {
+      await smsService.sendSms({
+        phone: targetAddress,
+        message: rendered.body,
+      });
+    }
+
+    await Notification.updateOne(
+      { _id: claimed._id },
+      {
+        $set: {
+          status: "sent",
+          sentAt: new Date(),
+          failureReason: null,
+        },
+      },
+    );
+    return true;
+  } catch (err) {
+    await markFailed(err?.message || "Provider delivery failed");
+    throw err;
+  }
+}
+
+/**
+ * Core outbox-to-notification orchestrator job processor.
+ */
+export const processNotificationJob = async (job) => {
+  logger.info(`📥 Processing Notification Outbox Job [${job.id}] - ${job.name}`);
+  return await orchestrateOutboxEvent(job.data);
+};
 
 /**
  * Core SMS job processor exported for direct testability and worker execution
@@ -219,6 +354,9 @@ export const processSmsJob = async (job) => {
       });
     }
     default:
+      if (job.data?.notificationId) {
+        return await processOrchestratedNotificationJob(job, "sms");
+      }
       logger.warn(`Unknown SMS job type: ${job.name}`);
       return true;
   }
@@ -233,6 +371,31 @@ export const startNotificationWorkers = () => {
   }
 
   try {
+    // 0. Notification Outbox Orchestrator Worker
+    notificationWorker = new Worker(
+      "notification",
+      processNotificationJob,
+      { connection: redisOptions },
+    );
+
+    notificationWorker.on("completed", (job) => {
+      logger.info(
+        `✅ Notification Job [${job.id}] ${job.name} orchestrated successfully`,
+      );
+    });
+
+    notificationWorker.on("failed", (job, err) => {
+      logger.error(
+        `❌ Notification Job [${job?.id}] ${job?.name} failed: ${err.message}`,
+      );
+    });
+
+    notificationWorker.on("error", (err) => {
+      logger.warn(
+        `⚠️ [REDIS_WORKER_WARN] Notification Worker connection warning: ${err.message}`,
+      );
+    });
+
     // 1. Email Worker Processor
     emailWorker = new Worker(
       "email",
@@ -363,6 +526,9 @@ export const startNotificationWorkers = () => {
             return true;
           }
           default:
+            if (job.data?.notificationId) {
+              return await processOrchestratedNotificationJob(job, "email");
+            }
             logger.warn(`Unknown email job type: ${job.name}`);
             return true;
         }
@@ -420,6 +586,7 @@ export const startNotificationWorkers = () => {
 };
 
 export const stopNotificationWorkers = async () => {
+  if (notificationWorker) await notificationWorker.close();
   if (emailWorker) await emailWorker.close();
   if (smsWorker) await smsWorker.close();
   logger.info("🛑 BullMQ Notification Workers shut down gracefully");

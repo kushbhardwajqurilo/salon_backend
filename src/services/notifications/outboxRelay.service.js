@@ -214,3 +214,52 @@ export async function runOutboxRelayCycle(options = {}) {
     failedCount,
   };
 }
+
+let relayTimer = null;
+let initialTickTimer = null;
+let relayInFlight = false;
+
+/**
+ * Starts the periodic outbox relay loop in the current process.
+ */
+export function startOutboxRelay({ intervalMs = 5000 } = {}) {
+  if (relayTimer) return;
+
+  const tick = async () => {
+    if (relayInFlight) return;
+    relayInFlight = true;
+    try {
+      await runOutboxRelayCycle();
+    } catch (err) {
+      logger.error(`[OUTBOX_RELAY_CYCLE_ERROR] ${err?.message || err}`);
+    } finally {
+      relayInFlight = false;
+    }
+  };
+
+  relayTimer = setInterval(tick, intervalMs);
+  if (typeof relayTimer.unref === "function") {
+    relayTimer.unref();
+  }
+  // Trigger an initial cycle shortly after startup
+  initialTickTimer = setTimeout(tick, 1000);
+  if (typeof initialTickTimer.unref === "function") {
+    initialTickTimer.unref();
+  }
+  logger.info(`🚀 Notification Outbox Relay started (interval=${intervalMs}ms)`);
+}
+
+/**
+ * Stops the periodic outbox relay loop.
+ */
+export async function stopOutboxRelay() {
+  if (initialTickTimer) {
+    clearTimeout(initialTickTimer);
+    initialTickTimer = null;
+  }
+  if (relayTimer) {
+    clearInterval(relayTimer);
+    relayTimer = null;
+  }
+  logger.info("🛑 Notification Outbox Relay stopped");
+}

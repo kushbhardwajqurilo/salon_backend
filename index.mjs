@@ -14,6 +14,10 @@ import {
   stopNotificationWorkers,
 } from "./src/workers/notification.worker.js";
 import {
+  startOutboxRelay,
+  stopOutboxRelay,
+} from "./src/services/notifications/outboxRelay.service.js";
+import {
   startSubscriptionReconciliationWorker,
   stopSubscriptionReconciliationWorker,
 } from "./src/workers/subscriptionReconciliation.worker.js";
@@ -25,6 +29,10 @@ import {
   startAttendanceSyncWorker,
   stopAttendanceSyncWorker,
 } from "./src/workers/attendanceSync.worker.js";
+import {
+  startAutoMarkAbsentWorker,
+  stopAutoMarkAbsentWorker,
+} from "./src/workers/autoMarkAbsent.worker.js";
 import mongoose from "mongoose";
 
 let server;
@@ -37,8 +45,9 @@ const serverStart = async () => {
     // 2. Connect to Redis Database ONCE at Server Startup
     await connectRedis();
 
-    // 3. Start BullMQ Background Notification Workers
+    // 3. Start BullMQ Background Notification Workers & Outbox Relay
     startNotificationWorkers();
+    startOutboxRelay();
 
     // 3b. Start Subscription Redemption Reconciliation Worker
     startSubscriptionReconciliationWorker();
@@ -48,6 +57,9 @@ const serverStart = async () => {
 
     // 3d. Start Attendance Provider Sync Worker
     startAttendanceSyncWorker();
+
+    // 3e. Start Auto-Mark Absent After Cutoff Worker
+    startAutoMarkAbsentWorker();
 
     // 4. Start Express Web Server
     server = app.listen(env.PORT, () => {
@@ -70,8 +82,10 @@ const gracefulShutdown = (signal) => {
       logger.info("🛑 Express server stopped.");
       try {
         await stopAttendanceSyncWorker();
+        await stopAutoMarkAbsentWorker();
         await stopSubscriptionCancellationWorker();
         await stopSubscriptionReconciliationWorker();
+        await stopOutboxRelay();
         await stopNotificationWorkers();
         await disconnectRedis();
         await mongoose.connection.close();

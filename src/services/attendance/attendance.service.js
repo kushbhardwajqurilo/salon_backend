@@ -34,6 +34,7 @@ const ATTENDANCE_STATUSES = [
   "late",
   "early_departure",
   "incomplete",
+  "absent",
 ];
 
 function assertDateOnly(value) {

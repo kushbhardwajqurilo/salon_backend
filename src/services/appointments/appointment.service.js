@@ -4217,7 +4217,7 @@ export class AppointmentService {
       initiatingVersion: appointment.version || 1,
       proposedEndAt: proposedEndAt.toISOString(),
       canonicalServices,
-      effectiveDiscount,
+      effectiveDiscount: proposedPricing.discount,
       affectedIdsAndVersions: affectedAppointments.map(
         (a) => `${a.id}:${a.version}`,
       ),

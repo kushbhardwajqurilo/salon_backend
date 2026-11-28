@@ -37,7 +37,7 @@ const attendanceSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["present", "late", "early_departure", "incomplete"],
+      enum: ["present", "late", "early_departure", "incomplete", "absent"],
       default: "incomplete",
     },
     isReconciled: {
